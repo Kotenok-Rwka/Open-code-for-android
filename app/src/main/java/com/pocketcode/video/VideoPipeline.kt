@@ -560,7 +560,8 @@ class VideoPipeline(
             val b = f(r.end - w0)
             sb.append("[0:v]trim=start=$a:end=$b,setpts=PTS-STARTPTS")
             if (xf) sb.append(",fps=$fps,tpad=stop_mode=clone:stop_duration=0.5,trim=end_frame=${plan.frames[i]},setpts=PTS-STARTPTS")
-            if (zoom) sb.append(if ((base + i) % 2 == 1) ",scale=$zw:$zh:force_original_aspect_ratio=increase,crop=$ow:$oh" else ",scale=$ow:$oh:force_original_aspect_ratio=increase,crop=$ow:$oh")
+            // setsar=1: после scale+crop пропорция пикселя чуть отличается у приближенных и обычных кусков, и concat отказывался их склеивать
+            if (zoom) sb.append(if ((base + i) % 2 == 1) ",scale=$zw:$zh:force_original_aspect_ratio=increase,crop=$ow:$oh,setsar=1" else ",scale=$ow:$oh:force_original_aspect_ratio=increase,crop=$ow:$oh,setsar=1")
             sb.append("[v$i];")
             if (vi.hasAudio) {
                 if (xf) {
