@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -113,6 +114,12 @@ fun VideoGenScreen(g: VideoGenerator, v: VideoPipeline, onBack: () -> Unit, onEd
                     value = prompt, onValueChange = { prompt = it }, enabled = !g.busy, minLines = 3, maxLines = 8,
                     label = { Text("Опишите видео: что в кадре, как движется камера, какой свет") }, modifier = Modifier.fillMaxWidth(),
                 )
+                if (prompt.isBlank() && !g.busy) {
+                    Text("Идеи:", style = MaterialTheme.typography.labelMedium)
+                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        GEN_IDEAS.forEach { (title, idea) -> AssistChip(onClick = { prompt = idea }, label = { Text(title) }) }
+                    }
+                }
                 if (preset.aspects.isNotEmpty()) {
                     Text("Формат кадра:", style = MaterialTheme.typography.labelMedium)
                     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -206,3 +213,10 @@ fun VideoGenScreen(g: VideoGenerator, v: VideoPipeline, onBack: () -> Unit, onEd
         }
     }
 }
+
+private val GEN_IDEAS = listOf(
+    "Кот в неоновом Токио" to "Рыжий кот в очках идёт по ночному Токио под неоновым дождём, камера плавно едет следом",
+    "Горное озеро с дрона" to "Дрон пролетает над туманным горным озером на рассвете, тёплый свет, кинематографичный кадр",
+    "Кофе и снег" to "Крупный план: чашка кофе, пар медленно поднимается, за окном идёт снег",
+    "Космонавт в грибном лесу" to "Космонавт гуляет по лесу из гигантских грибов, мягкий фиолетовый свет, замедленная съёмка",
+)

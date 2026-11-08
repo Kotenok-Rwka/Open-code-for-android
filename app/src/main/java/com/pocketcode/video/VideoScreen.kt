@@ -37,10 +37,10 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -67,23 +67,23 @@ fun VideoScreen(v: VideoPipeline, onBack: () -> Unit, onOpenLinux: () -> Unit, o
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri -> if (uri != null) v.pick(uri) }
 
     // Чувствительность: от -50 дБ (режет только явную тишину) до -25 дБ (режет и тихую речь)
-    var noise by remember { mutableFloatStateOf(-35f) }
-    var minSilence by remember { mutableStateOf(0.6) }
-    var quality by remember { mutableStateOf(VideoQuality.BALANCED) }
-    var small by remember { mutableStateOf(false) }
-    var transition by remember { mutableStateOf(Transition.ZOOM) }
-    var shorts by remember { mutableStateOf(false) }
-    var enhance by remember { mutableStateOf(false) }
-    var blurBg by remember { mutableStateOf(true) }
-    var editing by remember { mutableStateOf(false) }
-    var withPauses by remember { mutableStateOf(false) }
-    var doCut by remember { mutableStateOf(true) }
-    var doSubs by remember { mutableStateOf(false) }
-    var subStyle by remember { mutableStateOf(SubStyle.CLASSIC) }
-    var lang by remember { mutableStateOf("") }
-    var sttOpen by remember { mutableStateOf(false) }
-    var note by remember { mutableStateOf<String?>(null) }
-    var genMode by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+    var noise by rememberSaveable { mutableStateOf(-35f) }
+    var minSilence by rememberSaveable { mutableStateOf(0.6) }
+    var quality by rememberSaveable { mutableStateOf(VideoQuality.BALANCED) }
+    var small by rememberSaveable { mutableStateOf(false) }
+    var transition by rememberSaveable { mutableStateOf(Transition.ZOOM) }
+    var shorts by rememberSaveable { mutableStateOf(false) }
+    var enhance by rememberSaveable { mutableStateOf(false) }
+    var blurBg by rememberSaveable { mutableStateOf(true) }
+    var editing by rememberSaveable { mutableStateOf(false) }
+    var withPauses by rememberSaveable { mutableStateOf(false) }
+    var doCut by rememberSaveable { mutableStateOf(true) }
+    var doSubs by rememberSaveable { mutableStateOf(false) }
+    var subStyle by rememberSaveable { mutableStateOf(SubStyle.CLASSIC) }
+    var lang by rememberSaveable { mutableStateOf("") }
+    var sttOpen by rememberSaveable { mutableStateOf(false) }
+    var note by rememberSaveable { mutableStateOf<String?>(null) }
+    var genMode by rememberSaveable { mutableStateOf(false) }
 
     val info = v.info
     val a = v.analysis
