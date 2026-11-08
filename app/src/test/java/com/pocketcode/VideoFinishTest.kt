@@ -74,4 +74,34 @@ class VideoFinishTest {
         val c = Finish.command("a.mp4", "b.mp4", 1081, 1921, 5.0, true, 30.0, FinishOptions(progressBar = true), null, "/f") { it }
         assertTrue(c.contains("s=1080x"))
     }
+
+    @Test
+    fun musicIsMixedWithDucking() {
+        val c = cmd(FinishOptions(music = "video/music/a.mp3", musicVolume = 0.3, progressBar = true))
+        assertTrue(c.contains("-stream_loop -1 -i 'video/music/a.mp3'"))
+        assertTrue(c.contains("[2:a]volume=0.300"))
+        assertTrue(c.contains("sidechaincompress"))
+        assertTrue(c.contains("amix=inputs=2:duration=first"))
+        assertTrue(c.contains(" -t 10.000"))
+        val noBar = cmd(FinishOptions(music = "m.mp3"))
+        assertTrue(noBar.contains("[1:a]volume=0.250"))
+    }
+
+    @Test
+    fun musicWithoutDuckingOrWithoutVoice() {
+        val flat = cmd(FinishOptions(music = "m.mp3", duck = false))
+        assertFalse(flat.contains("sidechaincompress"))
+        assertTrue(flat.contains("amix"))
+        val silent = cmd(FinishOptions(music = "m.mp3"), audio = false)
+        assertFalse(silent.contains("amix"))
+        assertTrue(silent.contains("atrim=0:10.000"))
+        assertTrue(silent.contains("-map '[ao]'"))
+    }
+
+    @Test
+    fun musicVolumeIsClamped() {
+        assertTrue(cmd(FinishOptions(music = "m.mp3", musicVolume = 9.0)).contains("volume=1.000"))
+        assertTrue(cmd(FinishOptions(music = "m.mp3", musicVolume = 0.0)).contains("volume=0.050"))
+        assertFalse(FinishOptions(music = "m.mp3").isEmpty)
+    }
 }

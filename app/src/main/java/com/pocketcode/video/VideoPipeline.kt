@@ -796,6 +796,64 @@ class VideoPipeline(
             "Готово: $out. $resultNote"
         }
 
+    /** Фоновая музыка для отделки: файл скопирован в video/music/ проекта. */
+    var musicRel by mutableStateOf<String?>(null)
+        private set
+
+    fun pickMusic(uri: Uri) = launch { importMusic(uri) }
+
+    fun clearMusic() { musicRel = null }
+
+    private suspend fun importMusic(uri: Uri): String = guarded(VideoStage.IMPORT) {
+        val rel = withContext(Dispatchers.IO) {
+            val cr = app.contentResolver
+            var name = "music.mp3"
+            cr.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c -> if (c.moveToFirst()) c.getString(0)?.let { name = it } }
+            var clean = name.replace(Regex("[^\\p{L}\\p{N}._-]+"), "_").trim('_', '.')
+            if (clean.isBlank()) clean = "music"
+            if (File(clean).extension.lowercase() !in MUSIC_EXT) clean += ".mp3"
+            val dir = File(root(), "video/music").apply { mkdirs() }
+            val base = File(clean).nameWithoutExtension
+            val ext = File(clean).extension
+            var dest = File(dir, clean)
+            var n = 1
+            while (dest.exists()) dest = File(dir, "${base}_$n.$ext").also { n++ }
+            try {
+                val input = cr.openInputStream(uri) ?: throw IllegalStateException("Не удалось открыть выбранный файл")
+                input.use { src -> dest.outputStream().use { o -> src.copyTo(o) } }
+            } catch (e: Throwable) {
+                dest.delete()
+                throw e
+            }
+            "video/music/" + dest.name
+        }
+        musicRel = rel
+        stage = VideoStage.IDLE
+        message = ""
+        rel
+    }
+
+    /** Кадр из середины видео для предпросмотра эффектов (маленький jpg в скрытой папке проекта). Null, если сейчас занято или не вышло. */
+    suspend fun frameOf(rel: String): File? {
+        if (running.get() || !toolsOk) return null
+        val src = File(root(), rel)
+        if (!src.isFile) return null
+        val name = src.nameWithoutExtension.take(40) + "_" + src.length() + ".jpg"
+        val outRel = "video/.thumb/$name"
+        val out = File(root(), outRel)
+        if (out.isFile && out.length() > 0) return out
+        out.parentFile?.mkdirs()
+        val mid = ((info?.takeIf { it.rel == rel }?.duration ?: 2.0) / 2).coerceAtLeast(0.0)
+        return try {
+            val code = runStreaming("ffmpeg -y -nostdin -hide_banner -loglevel error -ss ${f(mid)} -i ${q(rel)} -frames:v 1 -vf scale=640:-2 -q:v 4 ${q(outRel)}", 60) { }
+            if (code == 0 && out.isFile && out.length() > 0) out else null
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            null
+        }
+    }
+
     fun finishUi(rel: String, o: FinishOptions) = launch { finish(rel, o) }
 
     /** Финальная отделка готового ролика: заголовок в начале, полоска прогресса, ускорение. Результат лежит рядом как *_fx.mp4. */
@@ -1008,6 +1066,7 @@ class VideoPipeline(
     private companion object {
         const val BATCH = 30
         val VIDEO_EXT = setOf("mp4", "mov", "mkv", "webm", "m4v", "3gp", "avi")
+        val MUSIC_EXT = setOf("mp3", "m4a", "aac", "wav", "ogg", "opus", "flac")
         val DURATION = Regex("Duration:\\s*(\\d+):(\\d+):(\\d+(?:\\.\\d+)?)")
         val ROTATION = Regex("rotation of (-?\\d+(?:\\.\\d+)?) degrees")
         val ROTATE_TAG = Regex("rotate\\s*:\\s*(-?\\d+)")

@@ -196,6 +196,9 @@ class VideoFinishTool(private val pipeline: VideoPipeline) : Tool {
         Prop("title_seconds", "number", "Сколько секунд показывать заголовок (по умолчанию 2.5)", required = false),
         Prop("progress_bar", "boolean", "true — полоска прогресса внизу (по умолчанию false)", required = false),
         Prop("speed", "number", "Скорость от 1.0 до 2.0 (по умолчанию 1.0, без изменений)", required = false),
+        Prop("music", "string", "Путь к звуковому файлу в папке проекта для фоновой музыки (например video/music/track.mp3); она зацикливается на длину ролика", required = false),
+        Prop("music_volume", "number", "Громкость музыки от 0.05 до 1 (по умолчанию 0.25)", required = false),
+        Prop("duck", "boolean", "Приглушать музыку, пока говорят (по умолчанию true)", required = false),
     )
 
     override fun needsApproval(input: JsonObject) = true
@@ -207,6 +210,9 @@ class VideoFinishTool(private val pipeline: VideoPipeline) : Tool {
             titleSec = (input.number("title_seconds") ?: 2.5).coerceIn(0.5, 15.0),
             progressBar = input.bool("progress_bar") == true,
             speed = Finish.clampSpeed(input.number("speed") ?: 1.0),
+            music = input.str("music")?.trim()?.trimStart('/').orEmpty().also { require(!it.contains("..")) { "Путь не должен содержать «..»" } },
+            musicVolume = (input.number("music_volume") ?: 0.25).coerceIn(0.05, 1.0),
+            duck = input.bool("duck") != false,
         )
         return pipeline.finish(input.cleanPath(), o)
     }

@@ -2,6 +2,7 @@ package com.pocketcode.video
 
 import android.os.Build
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -30,12 +31,14 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -67,9 +70,12 @@ private val Sky = Brush.verticalGradient(listOf(Color(0xFF1B2A49), Color(0xFF6A4
 
 /** Условный кадр видео: небо и холмы, чтобы субтитры были видны на фоне. */
 @Composable
-private fun SampleFrame(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+private fun SampleFrame(modifier: Modifier = Modifier, frame: ImageBitmap? = null, content: @Composable () -> Unit) {
     Box(modifier.clip(RoundedCornerShape(12.dp)).background(Sky)) {
-        Canvas(Modifier.fillMaxSize()) {
+        if (frame != null) {
+            // Настоящий кадр выбранного видео: так видно, как субтитры лягут на вашу картинку
+            Image(frame, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+        } else Canvas(Modifier.fillMaxSize()) {
             drawCircle(Color(0xFFFFE08A), radius = size.height * 0.16f, center = Offset(size.width * 0.72f, size.height * 0.36f))
             val hills = Path().apply {
                 moveTo(0f, size.height)
@@ -107,7 +113,7 @@ private val BigColors = listOf(Color.White, Color(0xFFFFF000), Color(0xFF50E850)
 
 /** Пример надписи выбранного стиля на условном кадре: слова появляются так же, как в готовом видео. */
 @Composable
-fun SubtitlePreview(style: SubStyle, modifier: Modifier = Modifier) {
+fun SubtitlePreview(style: SubStyle, modifier: Modifier = Modifier, frame: ImageBitmap? = null) {
     val words = previewWords(I18n.t("Это пример ваших субтитров"))
     val clock by rememberClock(style)
     val t = clock
@@ -117,7 +123,7 @@ fun SubtitlePreview(style: SubStyle, modifier: Modifier = Modifier) {
         // Кадр показан крупнее настоящего, чтобы текст читался на телефоне (в 1,5 раза)
         val h = maxHeight
         val px = (h.value * previewFontFraction(style) * 1.5).toFloat()
-        SampleFrame(Modifier.fillMaxSize()) {
+        SampleFrame(Modifier.fillMaxSize(), frame) {
             val pad = 12.dp
             when (style) {
                 SubStyle.CLASSIC -> Bottom(h) {

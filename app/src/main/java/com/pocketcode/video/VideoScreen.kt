@@ -47,6 +47,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
@@ -89,8 +90,20 @@ fun VideoScreen(v: VideoPipeline, onBack: () -> Unit, onOpenLinux: () -> Unit, o
     var finSec by rememberSaveable { mutableStateOf(2.5) }
     var finBar by rememberSaveable { mutableStateOf(false) }
     var finSpeed by rememberSaveable { mutableStateOf(1.0) }
+    var finVol by rememberSaveable { mutableStateOf(0.25) }
+    var finDuck by rememberSaveable { mutableStateOf(true) }
+    val musicPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri -> if (uri != null) v.pickMusic(uri) }
+    var frame by remember { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
 
     val info = v.info
+    androidx.compose.runtime.LaunchedEffect(info?.rel, v.busy) {
+        val rel = info?.rel
+        if (rel == null) frame = null
+        else if (!v.busy) {
+            val file = v.frameOf(rel)
+            frame = file?.let { f -> android.graphics.BitmapFactory.decodeFile(f.path)?.asImageBitmap() }
+        }
+    }
     val a = v.analysis
     val opt = VideoOptions(quality, if (small) 720 else 0, transition, shorts, enhance, blurBg)
 
@@ -245,7 +258,7 @@ fun VideoScreen(v: VideoPipeline, onBack: () -> Unit, onOpenLinux: () -> Unit, o
                                 FilterChip(selected = subStyle == st, enabled = !v.busy, onClick = { subStyle = st }, label = { Text(st.label) })
                             }
                         }
-                        SubtitlePreview(subStyle)
+                        SubtitlePreview(subStyle, frame = frame)
                         Text(subStyle.about, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text("Язык речи:", style = MaterialTheme.typography.labelMedium)
                         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -334,13 +347,29 @@ fun VideoScreen(v: VideoPipeline, onBack: () -> Unit, onOpenLinux: () -> Unit, o
                         }
                     }
                     ToggleRow("Полоска прогресса", "Жёлтая линия внизу растёт до конца ролика: зрители чаще досматривают", finBar, !v.busy) { finBar = it }
+                    val music = v.musicRel
+                    Text("Фоновая музыка:", style = MaterialTheme.typography.labelMedium)
+                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        OutlinedButton(enabled = !v.busy, onClick = { note = null; musicPicker.launch("audio/*") }) { Text(if (music == null) "Выбрать музыку" else "Другая музыка") }
+                        if (music != null) TextButton(enabled = !v.busy, onClick = { v.clearMusic() }) { Text("Убрать") }
+                    }
+                    if (music != null) {
+                        Text(java.io.File(music).name, style = MaterialTheme.typography.bodySmall)
+                        Text("Громкость музыки:", style = MaterialTheme.typography.labelMedium)
+                        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            listOf(0.1 to "10%", 0.25 to "25%", 0.4 to "40%", 0.6 to "60%").forEach { (value, label) ->
+                                FilterChip(selected = finVol == value, enabled = !v.busy, onClick = { finVol = value }, label = { Text(label) })
+                            }
+                        }
+                        ToggleRow("Приглушать, когда говорят", "Музыка тише на речи и громче в паузах", finDuck, !v.busy) { finDuck = it }
+                    }
                     Text("Скорость:", style = MaterialTheme.typography.labelMedium)
                     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         listOf(1.0 to "Обычная", 1.1 to "×1,1", 1.25 to "×1,25", 1.5 to "×1,5", 2.0 to "×2").forEach { (value, label) ->
                             FilterChip(selected = finSpeed == value, enabled = !v.busy, onClick = { finSpeed = value }, label = { Text(label) })
                         }
                     }
-                    val fo = FinishOptions(finTitle, finSec, finBar, finSpeed, quality)
+                    val fo = FinishOptions(finTitle, finSec, finBar, finSpeed, quality, v.musicRel.orEmpty(), finVol, finDuck)
                     if (!fo.isEmpty) Text(
                         "Получится ${fmtTime(Finish.outDuration(info.duration, fo))} вместо ${fmtTime(info.duration)}",
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -349,6 +378,13 @@ fun VideoScreen(v: VideoPipeline, onBack: () -> Unit, onOpenLinux: () -> Unit, o
                         note = null
                         v.finishUi(info.rel, fo)
                     }) { Text("Применить отделку") }
+                    OutlinedButton(enabled = !v.busy, onClick = {
+                        onAsk(
+                            "Придумай цепляющий заголовок-хук для видео ${info.rel}: распознай речь (video_transcribe), пойми, о чём ролик, и предложи 3 варианта " +
+                                "до 60 знаков (интрига, польза или вопрос, без кликбейта-обмана). Лучший вариант сразу наложи через video_finish (title=…, title_seconds=2.5" +
+                                (if (finBar) ", progress_bar=true" else "") + "), остальные два перечисли в ответе."
+                        )
+                    }) { Text("Придумать заголовок (ИИ в чате)") }
                 }
 
                 // ---------- распознавание речи ----------

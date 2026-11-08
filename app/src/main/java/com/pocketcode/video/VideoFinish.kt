@@ -18,10 +18,17 @@ data class FinishOptions(
     /** Скорость: 1.0 — без изменений, допустимо от 1.0 до 2.0. */
     val speed: Double = 1.0,
     val quality: VideoQuality = VideoQuality.BALANCED,
+    /** Фоновая музыка: путь к звуковому файлу в проекте; пусто — без музыки. */
+    val music: String = "",
+    /** Громкость музыки относительно оригинала, 0.05..1. */
+    val musicVolume: Double = 0.25,
+    /** Приглушать музыку, пока в ролике говорят. */
+    val duck: Boolean = true,
 ) {
     val hasTitle: Boolean get() = title.isNotBlank()
     val hasSpeed: Boolean get() = speed > 1.001
-    val isEmpty: Boolean get() = !hasTitle && !progressBar && !hasSpeed
+    val hasMusic: Boolean get() = music.isNotBlank()
+    val isEmpty: Boolean get() = !hasTitle && !progressBar && !hasSpeed && !hasMusic
 }
 
 object Finish {
@@ -97,11 +104,31 @@ object Finish {
             last = "v3"
         }
         sb.append(";[$last]null[vo]")
-        if (hasAudio) sb.append(";[0:a]").append(if (s != 1.0) String.format(Locale.US, "atempo=%.3f", s) else "anull").append("[ao]")
+        val voice = if (s != 1.0) String.format(Locale.US, "atempo=%.3f", s) else "anull"
+        val musicIdx = if (o.progressBar) 2 else 1
+        val vol = String.format(Locale.US, "%.3f", o.musicVolume.coerceIn(0.05, 1.0))
+        val fmt = "aresample=44100,aformat=sample_fmts=fltp:channel_layouts=stereo"
+        val withAudio = hasAudio || o.hasMusic
+        if (o.hasMusic) {
+            val mus = "[$musicIdx:a]volume=$vol,$fmt"
+            if (hasAudio && o.duck) {
+                // Музыка проседает, пока звучит голос (sidechain), потом снова поднимается
+                sb.append(";[0:a]$voice,$fmt,asplit=2[am][as];$mus[mu];[mu][as]sidechaincompress=threshold=0.04:ratio=10:attack=15:release=350[md];")
+                sb.append("[am][md]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[ao]")
+            } else if (hasAudio) {
+                sb.append(";[0:a]$voice,$fmt[am];$mus[mu];[am][mu]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[ao]")
+            } else {
+                sb.append(String.format(Locale.US, ";%s,atrim=0:%.3f[ao]", mus, max(0.2, outDur)))
+            }
+        } else if (hasAudio) {
+            sb.append(";[0:a]").append(voice).append("[ao]")
+        }
         val bars = if (o.progressBar) String.format(Locale.US, " -f lavfi -i color=c=0xFFD400:s=%dx%d:r=%.3f:d=%.3f", w, bar, max(1.0, fps), max(0.2, outDur) + 1.0) else ""
-        val audio = if (hasAudio) " -map ${q("[ao]")} -c:a aac -b:a 128k" else ""
-        return "ffmpeg -y -nostdin -hide_banner -nostats -progress pipe:1 -i ${q(src)}$bars " +
-            "-filter_complex ${q(sb.toString())} -map ${q("[vo]")}$audio " +
+        val musicIn = if (o.hasMusic) " -stream_loop -1 -i ${q(o.music)}" else ""
+        val audio = if (withAudio) " -map ${q("[ao]")} -c:a aac -b:a 160k" else ""
+        val limit = if (o.hasMusic) String.format(Locale.US, " -t %.3f", max(0.2, outDur)) else ""
+        return "ffmpeg -y -nostdin -hide_banner -nostats -progress pipe:1 -i ${q(src)}$bars$musicIn " +
+            "-filter_complex ${q(sb.toString())} -map ${q("[vo]")}$audio$limit " +
             "-c:v libx264 -preset ${o.quality.preset} -crf ${o.quality.crf} -pix_fmt yuv420p -movflags +faststart ${q(target)}"
     }
 }
