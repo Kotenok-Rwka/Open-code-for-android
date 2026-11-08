@@ -216,6 +216,7 @@ fun VideoScreen(v: VideoPipeline, onBack: () -> Unit, onOpenLinux: () -> Unit, o
                                 FilterChip(selected = subStyle == st, enabled = !v.busy, onClick = { subStyle = st }, label = { Text(st.label) })
                             }
                         }
+                        SubtitlePreview(subStyle)
                         Text(subStyle.about, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text("Язык речи:", style = MaterialTheme.typography.labelMedium)
                         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -236,6 +237,7 @@ fun VideoScreen(v: VideoPipeline, onBack: () -> Unit, onOpenLinux: () -> Unit, o
                                 FilterChip(selected = transition == t, enabled = !v.busy, onClick = { transition = t }, label = { Text(t.label) })
                             }
                         }
+                        TransitionPreview(transition)
                         Text(transition.about, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         if (transition.xfade != null) Text(
                             "Наплывы монтируются медленнее обычных склеек. Если эффект не получится, приложение само сделает резкие склейки.",
