@@ -113,7 +113,7 @@ private val BigColors = listOf(Color.White, Color(0xFFFFF000), Color(0xFF50E850)
 
 /** Пример надписи выбранного стиля на условном кадре: слова появляются так же, как в готовом видео. */
 @Composable
-fun SubtitlePreview(style: SubStyle, modifier: Modifier = Modifier, frame: ImageBitmap? = null) {
+fun SubtitlePreview(style: SubStyle, modifier: Modifier = Modifier, frame: ImageBitmap? = null, tweak: SubTweak = SubTweak()) {
     val words = previewWords(I18n.t("Это пример ваших субтитров"))
     val clock by rememberClock(style)
     val t = clock
@@ -122,30 +122,32 @@ fun SubtitlePreview(style: SubStyle, modifier: Modifier = Modifier, frame: Image
     BoxWithConstraints(modifier.fillMaxWidth().aspectRatio(16f / 9f)) {
         // Кадр показан крупнее настоящего, чтобы текст читался на телефоне (в 1,5 раза)
         val h = maxHeight
-        val px = (h.value * previewFontFraction(style) * 1.5).toFloat()
+        val px = (h.value * previewFontFraction(style) * 1.5 * tweak.scale.coerceIn(0.6, 1.6)).toFloat()
+        val accent = tweakColor(tweak.accent)
+        val pos = tweak.position
         SampleFrame(Modifier.fillMaxSize(), frame) {
             val pad = 12.dp
             when (style) {
-                SubStyle.CLASSIC -> Bottom(h) {
-                    Words(words, px, { _ -> Color.White }, Color.Black, px * 0.14f)
+                SubStyle.CLASSIC -> Bottom(h, pos) {
+                    Words(words, px, { _ -> accent ?: Color.White }, Color.Black, px * 0.14f)
                 }
 
-                SubStyle.BOX -> Bottom(h) {
+                SubStyle.BOX -> Bottom(h, pos) {
                     Box(Modifier.clip(RoundedCornerShape(4.dp)).background(Color(0x8C000000)).padding(horizontal = pad, vertical = 4.dp)) {
-                        Words(words, px, { _ -> Color.White }, Color.Transparent, 0f)
+                        Words(words, px, { _ -> accent ?: Color.White }, Color.Transparent, 0f)
                     }
                 }
 
-                SubStyle.KARAOKE -> Bottom(h) {
-                    Words(words, px, { i -> if (i <= active) Yellow else Color.White }, Color.Black, px * 0.16f)
+                SubStyle.KARAOKE -> Bottom(h, pos) {
+                    Words(words, px, { i -> if (i <= active) (accent ?: Yellow) else Color.White }, Color.Black, px * 0.16f)
                 }
 
-                SubStyle.POP -> Bottom(h) {
+                SubStyle.POP -> Bottom(h, pos) {
                     Row(horizontalArrangement = Arrangement.spacedBy((px * 0.3f).dp), verticalAlignment = Alignment.CenterVertically) {
                         words.forEachIndexed { i, w ->
                             val sc = if (i == active) popScale(age) else 1f
                             OutlinedWord(
-                                w.trimEnd(',', '.').uppercase(), px, if (i == active) Yellow else Color.White, Color.Black, px * 0.2f,
+                                w.trimEnd(',', '.').uppercase(), px, if (i == active) (accent ?: Yellow) else Color.White, Color.Black, px * 0.2f,
                                 Modifier.graphicsLayer { scaleX = sc; scaleY = sc; alpha = if (i <= active) 1f else 0f },
                             )
                         }
@@ -160,7 +162,7 @@ fun SubtitlePreview(style: SubStyle, modifier: Modifier = Modifier, frame: Image
                     )
                 }
 
-                SubStyle.NEON -> Bottom(h) {
+                SubStyle.NEON -> Bottom(h, pos) {
                     Row(horizontalArrangement = Arrangement.spacedBy((px * 0.3f).dp)) {
                         words.forEachIndexed { i, w ->
                             val glow = if (i % 2 == 0) Color(0xFFFF40FF) else Color(0xFF40E0FF)
@@ -175,13 +177,13 @@ fun SubtitlePreview(style: SubStyle, modifier: Modifier = Modifier, frame: Image
                     }
                 }
 
-                SubStyle.COMIC -> Bottom(h) {
+                SubStyle.COMIC -> Bottom(h, pos) {
                     val sc = popScale(age)
                     Row(
                         Modifier.graphicsLayer { rotationZ = -4f; scaleX = sc; scaleY = sc },
                         horizontalArrangement = Arrangement.spacedBy((px * 0.3f).dp),
                     ) {
-                        words.forEach { w -> OutlinedWord(w.uppercase(), px, Yellow, Color.Black, px * 0.3f, weight = FontWeight.ExtraBold, italic = true) }
+                        words.forEach { w -> OutlinedWord(w.uppercase(), px, accent ?: Yellow, Color.Black, px * 0.3f, weight = FontWeight.ExtraBold, italic = true) }
                     }
                 }
             }
@@ -190,9 +192,18 @@ fun SubtitlePreview(style: SubStyle, modifier: Modifier = Modifier, frame: Image
 }
 
 @Composable
-private fun Bottom(frameHeight: Dp, content: @Composable () -> Unit) {
-    Box(Modifier.fillMaxSize().padding(bottom = frameHeight * 0.1f), contentAlignment = Alignment.BottomCenter) { content() }
+private fun Bottom(frameHeight: Dp, pos: SubPos, content: @Composable () -> Unit) {
+    val (align, mod) = when (pos) {
+        SubPos.MIDDLE -> Alignment.Center to Modifier.fillMaxSize()
+        SubPos.TOP -> Alignment.TopCenter to Modifier.fillMaxSize().padding(top = frameHeight * 0.08f)
+        else -> Alignment.BottomCenter to Modifier.fillMaxSize().padding(bottom = frameHeight * 0.1f)
+    }
+    Box(mod, contentAlignment = align) { content() }
 }
+
+/** Цвет акцента из RRGGBB; null, если не задан или записан неверно. */
+private fun tweakColor(hex: String): Color? =
+    if (Regex("[0-9A-Fa-f]{6}").matches(hex)) Color(0xFF000000 or hex.toLong(16)) else null
 
 @Composable
 private fun Words(words: List<String>, px: Float, color: (Int) -> Color, stroke: Color, strokeWidth: Float) {

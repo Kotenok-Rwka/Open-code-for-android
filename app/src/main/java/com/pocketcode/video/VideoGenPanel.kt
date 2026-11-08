@@ -28,6 +28,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -42,7 +43,7 @@ import kotlinx.coroutines.launch
 /** Экран «Создать видео нейросетью»: ключ сервиса, описание, формат и результат. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun VideoGenScreen(g: VideoGenerator, v: VideoPipeline, onBack: () -> Unit, onEdit: (String) -> Unit) {
+fun VideoGenScreen(g: VideoGenerator, v: VideoPipeline, onBack: () -> Unit, onEdit: (String) -> Unit, onAsk: (String) -> Unit = {}) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val uriHandler = LocalUriHandler.current
@@ -56,6 +57,8 @@ fun VideoGenScreen(g: VideoGenerator, v: VideoPipeline, onBack: () -> Unit, onEd
     var extra by rememberSaveable { mutableStateOf("") }
     var note by rememberSaveable { mutableStateOf<String?>(null) }
 
+    val store = remember { VideoStore(PrefsKeyValue(ctx.getSharedPreferences("video_ui", android.content.Context.MODE_PRIVATE))) }
+    var history by remember { mutableStateOf(store.history()) }
     val s = g.settings
     val preset = g.preset
 
@@ -114,6 +117,17 @@ fun VideoGenScreen(g: VideoGenerator, v: VideoPipeline, onBack: () -> Unit, onEd
                     value = prompt, onValueChange = { prompt = it }, enabled = !g.busy, minLines = 3, maxLines = 8,
                     label = { Text("Опишите видео: что в кадре, как движется камера, какой свет") }, modifier = Modifier.fillMaxWidth(),
                 )
+                if (history.isNotEmpty() && !g.busy) {
+                    Text("Недавние запросы:", style = MaterialTheme.typography.labelMedium)
+                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        history.forEach { h ->
+                            AssistChip(onClick = {
+                                prompt = h.prompt; aspect = h.aspect; duration = h.duration; resolution = h.resolution; audio = h.audio
+                                GenProvider.values().firstOrNull { it.name == h.provider }?.let { p -> g.update(g.settings.copy(provider = p, model = h.model)) }
+                            }, label = { Text(h.prompt.take(24) + if (h.prompt.length > 24) "…" else "") })
+                        }
+                    }
+                }
                 if (prompt.isBlank() && !g.busy) {
                     Text("Идеи:", style = MaterialTheme.typography.labelMedium)
                     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -161,8 +175,16 @@ fun VideoGenScreen(g: VideoGenerator, v: VideoPipeline, onBack: () -> Unit, onEd
                 } else {
                     Button(enabled = prompt.isNotBlank(), onClick = {
                         note = null
+                        history = store.addHistory(GenHistoryItem(prompt.trim(), s.provider.name, preset.model, aspect, duration, resolution, audio))
                         g.generateUi(GenRequest(prompt, aspect, duration, resolution, audio, extra))
                     }) { Text("Создать видео") }
+                    OutlinedButton(enabled = prompt.isNotBlank() && g.key.isNotBlank(), onClick = {
+                        onAsk(
+                            "Сделай готовый ролик на тему: «${prompt.trim()}». Придумай сценарий из 3–4 сцен по 5–8 секунд с единым героем и стилем, для каждой сцены напиши подробное описание " +
+                                "(кто в кадре, действие, камера, свет) и создай её через video_generate (aspect_ratio=$aspect). Потом склей сцены через video_concat, " +
+                                "а в конце добавь заголовок-хук через video_finish. Перед созданием коротко перечисли сцены: генерация платная."
+                        )
+                    }) { Text("Идея в готовый ролик (ИИ в чате)") }
                 }
             }
 

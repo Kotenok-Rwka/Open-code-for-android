@@ -46,6 +46,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -67,33 +70,57 @@ fun VideoScreen(v: VideoPipeline, onBack: () -> Unit, onOpenLinux: () -> Unit, o
     val uriHandler = LocalUriHandler.current
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri -> if (uri != null) v.pick(uri) }
 
+    // Настройки помнятся между запусками (последние) и под каждое видео («проект»)
+    val store = remember { VideoStore(PrefsKeyValue(ctx.getSharedPreferences("video_ui", android.content.Context.MODE_PRIVATE))) }
+    val init = remember { store.last() ?: VideoSettings() }
+
     // Чувствительность: от -50 дБ (режет только явную тишину) до -25 дБ (режет и тихую речь)
-    var noise by rememberSaveable { mutableStateOf(-35f) }
-    var minSilence by rememberSaveable { mutableStateOf(0.6) }
-    var quality by rememberSaveable { mutableStateOf(VideoQuality.BALANCED) }
-    var small by rememberSaveable { mutableStateOf(false) }
-    var transition by rememberSaveable { mutableStateOf(Transition.ZOOM) }
-    var shorts by rememberSaveable { mutableStateOf(false) }
-    var enhance by rememberSaveable { mutableStateOf(false) }
-    var blurBg by rememberSaveable { mutableStateOf(true) }
+    var noise by rememberSaveable { mutableStateOf(init.noiseDb.toFloat()) }
+    var minSilence by rememberSaveable { mutableStateOf(init.minSilence) }
+    var quality by rememberSaveable { mutableStateOf(init.quality) }
+    var small by rememberSaveable { mutableStateOf(init.small) }
+    var transition by rememberSaveable { mutableStateOf(init.transition) }
+    var shorts by rememberSaveable { mutableStateOf(init.shorts) }
+    var enhance by rememberSaveable { mutableStateOf(init.enhance) }
+    var blurBg by rememberSaveable { mutableStateOf(init.blurBg) }
     var editing by rememberSaveable { mutableStateOf(false) }
     var withPauses by rememberSaveable { mutableStateOf(false) }
-    var doCut by rememberSaveable { mutableStateOf(true) }
-    var doSubs by rememberSaveable { mutableStateOf(false) }
-    var subStyle by rememberSaveable { mutableStateOf(SubStyle.CLASSIC) }
-    var lang by rememberSaveable { mutableStateOf("") }
+    var doCut by rememberSaveable { mutableStateOf(init.doCut) }
+    var doSubs by rememberSaveable { mutableStateOf(init.doSubs) }
+    var subStyle by rememberSaveable { mutableStateOf(init.subStyle) }
+    var subAccent by rememberSaveable { mutableStateOf(init.subTweak.accent) }
+    var subScale by rememberSaveable { mutableStateOf(init.subTweak.scale) }
+    var subPos by rememberSaveable { mutableStateOf(init.subTweak.position) }
+    var lang by rememberSaveable { mutableStateOf(init.lang) }
     var sttOpen by rememberSaveable { mutableStateOf(false) }
     var note by rememberSaveable { mutableStateOf<String?>(null) }
     var genMode by rememberSaveable { mutableStateOf(false) }
-    var presetId by rememberSaveable { mutableStateOf<String?>(null) }
-    var finTitle by rememberSaveable { mutableStateOf("") }
-    var finSec by rememberSaveable { mutableStateOf(2.5) }
-    var finBar by rememberSaveable { mutableStateOf(false) }
-    var finSpeed by rememberSaveable { mutableStateOf(1.0) }
-    var finVol by rememberSaveable { mutableStateOf(0.25) }
-    var finDuck by rememberSaveable { mutableStateOf(true) }
+    var presetId by rememberSaveable { mutableStateOf(init.presetId) }
+    var finTitle by rememberSaveable { mutableStateOf(init.finTitle) }
+    var finSec by rememberSaveable { mutableStateOf(init.finSec) }
+    var finBar by rememberSaveable { mutableStateOf(init.finBar) }
+    var finSpeed by rememberSaveable { mutableStateOf(init.finSpeed) }
+    var finVol by rememberSaveable { mutableStateOf(init.finVol) }
+    var finDuck by rememberSaveable { mutableStateOf(init.finDuck) }
+    var mine by remember { mutableStateOf(store.presets()) }
+    var naming by rememberSaveable { mutableStateOf(false) }
+    var presetName by rememberSaveable { mutableStateOf("") }
     val musicPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri -> if (uri != null) v.pickMusic(uri) }
     var frame by remember { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
+    var restoredFor by remember { mutableStateOf<String?>(null) }
+
+    fun current() = VideoSettings(
+        doCut, noise.toInt(), minSilence, doSubs, subStyle, SubTweak(subAccent, subScale, subPos), lang, transition, quality, small, shorts, blurBg, enhance,
+        finTitle, finSec, finBar, finSpeed, finVol, finDuck, presetId,
+    )
+
+    fun applySettings(p: VideoSettings) {
+        doCut = p.doCut; noise = p.noiseDb.toFloat(); minSilence = p.minSilence
+        doSubs = p.doSubs; subStyle = p.subStyle; subAccent = p.subTweak.accent; subScale = p.subTweak.scale; subPos = p.subTweak.position
+        lang = p.lang; transition = p.transition; quality = p.quality; small = p.small; shorts = p.shorts; blurBg = p.blurBg; enhance = p.enhance
+        finTitle = p.finTitle; finSec = p.finSec; finBar = p.finBar; finSpeed = p.finSpeed; finVol = p.finVol; finDuck = p.finDuck
+        presetId = p.presetId
+    }
 
     val info = v.info
     androidx.compose.runtime.LaunchedEffect(info?.rel, v.busy) {
@@ -105,7 +132,23 @@ fun VideoScreen(v: VideoPipeline, onBack: () -> Unit, onOpenLinux: () -> Unit, o
         }
     }
     val a = v.analysis
-    val opt = VideoOptions(quality, if (small) 720 else 0, transition, shorts, enhance, blurBg)
+    val tweak = SubTweak(subAccent, subScale, subPos)
+    val opt = VideoOptions(quality, if (small) 720 else 0, transition, shorts, enhance, blurBg, tweak)
+
+    // Настройки этого видео восстанавливаются при открытии, а любые изменения сохраняются
+    val snapshot = current()
+    androidx.compose.runtime.LaunchedEffect(info?.rel) {
+        val rel = info?.rel
+        if (rel != null && restoredFor != rel) {
+            restoredFor = rel
+            store.project(rel)?.let { applySettings(it) }
+        }
+    }
+    androidx.compose.runtime.LaunchedEffect(snapshot, info?.rel) {
+        store.saveLast(snapshot)
+        val rel = info?.rel
+        if (rel != null && restoredFor == rel) store.saveProject(rel, snapshot)
+    }
 
     fun start(rel: String, cut: Boolean, subs: SubStyle?) {
         note = null
@@ -117,8 +160,20 @@ fun VideoScreen(v: VideoPipeline, onBack: () -> Unit, onOpenLinux: () -> Unit, o
         v.produceUi(rel, cut, minSilence, noise.toInt(), opt, subs, lang)
     }
 
+    val finOpts = FinishOptions(finTitle, finSec, finBar, finSpeed, quality, v.musicRel.orEmpty(), finVol, finDuck)
+    val batchPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
+        if (uris.isNotEmpty()) {
+            note = null
+            val subs = if (doSubs) subStyle else null
+            if (subs != null && !v.speechReady) {
+                sttOpen = true
+                note = "Для субтитров нужен ключ распознавания речи: введите его в блоке «Распознавание речи» ниже."
+            } else v.batchUi(uris, doCut, minSilence, noise.toInt(), opt, subs, lang, finOpts.takeIf { !it.isEmpty })
+        }
+    }
+
     if (genMode && gen != null) {
-        VideoGenScreen(gen, v, onBack = { genMode = false }, onEdit = { rel -> genMode = false; note = null; v.select(rel) })
+        VideoGenScreen(gen, v, onBack = { genMode = false }, onEdit = { rel -> genMode = false; note = null; v.select(rel) }, onAsk = onAsk)
         return
     }
 
@@ -194,6 +249,11 @@ fun VideoScreen(v: VideoPipeline, onBack: () -> Unit, onOpenLinux: () -> Unit, o
                 Button(enabled = v.ready && !v.busy, onClick = { note = null; picker.launch("video/*") }) {
                     Text(if (info == null) "Выбрать видео" else "Другое видео")
                 }
+                OutlinedButton(enabled = v.ready && !v.busy && (doCut || doSubs), onClick = { batchPicker.launch("video/*") }) { Text("Пакет: несколько видео сразу") }
+                Text(
+                    "Все выбранные видео обработаются подряд с текущими настройками (паузы, субтитры, отделка), каждое отдельным файлом.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
                 val recent = remember(v.stage, v.resultRel, info?.rel) { v.recent() }.filter { it != info?.rel }
                 if (recent.isNotEmpty() && v.ready) {
                     Text("Уже в проекте:", style = MaterialTheme.typography.labelMedium)
@@ -217,6 +277,7 @@ fun VideoScreen(v: VideoPipeline, onBack: () -> Unit, onOpenLinux: () -> Unit, o
                                 selected = presetId == p.id, enabled = !v.busy, label = { Text(p.label) },
                                 onClick = {
                                     presetId = p.id
+                                    subAccent = ""; subScale = 1.0; subPos = SubPos.DEFAULT
                                     doCut = p.cut; minSilence = p.minSilence; noise = p.noiseDb.toFloat()
                                     doSubs = p.subs != null; p.subs?.let { subStyle = it }
                                     transition = p.transition; shorts = p.shorts; blurBg = p.blurBg
@@ -224,6 +285,27 @@ fun VideoScreen(v: VideoPipeline, onBack: () -> Unit, onOpenLinux: () -> Unit, o
                                     if (p.subs != null && !v.speechReady) sttOpen = true
                                 },
                             )
+                        }
+                    }
+                    Text("Мои стили:", style = MaterialTheme.typography.labelMedium)
+                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        mine.forEach { up ->
+                            FilterChip(selected = false, enabled = !v.busy, label = { Text(up.name) }, onClick = { applySettings(up.settings) })
+                            TextButton(enabled = !v.busy, onClick = { mine = store.deletePreset(up.name) }) { Text("✕") }
+                        }
+                        AssistChip(onClick = { naming = !naming }, enabled = !v.busy, label = { Text("Сохранить текущие настройки") })
+                    }
+                    if (naming) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            OutlinedTextField(
+                                value = presetName, onValueChange = { presetName = it.take(30) }, singleLine = true,
+                                label = { Text("Название стиля") }, modifier = Modifier.weight(1f),
+                            )
+                            Button(enabled = presetName.isNotBlank(), onClick = {
+                                mine = store.savePreset(presetName, current())
+                                presetName = ""
+                                naming = false
+                            }) { Text("Сохранить") }
                         }
                     }
                     VideoPresets.byId(presetId)?.let { p ->
@@ -258,8 +340,38 @@ fun VideoScreen(v: VideoPipeline, onBack: () -> Unit, onOpenLinux: () -> Unit, o
                                 FilterChip(selected = subStyle == st, enabled = !v.busy, onClick = { subStyle = st }, label = { Text(st.label) })
                             }
                         }
-                        SubtitlePreview(subStyle, frame = frame)
+                        SubtitlePreview(subStyle, frame = frame, tweak = tweak)
                         Text(subStyle.about, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (subStyle != SubStyle.BIG && subStyle != SubStyle.NEON) {
+                            Text("Цвет:", style = MaterialTheme.typography.labelMedium)
+                            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                FilterChip(selected = subAccent.isEmpty(), enabled = !v.busy, onClick = { subAccent = "" }, label = { Text("Как в стиле") })
+                                SubTweak.COLORS.forEach { (hex, name) ->
+                                    FilterChip(
+                                        selected = subAccent == hex, enabled = !v.busy, onClick = { subAccent = hex }, label = { Text(name) },
+                                        leadingIcon = {
+                                            androidx.compose.foundation.layout.Box(
+                                                Modifier.size(12.dp).clip(androidx.compose.foundation.shape.CircleShape).background(Color(0xFF000000 or hex.toLong(16))),
+                                            )
+                                        },
+                                    )
+                                }
+                            }
+                        }
+                        Text("Размер:", style = MaterialTheme.typography.labelMedium)
+                        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            SubTweak.SCALES.forEach { k ->
+                                FilterChip(selected = subScale == k, enabled = !v.busy, onClick = { subScale = k }, label = { Text(if (k == 1.0) "Обычный" else "×" + k.toString().replace('.', ',')) })
+                            }
+                        }
+                        if (subStyle != SubStyle.BIG) {
+                            Text("Положение:", style = MaterialTheme.typography.labelMedium)
+                            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                SubPos.values().forEach { ps ->
+                                    FilterChip(selected = subPos == ps, enabled = !v.busy, onClick = { subPos = ps }, label = { Text(ps.label) })
+                                }
+                            }
+                        }
                         Text("Язык речи:", style = MaterialTheme.typography.labelMedium)
                         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             listOf("" to "Авто", "ru" to "Русский", "en" to "English", "uk" to "Українська", "de" to "Deutsch", "es" to "Español").forEach { (code, label) ->
@@ -313,6 +425,23 @@ fun VideoScreen(v: VideoPipeline, onBack: () -> Unit, onOpenLinux: () -> Unit, o
                                 (if (shorts) ", shorts=true" + (if (blurBg) ", blur_background=true" else "") else "") + (if (enhance) ", enhance_audio=true" else "") + ". Перед вырезанием коротко перечисли, что убираешь."
                         )
                     }) { Text("Умный монтаж (ИИ в чате)") }
+                    OutlinedButton(enabled = !v.busy, onClick = {
+                        note = null
+                        onAsk(
+                            "Нарежь длинное видео ${info.rel} на вирусные клипы: распознай речь (video_transcribe), выбери 3–5 самых сильных законченных моментов по 20–60 секунд " +
+                                "(мысль с началом и концом, цепляющее начало, без воды) и для каждого вызови video_clip с shorts=true, subtitles=true, style=$styleName" +
+                                (if (blurBg) ", blur_background=true" else "") + (if (enhance) ", enhance_audio=true" else "") +
+                                ". Потом для каждого клипа добавь заголовок-хук через video_finish. В конце перечисли клипы: время в исходнике, заголовок и почему этот момент сильный."
+                        )
+                    }) { Text("Нарезать на клипы (ИИ в чате)") }
+                    if (doCut || doSubs) {
+                        val outLen = if (doCut && a != null && a.info.rel == info.rel) a.keep.sumOf { it.end - it.start }.coerceAtLeast(1.0) else info.duration
+                        val est = Clips.estimate(outLen, quality, shorts, small, doSubs, doCut && transition != Transition.CUT, v.measuredSpeed)
+                        Text(
+                            if (est.seconds < 90) "Примерно: около ${est.seconds} с, файл около ${est.megabytes} МБ" else "Примерно: около ${(est.seconds + 30) / 60} мин, файл около ${est.megabytes} МБ",
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                     Button(
                         enabled = !v.busy && (doCut || doSubs),
                         onClick = { start(info.rel, doCut, if (doSubs) subStyle else null) },
@@ -450,6 +579,7 @@ fun VideoScreen(v: VideoPipeline, onBack: () -> Unit, onOpenLinux: () -> Unit, o
                     )
                     if (v.progress > 0f) LinearProgressIndicator(progress = { v.progress }, modifier = Modifier.fillMaxWidth())
                     else LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    if (v.batchText.isNotEmpty()) Text(v.batchText, style = MaterialTheme.typography.titleSmall)
                     Text(v.message, style = MaterialTheme.typography.bodyMedium)
                     if (v.speed.isNotBlank()) Text("Скорость ${v.speed} от реального времени", style = MaterialTheme.typography.bodySmall)
                     Text(
@@ -600,4 +730,11 @@ private fun Timeline(a: SilenceAnalysis) {
             drawRect(cut, Offset(x0, 0f), Size(w, size.height))
         }
     }
+}
+
+/** SharedPreferences как простое хранилище строк для VideoStore. */
+internal class PrefsKeyValue(private val p: android.content.SharedPreferences) : KeyValue {
+    override fun get(key: String): String? = p.getString(key, null)
+    override fun put(key: String, value: String) { p.edit().putString(key, value).apply() }
+    override fun remove(key: String) { p.edit().remove(key).apply() }
 }

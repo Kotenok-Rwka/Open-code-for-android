@@ -217,3 +217,57 @@ class VideoFinishTool(private val pipeline: VideoPipeline) : Tool {
         return pipeline.finish(input.cleanPath(), o)
     }
 }
+
+/** Сделать из длинного видео короткий клип: оставить только указанные куски (в секундах). */
+class VideoClipTool(private val pipeline: VideoPipeline) : Tool {
+    override val name = "video_clip"
+    override val description =
+        "Сделать клип из длинного видео: оставить ТОЛЬКО указанные куски (в секундах или мм:сс исходного видео) и смонтировать их в один ролик *_cut.mp4. " +
+            "Типичный порядок для нарезки: video_transcribe, выбрать 3–5 самых сильных законченных моментов по 20–60 секунд (мысль с началом и концом, зацепка в первых секундах), " +
+            "затем вызвать этот инструмент для каждого момента отдельно (shorts=true и subtitles=true для вертикальных роликов), при желании потом video_finish с заголовком. Оригинал не меняется."
+    override val schema = objSchema(
+        Prop("path", "string", "Путь к видео относительно папки проекта"),
+        Prop("keep", "string", "Что оставить: куски через запятую, например \"65-110\" или \"1:05-1:50, 3:00-3:20\""),
+        Prop("subtitles", "boolean", "Вшить субтитры (по умолчанию false)", required = false),
+        Prop("style", "string", "Стиль субтитров: classic, box, karaoke, pop, big, neon, comic", required = false),
+        Prop("language", "string", "Код языка речи для субтитров (ru, en…)", required = false),
+        Prop("transition", "string", TRANSITION_HELP, required = false),
+        Prop("shorts", "boolean", SHORTS_HELP, required = false),
+        Prop("enhance_audio", "boolean", ENHANCE_HELP, required = false),
+        Prop("blur_background", "boolean", BLUR_HELP, required = false),
+    )
+
+    override fun needsApproval(input: JsonObject) = true
+    override fun describe(input: JsonObject) = "клип из видео: ${input.str("path") ?: ""}"
+
+    override suspend fun run(input: JsonObject): String {
+        val keeps = Clips.parseRanges(input.need("keep"))
+        require(keeps.isNotEmpty()) { "Не нашёл ни одного куска в формате «начало-конец», например 65-110 или 1:05-1:50" }
+        val subs = if (input.bool("subtitles") == true) styleByName(input.str("style")) else null
+        return pipeline.keepRanges(
+            input.cleanPath(), keeps,
+            VideoOptions(transition = transitionByName(input.str("transition")), vertical = input.bool("shorts") == true, enhanceAudio = input.bool("enhance_audio") == true, blurBg = input.bool("blur_background") == true),
+            subs, input.str("language")?.trim().orEmpty(),
+        )
+    }
+}
+
+/** Склеить несколько роликов (например сгенерированных сцен) в один. */
+class VideoConcatTool(private val pipeline: VideoPipeline) : Tool {
+    override val name = "video_concat"
+    override val description =
+        "Склеить несколько видео из папки проекта подряд в один ролик (размер как у первого, у остальных добавляются поля). Результат: video/<первый>_mix.mp4. " +
+            "Нужно, например, чтобы собрать сцены, созданные video_generate, в один фильм; потом можно добавить субтитры, музыку и заголовок. Нужна среда Linux."
+    override val schema = objSchema(
+        Prop("paths", "string", "Пути к видео по порядку через запятую или с новой строки, минимум два"),
+    )
+
+    override fun needsApproval(input: JsonObject) = true
+    override fun describe(input: JsonObject) = "склеить видео"
+
+    override suspend fun run(input: JsonObject): String {
+        val list = input.need("paths").split(',', '\n', ';').map { it.trim().trimStart('/') }.filter { it.isNotEmpty() }
+        list.forEach { require(!it.contains("..")) { "Путь не должен содержать «..»" } }
+        return pipeline.concat(list, VideoQuality.BALANCED)
+    }
+}

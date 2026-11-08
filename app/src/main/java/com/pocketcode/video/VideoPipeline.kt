@@ -36,7 +36,7 @@ enum class VideoQuality(val label: String, val preset: String, val crf: Int) {
     HIGH("Качество", "faster", 20),
 }
 
-data class VideoOptions(val quality: VideoQuality = VideoQuality.BALANCED, val maxHeight: Int = 0, val transition: Transition = Transition.ZOOM, val vertical: Boolean = false, val enhanceAudio: Boolean = false, val blurBg: Boolean = false)
+data class VideoOptions(val quality: VideoQuality = VideoQuality.BALANCED, val maxHeight: Int = 0, val transition: Transition = Transition.ZOOM, val vertical: Boolean = false, val enhanceAudio: Boolean = false, val blurBg: Boolean = false, val subTweak: SubTweak = SubTweak())
 
 data class TimeRange(val start: Double, val end: Double) {
     val length: Double get() = end - start
@@ -485,7 +485,7 @@ class VideoPipeline(
                     val sel = phrases.filter { it.start >= startDone - 0.001 && it.start < startDone + partDur - 0.001 }
                     if (sel.isNotEmpty()) {
                         assRel = String.format(Locale.US, "%s/s%03d.ass", work, i)
-                        File(root(), assRel).writeText(Subtitles.ass(sel, subs, ow, oh, startDone))
+                        File(root(), assRel).writeText(Subtitles.ass(sel, subs, ow, oh, startDone, opt.subTweak))
                     }
                 }
                 val code = runStreaming(ffmpegCut(vi, batch, w0, w1, opt, target, assRel, plans[i], i * BATCH), 3 * 3600L) { line ->
@@ -496,6 +496,7 @@ class VideoPipeline(
                         message = "Монтаж: ${fmtTime(now)} из ${fmtTime(total)}"
                     } else if (line.startsWith("speed=")) {
                         speed = line.removePrefix("speed=").trim()
+                        speed.removeSuffix("x").trim().toDoubleOrNull()?.takeIf { it > 0 }?.let { measuredSpeed = it }
                     } else if (!isProgressLine(line) && line.isNotBlank()) {
                         tail.addLast(line)
                         if (tail.size > 8) tail.removeFirst()
@@ -852,6 +853,107 @@ class VideoPipeline(
         } catch (e: Throwable) {
             null
         }
+    }
+
+    /** Скорость последнего монтажа (во сколько раз быстрее реального времени) для оценки времени. */
+    var measuredSpeed by mutableStateOf<Double?>(null)
+        private set
+
+    /** Пока идёт пакетная обработка: «Ролик 2 из 5». */
+    var batchText by mutableStateOf("")
+        private set
+
+    /**
+     * Оставляет только указанные куски исходного видео (в секундах) и монтирует их в один ролик:
+     * так из длинного видео получается короткий клип. При subs вшивает субтитры.
+     */
+    suspend fun keepRanges(rel: String, keeps: List<TimeRange>, opt: VideoOptions, subs: SubStyle?, lang: String): String =
+        guarded(VideoStage.TOOLS) {
+            val tr = if (subs == null) null else (transcript?.takeIf { transcriptRel == rel } ?: doTranscribe(rel, lang))
+            val cur = info
+            val vi = if (cur != null && cur.rel == rel) { ensureTools(); cur } else doOpen(rel)
+            val keep = Clips.normalizeKeeps(keeps, vi.duration)
+            if (keep.isEmpty()) throw IllegalStateException("Ни один кусок не попал в видео (длина ${fmtTime(vi.duration)}): проверьте время начала и конца")
+            val out = doRender(vi, keep, opt, subs, tr, true)
+            "Готово: $out. $resultNote"
+        }
+
+    /** Склеивает несколько роликов в один (размер как у первого). Результат: video/<первый>_mix.mp4. */
+    suspend fun concat(rels: List<String>, quality: VideoQuality): String = guarded(VideoStage.TOOLS) {
+        if (rels.size < 2) throw IllegalStateException("Для склейки нужно хотя бы два видео")
+        val infos = ArrayList<Clips.ClipInfo>()
+        for (r in rels) {
+            val vi = doOpen(r)
+            infos += Clips.ClipInfo(vi.rel, vi.width, vi.height, vi.duration, vi.hasAudio)
+        }
+        stage = VideoStage.RENDER
+        progress = 0f
+        message = "Склеиваю ролики…"
+        val out = uniqueOut(rels.first(), "_mix")
+        val total = infos.sumOf { it.duration }
+        val tail = ArrayDeque<String>()
+        var ok = false
+        try {
+            val code = runStreaming(Clips.concatCommand(infos, out, quality) { q(it) }, 3 * 3600L) { line ->
+                val t = progressSeconds(line)
+                if (t != null) {
+                    progress = (t / total * 0.99).toFloat().coerceIn(0f, 0.99f)
+                    message = "Склейка: ${fmtTime(minOf(t, total))} из ${fmtTime(total)}"
+                } else if (line.startsWith("speed=")) {
+                    speed = line.removePrefix("speed=").trim()
+                } else if (!isProgressLine(line) && line.isNotBlank()) {
+                    tail.addLast(line)
+                    if (tail.size > 8) tail.removeFirst()
+                }
+            }
+            if (code != 0) throw IllegalStateException("ffmpeg завершился с ошибкой ($code): " + tail.joinToString(" | ").take(500))
+            val f = File(root(), out)
+            if (!f.exists() || f.length() == 0L) throw IllegalStateException("ffmpeg не создал файл результата")
+            ok = true
+            resultRel = out
+            val note = "Склеено роликов: ${rels.size}, длина ${fmtTime(total)}, файл ${fmtSize(f.length())}."
+            resultNote = note
+            progress = 1f
+            speed = ""
+            message = "Готово: $note"
+            stage = VideoStage.DONE
+            if (!appVisible()) Notifier.alert(app, "Видео готово", File(out).name + ": " + note)
+            "Готово: $out. $note"
+        } finally {
+            if (!ok) File(root(), out).delete()
+        }
+    }
+
+    /** Пакетный монтаж: несколько видео из галереи подряд с одними настройками (и отделкой, если задана). */
+    fun batchUi(uris: List<Uri>, cut: Boolean, minSilence: Double, noiseDb: Int, opt: VideoOptions, subs: SubStyle?, lang: String, fin: FinishOptions?) = launch {
+        val outs = ArrayList<String>()
+        val fails = ArrayList<String>()
+        try {
+            for ((i, u) in uris.withIndex()) {
+                batchText = "Ролик ${i + 1} из ${uris.size}"
+                try {
+                    val rel = importUri(u).rel
+                    produce(rel, cut, minSilence, noiseDb, opt, subs, lang)
+                    var out = resultRel
+                    if (out != null && fin != null && !fin.isEmpty) {
+                        finish(out, fin)
+                        out = resultRel
+                    }
+                    if (out != null) outs += out
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Throwable) {
+                    fails += "${i + 1}: " + (e.message ?: e.javaClass.simpleName).take(160)
+                }
+            }
+        } finally {
+            batchText = ""
+        }
+        resultRel = outs.lastOrNull()
+        resultNote = "Готово роликов: ${outs.size} из ${uris.size}. Файлы лежат в папке video/."
+        error = if (fails.isEmpty()) null else "Не получилось: " + fails.joinToString("; ")
+        stage = if (outs.isNotEmpty()) VideoStage.DONE else VideoStage.ERROR
+        message = resultNote
     }
 
     fun finishUi(rel: String, o: FinishOptions) = launch { finish(rel, o) }

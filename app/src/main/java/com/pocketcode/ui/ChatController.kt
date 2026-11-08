@@ -96,6 +96,8 @@ import com.pocketcode.video.SpeechConfig
 import com.pocketcode.video.GenProvider
 import com.pocketcode.video.GenSettings
 import com.pocketcode.video.VideoCutRangesTool
+import com.pocketcode.video.VideoClipTool
+import com.pocketcode.video.VideoConcatTool
 import com.pocketcode.video.VideoFinishTool
 import com.pocketcode.video.VideoGenerateTool
 import com.pocketcode.video.VideoGenerator
@@ -4810,6 +4812,8 @@ class ChatController(
             if (linuxActive) VideoSubtitlesTool(video) else null,
             if (linuxActive) VideoCutRangesTool(video) else null,
             if (linuxActive) VideoFinishTool(video) else null,
+            if (linuxActive) VideoClipTool(video) else null,
+            if (linuxActive) VideoConcatTool(video) else null,
             if (videoGen.key.isNotBlank()) VideoGenerateTool(videoGen) else null,
             if (rootEnabled) RootTool(workspace, rootShell) else null,
         )

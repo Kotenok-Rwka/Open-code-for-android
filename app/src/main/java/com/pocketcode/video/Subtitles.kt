@@ -6,6 +6,20 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
 
+/** Где стоят субтитры (у «Громко» всегда по центру). */
+enum class SubPos(val label: String) { DEFAULT("Как в стиле"), BOTTOM("Снизу"), MIDDLE("По центру"), TOP("Сверху") }
+
+/** Подстройка выбранного стиля: цвет акцента (RRGGBB; пусто — как в стиле), размер и положение. */
+data class SubTweak(val accent: String = "", val scale: Double = 1.0, val position: SubPos = SubPos.DEFAULT) {
+    val isDefault: Boolean get() = accent.isEmpty() && scale == 1.0 && position == SubPos.DEFAULT
+
+    companion object {
+        /** Цвета на выбор в интерфейсе. */
+        val COLORS = listOf("FFF000" to "Жёлтый", "FFFFFF" to "Белый", "50E850" to "Зелёный", "FF50B4" to "Розовый", "40C8FF" to "Голубой", "FF8C28" to "Оранжевый")
+        val SCALES = listOf(0.8, 1.0, 1.25, 1.5)
+    }
+}
+
 enum class SubStyle(val label: String, val about: String) {
     CLASSIC("Классика", "Белый текст с обводкой, фраза целиком"),
     BOX("Плашка", "Текст на тёмной полупрозрачной плашке, фраза целиком"),
@@ -234,7 +248,7 @@ object Subtitles {
     private fun joinFit(words: List<String>, f: Fit): String =
         words.withIndex().joinToString("") { (i, x) -> x + if (i in f.breaks) "\\N" else if (i < words.lastIndex) " " else "" }
 
-    private class Spec(
+    private data class Spec(
         val fs: Int, val primary: String, val secondary: String, val outlineColor: String, val backColor: String,
         val outline: Double, val shadow: Double, val border: Int, val align: Int, val mv: Int,
     )
@@ -261,6 +275,39 @@ object Subtitles {
         }
     }
 
+    /** Цвет в формате тегов ASS (&HBBGGRR&); без подстройки жёлтый. */
+    private fun accentTag(t: SubTweak): String = hexToAss(t.accent)?.let { "&H$it&" } ?: YELLOW
+
+    private fun hexToAss(hex: String): String? {
+        val h = hex.trim().removePrefix("#")
+        if (!Regex("[0-9a-fA-F]{6}").matches(h)) return null
+        return (h.substring(4, 6) + h.substring(2, 4) + h.substring(0, 2)).uppercase()
+    }
+
+    private fun tweaked(sp: Spec, style: SubStyle, h: Int, t: SubTweak): Spec {
+        if (t.isDefault) return sp
+        val k = t.scale.coerceIn(0.6, 1.6)
+        var r = sp.copy(fs = (sp.fs * k).roundToInt().coerceAtLeast(8), outline = sp.outline * k, shadow = sp.shadow * k)
+        val acc = hexToAss(t.accent)?.let { "&H00$it" }
+        if (acc != null) {
+            r = when (style) {
+                SubStyle.CLASSIC, SubStyle.BOX -> r.copy(primary = acc, secondary = acc)
+                SubStyle.KARAOKE -> r.copy(primary = acc)
+                SubStyle.COMIC -> r.copy(primary = acc, secondary = acc)
+                else -> r
+            }
+        }
+        if (style != SubStyle.BIG) {
+            r = when (t.position) {
+                SubPos.DEFAULT -> r
+                SubPos.BOTTOM -> r.copy(align = 2, mv = (h * 0.08).roundToInt())
+                SubPos.MIDDLE -> r.copy(align = 5, mv = 0)
+                SubPos.TOP -> r.copy(align = 8, mv = (h * 0.08).roundToInt())
+            }
+        }
+        return r
+    }
+
     private fun tidy(s: String) = s.trimEnd(',', '.', ';', ':')
 
     /**
@@ -269,8 +316,9 @@ object Subtitles {
      * Каждая надпись переносится и при нехватке места уменьшается так, чтобы целиком помещаться в кадр
      * (особенно важно для вертикального видео); для каждого размера создаётся свой стиль.
      */
-    fun ass(phrases: List<Phrase>, style: SubStyle, w: Int, h: Int, shift: Double): String {
-        val sp = spec(style, w, h)
+    fun ass(phrases: List<Phrase>, style: SubStyle, w: Int, h: Int, shift: Double, tweak: SubTweak = SubTweak()): String {
+        val sp = tweaked(spec(style, w, h), style, h, tweak)
+        val accent = accentTag(tweak)
         val mx = (w * 0.06).roundToInt()
         // Плашка выступает за текст на величину обводки, это тоже должно поместиться
         val avail = (w - 2.0 * mx) - (if (sp.border == 3) 2 * sp.outline else 0.0)
@@ -317,7 +365,7 @@ object Subtitles {
                             for ((i, t) in up.withIndex()) {
                                 when {
                                     i < k -> append(t)
-                                    i == k -> append("{\\c$YELLOW\\fscx82\\fscy82\\t(0,90,\\fscx118\\fscy118)\\t(90,190,\\fscx100\\fscy100)}$t{\\r}")
+                                    i == k -> append("{\\c$accent\\fscx82\\fscy82\\t(0,90,\\fscx118\\fscy118)\\t(90,190,\\fscx100\\fscy100)}$t{\\r}")
                                     else -> append("{\\alpha&HFF&}$t{\\alpha&H00&}")
                                 }
                                 if (i < up.lastIndex) append(if (i in f.breaks) "\\N" else " ")
