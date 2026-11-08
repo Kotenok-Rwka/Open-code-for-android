@@ -84,6 +84,7 @@ fun VideoScreen(v: VideoPipeline, onBack: () -> Unit, onOpenLinux: () -> Unit, o
     var sttOpen by rememberSaveable { mutableStateOf(false) }
     var note by rememberSaveable { mutableStateOf<String?>(null) }
     var genMode by rememberSaveable { mutableStateOf(false) }
+    var presetId by rememberSaveable { mutableStateOf<String?>(null) }
 
     val info = v.info
     val a = v.analysis
@@ -191,6 +192,30 @@ fun VideoScreen(v: VideoPipeline, onBack: () -> Unit, onOpenLinux: () -> Unit, o
             if (info != null && v.ready) {
                 SoftCard {
                     Text("2. Что сделать", style = MaterialTheme.typography.titleMedium)
+
+                    Text("Готовые стили монтажа:", style = MaterialTheme.typography.labelMedium)
+                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        VideoPresets.all.forEach { p ->
+                            FilterChip(
+                                selected = presetId == p.id, enabled = !v.busy, label = { Text(p.label) },
+                                onClick = {
+                                    presetId = p.id
+                                    doCut = p.cut; minSilence = p.minSilence; noise = p.noiseDb.toFloat()
+                                    doSubs = p.subs != null; p.subs?.let { subStyle = it }
+                                    transition = p.transition; shorts = p.shorts; blurBg = p.blurBg
+                                    enhance = p.enhance; quality = p.quality; small = p.small
+                                    if (p.subs != null && !v.speechReady) sttOpen = true
+                                },
+                            )
+                        }
+                    }
+                    VideoPresets.byId(presetId)?.let { p ->
+                        Text(p.about, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            p.tags().forEach { tag -> AssistChip(onClick = {}, enabled = false, label = { Text(tag) }) }
+                        }
+                        Text("Настройки ниже выставлены. Их можно менять вручную.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
 
                     ToggleRow("Вырезать паузы", "Убирает молчание и «зависания»", doCut, !v.busy) { doCut = it }
                     if (doCut) {
