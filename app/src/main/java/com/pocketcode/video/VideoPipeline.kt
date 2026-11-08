@@ -796,6 +796,64 @@ class VideoPipeline(
             "Готово: $out. $resultNote"
         }
 
+    fun finishUi(rel: String, o: FinishOptions) = launch { finish(rel, o) }
+
+    /** Финальная отделка готового ролика: заголовок в начале, полоска прогресса, ускорение. Результат лежит рядом как *_fx.mp4. */
+    suspend fun finish(rel: String, o: FinishOptions): String = guarded(VideoStage.TOOLS) {
+        if (o.isEmpty) throw IllegalStateException("Включите хотя бы одно: заголовок, полоску прогресса или ускорение")
+        val cur = info
+        val vi = if (cur != null && cur.rel == rel) { ensureTools(); cur } else doOpen(rel)
+        if (o.hasTitle) ensureSubtitleTools()
+        stage = VideoStage.RENDER
+        progress = 0f
+        message = "Отделка…"
+        val out = uniqueOut(vi.rel, "_fx")
+        val work = "video/.work"
+        val workDir = File(root(), work)
+        workDir.deleteRecursively()
+        workDir.mkdirs()
+        val w = if (vi.width > 0) vi.width else 1280
+        val h = if (vi.height > 0) vi.height else 720
+        var assRel: String? = null
+        if (o.hasTitle) {
+            assRel = "$work/title.ass"
+            File(root(), assRel).writeText(Finish.titleAss(o.title, w, h, o.titleSec))
+        }
+        val total = Finish.outDuration(vi.duration, o)
+        val tail = ArrayDeque<String>()
+        var ok = false
+        try {
+            val code = runStreaming(Finish.command(vi.rel, out, w, h, vi.duration, vi.hasAudio, vi.fps, o, assRel, FONT_DIR) { q(it) }, 3 * 3600L) { line ->
+                val t = progressSeconds(line)
+                if (t != null) {
+                    progress = (t / total * 0.99).toFloat().coerceIn(0f, 0.99f)
+                    message = "Отделка: ${fmtTime(minOf(t, total))} из ${fmtTime(total)}"
+                } else if (line.startsWith("speed=")) {
+                    speed = line.removePrefix("speed=").trim()
+                } else if (!isProgressLine(line) && line.isNotBlank()) {
+                    tail.addLast(line)
+                    if (tail.size > 8) tail.removeFirst()
+                }
+            }
+            if (code != 0) throw IllegalStateException("ffmpeg завершился с ошибкой ($code): " + tail.joinToString(" | ").take(500))
+            val f = File(root(), out)
+            if (!f.exists() || f.length() == 0L) throw IllegalStateException("ffmpeg не создал файл результата")
+            ok = true
+            resultRel = out
+            val note = "Было ${fmtTime(vi.duration)}, стало ${fmtTime(total)}, файл ${fmtSize(f.length())}."
+            resultNote = note
+            progress = 1f
+            speed = ""
+            message = "Готово: $note"
+            stage = VideoStage.DONE
+            if (!appVisible()) Notifier.alert(app, "Видео готово", File(out).name + ": " + note)
+            "Готово: $out. $note"
+        } finally {
+            workDir.deleteRecursively()
+            if (!ok) File(root(), out).delete()
+        }
+    }
+
     /** Сохраняет текст и .srt рядом с видео. Возвращает короткий итог. */
     fun saveTranscriptFiles(rel: String): String {
         val tr = transcript ?: throw IllegalStateException("Сначала получите текст")

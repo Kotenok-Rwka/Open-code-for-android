@@ -183,3 +183,31 @@ class VideoGenerateTool(private val gen: VideoGenerator) : Tool {
         return "Видео создано: $rel (${gen.preset.label}). Его можно открыть на экране «Видео» или смонтировать инструментами video_*."
     }
 }
+
+/** Финальная отделка готового ролика: заголовок-хук, полоска прогресса, ускорение. */
+class VideoFinishTool(private val pipeline: VideoPipeline) : Tool {
+    override val name = "video_finish"
+    override val description =
+        "Финальная отделка видео из папки проекта: заголовок на первых секундах (хук), полоска прогресса внизу, ускорение до ×2. " +
+            "Результат сохраняется рядом как *_fx.mp4, оригинал не меняется. Обычно вызывается последним, на уже смонтированном ролике. Нужна среда Linux."
+    override val schema = objSchema(
+        Prop("path", "string", "Путь к видео относительно папки проекта"),
+        Prop("title", "string", "Заголовок на первых секундах (цепляющая фраза до 120 знаков); пусто — без заголовка", required = false),
+        Prop("title_seconds", "number", "Сколько секунд показывать заголовок (по умолчанию 2.5)", required = false),
+        Prop("progress_bar", "boolean", "true — полоска прогресса внизу (по умолчанию false)", required = false),
+        Prop("speed", "number", "Скорость от 1.0 до 2.0 (по умолчанию 1.0, без изменений)", required = false),
+    )
+
+    override fun needsApproval(input: JsonObject) = true
+    override fun describe(input: JsonObject) = "отделка видео: ${input.str("path") ?: ""}"
+
+    override suspend fun run(input: JsonObject): String {
+        val o = FinishOptions(
+            title = input.str("title")?.trim().orEmpty(),
+            titleSec = (input.number("title_seconds") ?: 2.5).coerceIn(0.5, 15.0),
+            progressBar = input.bool("progress_bar") == true,
+            speed = Finish.clampSpeed(input.number("speed") ?: 1.0),
+        )
+        return pipeline.finish(input.cleanPath(), o)
+    }
+}

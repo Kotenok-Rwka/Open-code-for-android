@@ -85,6 +85,10 @@ fun VideoScreen(v: VideoPipeline, onBack: () -> Unit, onOpenLinux: () -> Unit, o
     var note by rememberSaveable { mutableStateOf<String?>(null) }
     var genMode by rememberSaveable { mutableStateOf(false) }
     var presetId by rememberSaveable { mutableStateOf<String?>(null) }
+    var finTitle by rememberSaveable { mutableStateOf("") }
+    var finSec by rememberSaveable { mutableStateOf(2.5) }
+    var finBar by rememberSaveable { mutableStateOf(false) }
+    var finSpeed by rememberSaveable { mutableStateOf(1.0) }
 
     val info = v.info
     val a = v.analysis
@@ -310,6 +314,43 @@ fun VideoScreen(v: VideoPipeline, onBack: () -> Unit, onOpenLinux: () -> Unit, o
                     }
                 }
 
+                // ---------- финальная отделка ----------
+                SoftCard {
+                    Text("3. Финальная отделка", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "Добавьте цепляющий заголовок, полоску прогресса или ускорьте ролик. Лучше делать в конце, на готовом видео: результат ляжет рядом отдельным файлом.",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    OutlinedTextField(
+                        value = finTitle, onValueChange = { finTitle = it.take(120) }, enabled = !v.busy, singleLine = false, maxLines = 3,
+                        label = { Text("Заголовок в начале (необязательно)") }, modifier = Modifier.fillMaxWidth(),
+                    )
+                    if (finTitle.isNotBlank()) {
+                        Text("Сколько секунд показывать:", style = MaterialTheme.typography.labelMedium)
+                        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            listOf(1.5, 2.5, 4.0, 6.0).forEach { sec ->
+                                FilterChip(selected = finSec == sec, enabled = !v.busy, onClick = { finSec = sec }, label = { Text((if (sec % 1.0 == 0.0) sec.toInt().toString() else sec.toString().replace('.', ',')) + " с") })
+                            }
+                        }
+                    }
+                    ToggleRow("Полоска прогресса", "Жёлтая линия внизу растёт до конца ролика: зрители чаще досматривают", finBar, !v.busy) { finBar = it }
+                    Text("Скорость:", style = MaterialTheme.typography.labelMedium)
+                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf(1.0 to "Обычная", 1.1 to "×1,1", 1.25 to "×1,25", 1.5 to "×1,5", 2.0 to "×2").forEach { (value, label) ->
+                            FilterChip(selected = finSpeed == value, enabled = !v.busy, onClick = { finSpeed = value }, label = { Text(label) })
+                        }
+                    }
+                    val fo = FinishOptions(finTitle, finSec, finBar, finSpeed, quality)
+                    if (!fo.isEmpty) Text(
+                        "Получится ${fmtTime(Finish.outDuration(info.duration, fo))} вместо ${fmtTime(info.duration)}",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Button(enabled = !v.busy && !fo.isEmpty, onClick = {
+                        note = null
+                        v.finishUi(info.rel, fo)
+                    }) { Text("Применить отделку") }
+                }
+
                 // ---------- распознавание речи ----------
                 SoftCard {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -464,6 +505,7 @@ fun VideoScreen(v: VideoPipeline, onBack: () -> Unit, onOpenLinux: () -> Unit, o
                             }
                         }) { Text("Поделиться") }
                     }
+                    OutlinedButton(enabled = !v.busy, onClick = { note = null; v.select(res) }) { Text("Отделать этот ролик") }
                     Text("Файл лежит в проекте: $res", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
