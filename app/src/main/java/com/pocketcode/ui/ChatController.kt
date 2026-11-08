@@ -93,7 +93,11 @@ import com.pocketcode.service.Notifier
 import com.pocketcode.video.DEFAULT_STT_MODEL
 import com.pocketcode.video.DEFAULT_STT_URL
 import com.pocketcode.video.SpeechConfig
+import com.pocketcode.video.GenProvider
+import com.pocketcode.video.GenSettings
 import com.pocketcode.video.VideoCutRangesTool
+import com.pocketcode.video.VideoGenerateTool
+import com.pocketcode.video.VideoGenerator
 import com.pocketcode.video.VideoPipeline
 import com.pocketcode.video.VideoSubtitlesTool
 import com.pocketcode.video.VideoTranscribeTool
@@ -4804,6 +4808,7 @@ class ChatController(
             if (linuxActive) VideoTranscribeTool(video) else null,
             if (linuxActive) VideoSubtitlesTool(video) else null,
             if (linuxActive) VideoCutRangesTool(video) else null,
+            if (videoGen.key.isNotBlank()) VideoGenerateTool(videoGen) else null,
             if (rootEnabled) RootTool(workspace, rootShell) else null,
         )
         val sysPrompt = systemPrompt(
@@ -4910,6 +4915,33 @@ class ChatController(
                 if (c.key.isNotBlank()) Secrets.known = Secrets.known + c.key
             },
             fallbackKey = { url -> profiles.firstOrNull { it.apiKey.isNotBlank() && sameHost(it.baseUrl, url) }?.let { it.apiKey to it.label } },
+            proxy = { netProxy },
+        )
+    }
+
+    /** Создание видео нейросетью по API (ключи сервисов лежат зашифрованно). */
+    val videoGen: VideoGenerator by lazy {
+        VideoGenerator(
+            root = { workspace.root },
+            load = {
+                val keys = GenProvider.values().associateWith { settingsStore.rawGet("genKey_" + it.name) ?: "" }
+                keys.values.filter { it.isNotBlank() }.forEach { Secrets.known = Secrets.known + it }
+                GenSettings(
+                    provider = GenProvider.values().firstOrNull { it.name == settingsStore.rawGet("genProvider") } ?: GenProvider.FAL,
+                    model = settingsStore.rawGet("genModel") ?: "",
+                    keys = keys,
+                )
+            },
+            save = { s ->
+                settingsStore.rawPut("genProvider", s.provider.name)
+                settingsStore.rawPut("genModel", s.model)
+                s.keys.forEach { (p, k) ->
+                    settingsStore.rawPut("genKey_" + p.name, k)
+                    if (k.isNotBlank()) Secrets.known = Secrets.known + k
+                }
+            },
+            keepAlive = { videoHold = true; startService() },
+            release = { videoHold = false; if (!running) stopService() },
             proxy = { netProxy },
         )
     }

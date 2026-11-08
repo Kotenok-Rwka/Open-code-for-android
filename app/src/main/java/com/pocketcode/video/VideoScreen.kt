@@ -59,7 +59,7 @@ import kotlinx.coroutines.launch
 /** Режим «Видео»: выбрать ролик, вырезать паузы, добавить субтитры, сохранить или отправить. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun VideoScreen(v: VideoPipeline, onBack: () -> Unit, onOpenLinux: () -> Unit, onAsk: (String) -> Unit = {}) {
+fun VideoScreen(v: VideoPipeline, onBack: () -> Unit, onOpenLinux: () -> Unit, onAsk: (String) -> Unit = {}, gen: VideoGenerator? = null) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val clipboard = LocalClipboardManager.current
@@ -83,6 +83,7 @@ fun VideoScreen(v: VideoPipeline, onBack: () -> Unit, onOpenLinux: () -> Unit, o
     var lang by remember { mutableStateOf("") }
     var sttOpen by remember { mutableStateOf(false) }
     var note by remember { mutableStateOf<String?>(null) }
+    var genMode by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
 
     val info = v.info
     val a = v.analysis
@@ -96,6 +97,11 @@ fun VideoScreen(v: VideoPipeline, onBack: () -> Unit, onOpenLinux: () -> Unit, o
             return
         }
         v.produceUi(rel, cut, minSilence, noise.toInt(), opt, subs, lang)
+    }
+
+    if (genMode && gen != null) {
+        VideoGenScreen(gen, v, onBack = { genMode = false }, onEdit = { rel -> genMode = false; note = null; v.select(rel) })
+        return
     }
 
     val editor = v.textEdit()
@@ -133,6 +139,17 @@ fun VideoScreen(v: VideoPipeline, onBack: () -> Unit, onOpenLinux: () -> Unit, o
                         style = MaterialTheme.typography.bodyMedium,
                     )
                     Button(onClick = onOpenLinux) { Text("Открыть «Среда Linux»") }
+                }
+            }
+
+            if (gen != null) {
+                SoftCard {
+                    Text("Создать видео нейросетью", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "Опишите ролик словами, а сервис по вашему ключу (fal.ai, Replicate, Google Gemini) снимет его. Готовое видео можно сразу монтировать.",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    OutlinedButton(onClick = { genMode = true }) { Text(if (gen.busy) "Видео создаётся…" else "Открыть") }
                 }
             }
 
@@ -442,7 +459,7 @@ private fun sensLabel(db: Int) = when {
 }
 
 @Composable
-private fun ToggleRow(title: String, about: String, checked: Boolean, enabled: Boolean, onChange: (Boolean) -> Unit) {
+internal fun ToggleRow(title: String, about: String, checked: Boolean, enabled: Boolean, onChange: (Boolean) -> Unit) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Text(title, style = MaterialTheme.typography.titleSmall)
@@ -453,7 +470,7 @@ private fun ToggleRow(title: String, about: String, checked: Boolean, enabled: B
 }
 
 @Composable
-private fun SoftCard(error: Boolean = false, content: @Composable () -> Unit) {
+internal fun SoftCard(error: Boolean = false, content: @Composable () -> Unit) {
     Card(
         shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(containerColor = if (error) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.surfaceContainer),

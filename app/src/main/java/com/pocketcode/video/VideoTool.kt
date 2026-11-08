@@ -152,3 +152,34 @@ class VideoCutRangesTool(private val pipeline: VideoPipeline) : Tool {
         return pipeline.cutRanges(input.cleanPath(), cuts, VideoOptions(transition = transitionByName(input.str("transition")), vertical = input.bool("shorts") == true, enhanceAudio = input.bool("enhance_audio") == true, blurBg = input.bool("blur_background") == true), subs, input.str("language")?.trim().orEmpty())
     }
 }
+
+/** Создать видео нейросетью по ключу пользователя (сервис и модель выбраны на экране «Видео»). Стоит денег, поэтому всегда с подтверждением. */
+class VideoGenerateTool(private val gen: VideoGenerator) : Tool {
+    override val name = "video_generate"
+    override val description =
+        "Создать новое видео нейросетью по текстовому описанию через сервис, ключ которого пользователь ввёл на экране «Видео» (fal.ai, Replicate или Google Gemini). " +
+            "Это платная операция у сервиса, занимает 1–5 минут. Результат сохраняется в проект как video/gen_*.mp4, потом его можно монтировать другими инструментами. " +
+            "Описание лучше писать подробно: кто или что в кадре, действие, движение камеры, свет, стиль."
+    override val schema = objSchema(
+        Prop("prompt", "string", "Описание видео"),
+        Prop("aspect_ratio", "string", "Формат кадра: 16:9, 9:16 или 1:1 (если модель поддерживает; по умолчанию 16:9)", required = false),
+        Prop("duration", "integer", "Длина в секундах (подбирается ближайшая из поддерживаемых моделью; по умолчанию 5)", required = false),
+        Prop("resolution", "string", "Качество, например 720p (если модель поддерживает)", required = false),
+        Prop("audio", "boolean", "Со звуком (если модель умеет; по умолчанию true)", required = false),
+    )
+
+    override fun needsApproval(input: JsonObject) = true
+    override fun describe(input: JsonObject) = "создать видео: ${(input.str("prompt") ?: "").take(60)}"
+
+    override suspend fun run(input: JsonObject): String {
+        val req = GenRequest(
+            prompt = input.need("prompt"),
+            aspect = input.str("aspect_ratio")?.trim().orEmpty().ifEmpty { "16:9" },
+            duration = input.int("duration") ?: 5,
+            resolution = input.str("resolution")?.trim().orEmpty(),
+            audio = input.bool("audio") != false,
+        )
+        val rel = gen.generate(req)
+        return "Видео создано: $rel (${gen.preset.label}). Его можно открыть на экране «Видео» или смонтировать инструментами video_*."
+    }
+}
