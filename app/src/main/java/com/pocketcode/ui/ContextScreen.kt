@@ -16,7 +16,6 @@ import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Scaffold
 import com.pocketcode.ui.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -31,7 +30,7 @@ fun ContextScreen(vm: ChatController, onBack: () -> Unit) {
     val limit = vm.effectiveContext.coerceAtLeast(1)
     val heavy = rows.filter { it.canTrim }.sumOf { it.tokens }
     Scaffold(topBar = {
-        TopAppBar(title = { Text("Что в контексте") }, navigationIcon = { androidx.compose.material3.IconButton(onClick = onBack) { androidx.compose.material3.Icon(com.pocketcode.ui.AppIcons.Back, contentDescription = "Назад") } })
+        AppTopBar(title = { Text("Что в контексте") }, navigationIcon = { androidx.compose.material3.IconButton(onClick = onBack) { androidx.compose.material3.Icon(com.pocketcode.ui.backIcon(), contentDescription = "Назад") } })
     }) { pad ->
         Column(Modifier.padding(pad).fillMaxSize().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("История ≈ $total токенов, плюс системная часть и инструменты ≈ 3000. Предел: $limit.", style = MaterialTheme.typography.bodySmall)

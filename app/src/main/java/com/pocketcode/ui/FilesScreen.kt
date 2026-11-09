@@ -29,7 +29,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import com.pocketcode.ui.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -263,7 +262,7 @@ fun FilesScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
+            AppTopBar(
                 title = {
                     Text(
                         editing?.name ?: ("📁 $projectName/" + rel(dir).removePrefix(".")),
@@ -271,7 +270,7 @@ fun FilesScreen(
                         overflow = TextOverflow.Ellipsis,
                     )
                 },
-                navigationIcon = { androidx.compose.material3.IconButton(onClick = { goUp() }) { androidx.compose.material3.Icon(com.pocketcode.ui.AppIcons.Back, contentDescription = "Назад") } },
+                navigationIcon = { androidx.compose.material3.IconButton(onClick = { goUp() }) { androidx.compose.material3.Icon(com.pocketcode.ui.backIcon(), contentDescription = "Назад") } },
                 actions = {
                     if (editing != null) {
                         val ext = editing!!.extension.lowercase()

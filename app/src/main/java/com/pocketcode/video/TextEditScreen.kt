@@ -1,5 +1,7 @@
 package com.pocketcode.video
 
+import com.pocketcode.ui.backIcon
+import com.pocketcode.ui.AppTopBar
 import android.media.MediaPlayer
 import android.os.SystemClock
 import android.widget.VideoView
@@ -32,7 +34,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import com.pocketcode.ui.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -120,9 +121,9 @@ fun TextEditScreen(
     val left = (info.duration - removedSec).coerceAtLeast(0.0)
 
     Scaffold(topBar = {
-        TopAppBar(
+        AppTopBar(
             title = { Text("Монтаж по тексту", maxLines = 1) },
-            navigationIcon = { IconButton(onClick = onBack) { Icon(AppIcons.Back, contentDescription = "Назад") } },
+            navigationIcon = { IconButton(onClick = onBack) { Icon(backIcon(), contentDescription = "Назад") } },
         )
     }) { pad ->
         Column(Modifier.padding(pad).fillMaxSize()) {

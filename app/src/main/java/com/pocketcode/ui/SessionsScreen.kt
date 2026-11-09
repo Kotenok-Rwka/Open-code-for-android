@@ -17,7 +17,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import com.pocketcode.ui.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.runtime.LaunchedEffect
@@ -45,9 +44,9 @@ fun SessionsScreen(vm: ChatController, onBack: () -> Unit) {
     val visible = vm.sessionList.filter { hits == null || it.id in hits!! }
     Scaffold(
         topBar = {
-            TopAppBar(
+            AppTopBar(
                 title = { Text("История") },
-                navigationIcon = { androidx.compose.material3.IconButton(onClick = onBack) { androidx.compose.material3.Icon(com.pocketcode.ui.AppIcons.Back, contentDescription = "Назад") } },
+                navigationIcon = { androidx.compose.material3.IconButton(onClick = onBack) { androidx.compose.material3.Icon(com.pocketcode.ui.backIcon(), contentDescription = "Назад") } },
             )
         },
     ) { padding ->

@@ -213,7 +213,7 @@ class MainActivity : ComponentActivity() {
                 androidx.compose.material3.Scaffold(
                     containerColor = MaterialTheme.colorScheme.background,
                     bottomBar = {
-                        if (pv == null && !imeOn) androidx.compose.material3.NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainer) {
+                        if (pv == null && !imeOn) com.pocketcode.ui.AppNavigationBar {
                             listOf(
                                 Triple("Чат", com.pocketcode.ui.AppIcons.Chat, Screen.CHAT),
                                 Triple("Проект", com.pocketcode.ui.AppIcons.Folder, Screen.HUB_PROJECT),
@@ -227,6 +227,7 @@ class MainActivity : ComponentActivity() {
                                     icon = { androidx.compose.material3.Icon(icon, contentDescription = label) },
                                     label = { Text(label) },
                                     alwaysShowLabel = true,
+                                    colors = com.pocketcode.ui.navItemColors(),
                                 )
                             }
                         }
@@ -581,11 +582,15 @@ private fun AppTheme(content: @Composable () -> Unit) {
     }
     val ctl = (context.applicationContext as PocketCodeApp).controller
     val accent = com.pocketcode.ui.accentById(ctl.palette)
+    val style = com.pocketcode.ui.uiStyleById(ctl.uiStyle)
+    val ios = style == com.pocketcode.ui.UiStyle.IOS
     val scheme = when {
         accent == null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
             val dyn = if (dark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-            if (dark && ctl.amoled) com.pocketcode.ui.amoledize(dyn) else dyn
+            if (ios) com.pocketcode.ui.buildIosScheme(dark, dark && ctl.amoled, com.pocketcode.ui.Accent("system", "Из обоев", dyn.primary, dyn.primary))
+            else if (dark && ctl.amoled) com.pocketcode.ui.amoledize(dyn) else dyn
         }
+        ios -> com.pocketcode.ui.buildIosScheme(dark, dark && ctl.amoled, accent ?: com.pocketcode.ui.ACCENTS.first())
         else -> com.pocketcode.ui.buildScheme(dark, dark && ctl.amoled, accent ?: com.pocketcode.ui.ACCENTS.first())
     }
     val st = (context.applicationContext as PocketCodeApp).controller.settings
@@ -597,16 +602,12 @@ private fun AppTheme(content: @Composable () -> Unit) {
     androidx.compose.runtime.CompositionLocalProvider(
         androidx.compose.ui.platform.LocalDensity provides dens,
         androidx.compose.ui.platform.LocalLayoutDirection provides if (com.pocketcode.ui.I18n.isRtl) androidx.compose.ui.unit.LayoutDirection.Rtl else androidx.compose.ui.unit.LayoutDirection.Ltr,
+        com.pocketcode.ui.LocalUiStyle provides style,
     ) {
         MaterialTheme(
             colorScheme = scheme,
-            typography = com.pocketcode.ui.AppTypography,
-            shapes = androidx.compose.material3.Shapes(
-                extraSmall = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
-                small = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
-                medium = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
-                large = androidx.compose.foundation.shape.RoundedCornerShape(24.dp),
-            ),
+            typography = com.pocketcode.ui.appTypography(style),
+            shapes = com.pocketcode.ui.appShapes(style),
             content = content,
         )
     }

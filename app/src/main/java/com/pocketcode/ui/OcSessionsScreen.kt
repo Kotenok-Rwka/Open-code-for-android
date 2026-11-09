@@ -18,7 +18,6 @@ import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Scaffold
 import com.pocketcode.ui.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -56,9 +55,9 @@ fun OcSessionsScreen(vm: ChatController, onBack: () -> Unit, onOpened: () -> Uni
         androidx.activity.result.contract.ActivityResultContracts.CreateDocument("text/markdown"),
     ) { uri -> val s = exportFor; if (uri != null && s != null) vm.exportOcSessionTo(s, uri) }
     Scaffold(topBar = {
-        TopAppBar(
+        AppTopBar(
             title = { Text(if (settings) "Настройки OpenCode" else "Диалоги OpenCode") },
-            navigationIcon = { androidx.compose.material3.IconButton(onClick = onBack) { androidx.compose.material3.Icon(com.pocketcode.ui.AppIcons.Back, contentDescription = "Назад") } },
+            navigationIcon = { androidx.compose.material3.IconButton(onClick = onBack) { androidx.compose.material3.Icon(com.pocketcode.ui.backIcon(), contentDescription = "Назад") } },
             actions = { if (!settings) TextButton(onClick = { vm.refreshOcSessions() }, enabled = !vm.ocSessionsBusy) { Text("Обновить") } },
         )
     }) { pad ->
@@ -84,7 +83,7 @@ fun OcSessionsScreen(vm: ChatController, onBack: () -> Unit, onOpened: () -> Uni
                     )
                     Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                         Text("При лимите сам переключиться на другой аккаунт и повторить", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
-                        androidx.compose.material3.Switch(checked = vm.ocAutoSwitch, onCheckedChange = { vm.setOcAutoSwitchValue(it) })
+                        AppSwitch(checked = vm.ocAutoSwitch, onCheckedChange = { vm.setOcAutoSwitchValue(it) })
                     }
                     Text(if (vm.ocActiveAccount.isNotEmpty()) "Сейчас: ${vm.ocActiveAccount}" else "Сейчас: без сохранённого аккаунта", style = MaterialTheme.typography.labelMedium)
                     vm.ocAccounts.forEach { a ->
@@ -210,7 +209,7 @@ fun OcSessionsScreen(vm: ChatController, onBack: () -> Unit, onOpened: () -> Uni
                     )
                     Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                         Text("Каждый новый запрос начинает новую беседу (без длинной истории, меньше риск лимитов)", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
-                        androidx.compose.material3.Switch(checked = vm.ocFreshEach, onCheckedChange = { vm.setOcFreshEachValue(it) })
+                        AppSwitch(checked = vm.ocFreshEach, onCheckedChange = { vm.setOcFreshEachValue(it) })
                     }
                     Text("Автосжатие беседы при контексте больше:", style = MaterialTheme.typography.bodySmall)
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -255,7 +254,7 @@ fun OcSessionsScreen(vm: ChatController, onBack: () -> Unit, onOpened: () -> Uni
                             Text("Карточки действий (экспериментально)", style = MaterialTheme.typography.titleSmall)
                             Text("Правки и команды OpenCode показываются карточками, как у обычного агента. Формат его вывода в документации не описан, если что-то выглядит странно, выключи.", style = MaterialTheme.typography.bodySmall)
                         }
-                        androidx.compose.material3.Switch(checked = vm.ocCards, onCheckedChange = { vm.setOcCardsValue(it) })
+                        AppSwitch(checked = vm.ocCards, onCheckedChange = { vm.setOcCardsValue(it) })
                     }
                     Text("Статистика запросов", style = MaterialTheme.typography.titleSmall)
                     Text(vm.ocStatsText(), style = MaterialTheme.typography.bodySmall)

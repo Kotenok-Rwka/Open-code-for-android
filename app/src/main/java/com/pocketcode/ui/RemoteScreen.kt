@@ -19,7 +19,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import com.pocketcode.ui.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -40,9 +39,9 @@ fun RemoteScreen(vm: ChatController, onBack: () -> Unit) {
     val fmt = remember { java.text.SimpleDateFormat("dd.MM HH:mm", java.util.Locale.getDefault()) }
     LaunchedEffect(Unit) { vm.refreshRemote() }
     Scaffold(topBar = {
-        TopAppBar(
+        AppTopBar(
             title = { Text("Синхронизация и пульт") },
-            navigationIcon = { androidx.compose.material3.IconButton(onClick = onBack) { androidx.compose.material3.Icon(com.pocketcode.ui.AppIcons.Back, contentDescription = "Назад") } },
+            navigationIcon = { androidx.compose.material3.IconButton(onClick = onBack) { androidx.compose.material3.Icon(com.pocketcode.ui.backIcon(), contentDescription = "Назад") } },
             actions = { TextButton(onClick = { vm.refreshRemote() }, enabled = !vm.syncBusy) { Text("Обновить") } },
         )
     }) { pad ->
@@ -97,11 +96,11 @@ fun RemoteScreen(vm: ChatController, onBack: () -> Unit) {
                     Text("3. Этот телефон выполняет задачи (исполнитель)", style = MaterialTheme.typography.titleSmall)
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("Выполнять задачи, присланные с другого телефона", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
-                        Switch(checked = vm.syncHost, onCheckedChange = { vm.setSyncHostValue(it) })
+                        AppSwitch(checked = vm.syncHost, onCheckedChange = { vm.setSyncHostValue(it) })
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("Проверять чаще (раз в 2 минуты). Приложение будет висеть в фоне с уведомлением, батарея расходуется заметно.", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
-                        Switch(checked = vm.syncLive, onCheckedChange = { vm.setSyncLiveValue(it) }, enabled = vm.syncHost)
+                        AppSwitch(checked = vm.syncLive, onCheckedChange = { vm.setSyncLiveValue(it) }, enabled = vm.syncHost)
                     }
                     Text("Задачи идут без подтверждений: опасные действия агент не выполнит, а отклонит. Выполнение идёт в отдельном чате в нужном проекте. Если ты в это время пишешь агенту сам, проверка пропускается.", style = MaterialTheme.typography.labelSmall)
                 }

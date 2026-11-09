@@ -20,7 +20,6 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -52,7 +51,7 @@ private fun Toggle(title: String, about: String, checked: Boolean, enabled: Bool
             Text(title, style = MaterialTheme.typography.titleSmall)
             Text(about, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        Switch(checked = checked, onCheckedChange = onChange, enabled = enabled)
+        AppSwitch(checked = checked, onCheckedChange = onChange, enabled = enabled)
     }
 }
 
@@ -63,9 +62,9 @@ fun SmartScreen(vm: ChatController, onBack: () -> Unit, onOpenRoot: () -> Unit) 
     val sf = vm.smart
     Scaffold(
         topBar = {
-            TopAppBar(
+            AppTopBar(
                 title = { Text("Умные функции") },
-                navigationIcon = { IconButton(onClick = onBack) { androidx.compose.material3.Icon(AppIcons.Back, contentDescription = "Назад") } },
+                navigationIcon = { IconButton(onClick = onBack) { androidx.compose.material3.Icon(backIcon(), contentDescription = "Назад") } },
             )
         },
     ) { pad ->

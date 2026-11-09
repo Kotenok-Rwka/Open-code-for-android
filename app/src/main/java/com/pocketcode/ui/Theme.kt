@@ -80,6 +80,71 @@ fun buildScheme(dark: Boolean, amoled: Boolean, a: Accent): ColorScheme {
     }
 }
 
+/**
+ * Палитра в стиле iOS: светлая сгруппированная подложка и белые карточки, в тёмной теме почти чёрный фон
+ * и карточки цвета 1C1C1E. Синий акцент заменяется системным синим iOS, остальные акценты берутся как есть.
+ */
+fun buildIosScheme(dark: Boolean, amoled: Boolean, a: Accent): ColorScheme {
+    val white = Color.White
+    val black = Color.Black
+    return if (dark) {
+        val base = if (amoled) black else Color(0xFF0D0D0F)
+        val c = if (a.id == "blue") Color(0xFF0A84FF) else a.dark
+        val onC = if (a.id == "blue") white else Color(0xFF0B0F14)
+        darkColorScheme(
+            primary = c,
+            onPrimary = onC,
+            primaryContainer = lerp(base, c, 0.30f),
+            onPrimaryContainer = lerp(c, white, 0.6f),
+            secondary = c,
+            onSecondary = onC,
+            secondaryContainer = Color(0xFF2C2C2E),
+            onSecondaryContainer = Color(0xFFF2F2F7),
+            tertiary = c,
+            background = base,
+            onBackground = Color(0xFFF2F2F7),
+            surface = base,
+            onSurface = Color(0xFFF2F2F7),
+            surfaceVariant = Color(0xFF2C2C2E),
+            onSurfaceVariant = Color(0xFF98989F),
+            surfaceContainerLowest = black,
+            surfaceContainerLow = Color(0xFF161618),
+            surfaceContainer = Color(0xFF1C1C1E),
+            surfaceContainerHigh = Color(0xFF2C2C2E),
+            surfaceContainerHighest = Color(0xFF3A3A3C),
+            outline = Color(0xFF636366),
+            outlineVariant = Color(0xFF38383A),
+        )
+    } else {
+        val base = Color(0xFFF2F2F7)
+        val c = if (a.id == "blue") Color(0xFF007AFF) else a.light
+        lightColorScheme(
+            primary = c,
+            onPrimary = white,
+            primaryContainer = lerp(white, c, 0.14f),
+            onPrimaryContainer = lerp(c, black, 0.45f),
+            secondary = c,
+            onSecondary = white,
+            secondaryContainer = Color(0xFFE9E9EB),
+            onSecondaryContainer = Color(0xFF1C1C1E),
+            tertiary = c,
+            background = base,
+            onBackground = black,
+            surface = base,
+            onSurface = black,
+            surfaceVariant = Color(0xFFE9E9EB),
+            onSurfaceVariant = Color(0xFF6E6E73),
+            surfaceContainerLowest = white,
+            surfaceContainerLow = Color(0xFFF9F9F9),
+            surfaceContainer = white,
+            surfaceContainerHigh = white,
+            surfaceContainerHighest = Color(0xFFE9E9EB),
+            outline = Color(0xFFC6C6C8),
+            outlineVariant = Color(0xFFD1D1D6),
+        )
+    }
+}
+
 /** Динамические цвета из обоев, но с чёрным фоном для AMOLED. */
 fun amoledize(s: ColorScheme): ColorScheme = s.copy(
     background = Color.Black, surface = Color.Black,

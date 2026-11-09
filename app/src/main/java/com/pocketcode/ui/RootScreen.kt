@@ -23,7 +23,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import com.pocketcode.ui.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -82,9 +81,9 @@ fun RootScreen(vm: ChatController, onBack: () -> Unit, onToChat: () -> Unit) {
     var confirmRun by remember { mutableStateOf(false) }
     Scaffold(
         topBar = {
-            TopAppBar(
+            AppTopBar(
                 title = { Text("Root и Android") },
-                navigationIcon = { IconButton(onClick = onBack) { androidx.compose.material3.Icon(AppIcons.Back, contentDescription = "Назад") } },
+                navigationIcon = { IconButton(onClick = onBack) { androidx.compose.material3.Icon(backIcon(), contentDescription = "Назад") } },
             )
         },
     ) { pad ->
@@ -158,7 +157,7 @@ fun RootScreen(vm: ChatController, onBack: () -> Unit, onToChat: () -> Unit) {
                     Column(Modifier.weight(1f)) {
                         Text(if (vm.hostMode == "ask") "Включён: спрашивать каждый раз" else "Выключен")
                     }
-                    Switch(
+                    AppSwitch(
                         checked = vm.hostMode == "ask",
                         onCheckedChange = { if (it) confirmEnable = true else vm.setHostModeValue("off") },
                     )
@@ -172,7 +171,7 @@ fun RootScreen(vm: ChatController, onBack: () -> Unit, onToChat: () -> Unit) {
                     Column(Modifier.weight(1f)) {
                         Text(if (vm.rootAuto) "Включён (выключится сам через 2 часа)" else "Выключен")
                     }
-                    Switch(
+                    AppSwitch(
                         checked = vm.rootAuto,
                         onCheckedChange = { if (it) confirmAuto = true else vm.setRootAutoValue(false) },
                     )

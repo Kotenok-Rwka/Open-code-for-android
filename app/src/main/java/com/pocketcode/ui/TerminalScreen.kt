@@ -21,7 +21,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import com.pocketcode.ui.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -44,9 +43,9 @@ fun TerminalScreen(vm: ChatController, onBack: () -> Unit) {
     val list = rememberLazyListState()
     LaunchedEffect(vm.term.size, vm.term.lastOrNull()?.out) { if (vm.term.isNotEmpty()) list.scrollToItem(vm.term.lastIndex) }
     Scaffold(topBar = {
-        TopAppBar(
+        AppTopBar(
             title = { Text("Терминал", maxLines = 1) },
-            navigationIcon = { androidx.compose.material3.IconButton(onClick = onBack) { androidx.compose.material3.Icon(com.pocketcode.ui.AppIcons.Back, contentDescription = "Назад") } },
+            navigationIcon = { androidx.compose.material3.IconButton(onClick = onBack) { androidx.compose.material3.Icon(com.pocketcode.ui.backIcon(), contentDescription = "Назад") } },
             actions = { TextButton(onClick = { vm.term.clear() }) { Text("Очистить") } },
         )
     }) { pad ->

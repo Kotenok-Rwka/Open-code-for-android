@@ -48,7 +48,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import com.pocketcode.ui.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -153,7 +152,7 @@ fun ChatScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
+            AppTopBar(
                 title = {
                     TextButton(onClick = onOpenProjects, modifier = Modifier.tourAnchor("project")) {
                         Icon(AppIcons.Folder, contentDescription = null, modifier = Modifier.size(18.dp))

@@ -18,7 +18,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import com.pocketcode.ui.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -52,9 +51,9 @@ fun PluginsScreen(vm: ChatController, onBack: () -> Unit) {
 
     Scaffold(
         topBar = {
-            TopAppBar(
+            AppTopBar(
                 title = { Text("Навыки и плагины") },
-                navigationIcon = { androidx.compose.material3.IconButton(onClick = onBack) { androidx.compose.material3.Icon(com.pocketcode.ui.AppIcons.Back, contentDescription = "Назад") } },
+                navigationIcon = { androidx.compose.material3.IconButton(onClick = onBack) { androidx.compose.material3.Icon(com.pocketcode.ui.backIcon(), contentDescription = "Назад") } },
             )
         },
     ) { padding ->
@@ -94,7 +93,7 @@ fun PluginsScreen(vm: ChatController, onBack: () -> Unit) {
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Ставить для всех проектов", Modifier.weight(1f))
-                androidx.compose.material3.Switch(checked = global, onCheckedChange = { global = it })
+                AppSwitch(checked = global, onCheckedChange = { global = it })
             }
             val q = query.trim().lowercase()
             val items = com.pocketcode.SKILL_CATALOG.filter { (kind == 0 || (kind == 1) == it.isSkill) && (q.isEmpty() || (it.title + " " + it.about + " " + it.name).lowercase().contains(q)) }
@@ -123,7 +122,7 @@ fun PluginsScreen(vm: ChatController, onBack: () -> Unit) {
                                 Text(sk.name, style = MaterialTheme.typography.titleSmall)
                                 Text(sk.source, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                             }
-                            androidx.compose.material3.Switch(checked = on, onCheckedChange = { vm.toggleSkill(sk.name) })
+                            AppSwitch(checked = on, onCheckedChange = { vm.toggleSkill(sk.name) })
                         }
                         Text(sk.description, style = MaterialTheme.typography.bodySmall)
                         if (!on) Text("Выключен: агент его не видит.", style = MaterialTheme.typography.labelSmall)
@@ -153,7 +152,7 @@ fun PluginsScreen(vm: ChatController, onBack: () -> Unit) {
             )
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Для всех проектов", Modifier.weight(1f))
-                androidx.compose.material3.Switch(checked = global, onCheckedChange = { global = it })
+                AppSwitch(checked = global, onCheckedChange = { global = it })
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = { vm.createSample("skill", newName, global) }, enabled = newName.isNotBlank()) { Text("Навык") }

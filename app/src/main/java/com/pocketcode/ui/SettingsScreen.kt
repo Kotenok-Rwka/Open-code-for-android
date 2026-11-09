@@ -22,7 +22,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import com.pocketcode.ui.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInParent
@@ -141,9 +140,9 @@ fun SettingsScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
+            AppTopBar(
                 title = { Text((if (models) "Модель и ключи" else "Настройки") + (if (savedMark) " · сохранено" else "")) },
-                navigationIcon = { androidx.compose.material3.IconButton(onClick = onBack) { androidx.compose.material3.Icon(com.pocketcode.ui.AppIcons.Back, contentDescription = "Назад") } },
+                navigationIcon = { androidx.compose.material3.IconButton(onClick = onBack) { androidx.compose.material3.Icon(com.pocketcode.ui.backIcon(), contentDescription = "Назад") } },
                 actions = { if (onSearch != null) androidx.compose.material3.IconButton(onClick = onSearch) { androidx.compose.material3.Icon(androidx.compose.material.icons.Icons.Default.Search, contentDescription = "Поиск по настройкам") } },
             )
         },
@@ -402,7 +401,7 @@ fun SettingsScreen(
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
-                Switch(checked = ecoMode, onCheckedChange = { ecoMode = it })
+                AppSwitch(checked = ecoMode, onCheckedChange = { ecoMode = it })
             }
             Text("Частота запросов", style = MaterialTheme.typography.titleMedium, modifier = sec("rate").padding(top = 8.dp))
             Text(
@@ -475,7 +474,7 @@ fun SettingsScreen(
                     Text("Компактный вид")
                     Text("Весь интерфейс на 10% мельче: влезает больше текста.", style = MaterialTheme.typography.bodySmall)
                 }
-                Switch(checked = compactUi, onCheckedChange = { compactUi = it })
+                AppSwitch(checked = compactUi, onCheckedChange = { compactUi = it })
             }
 
             }
@@ -490,7 +489,7 @@ fun SettingsScreen(
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
-                Switch(checked = promptCaching, onCheckedChange = { promptCaching = it })
+                AppSwitch(checked = promptCaching, onCheckedChange = { promptCaching = it })
             }
             OutlinedTextField(
                 value = maxOutput,
@@ -582,7 +581,7 @@ fun SettingsScreen(
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
-                Switch(checked = autoContinue, onCheckedChange = { autoContinue = it })
+                AppSwitch(checked = autoContinue, onCheckedChange = { autoContinue = it })
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
@@ -592,7 +591,7 @@ fun SettingsScreen(
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
-                Switch(checked = freshOnStart, onCheckedChange = { freshOnStart = it })
+                AppSwitch(checked = freshOnStart, onCheckedChange = { freshOnStart = it })
             }
             Text(
                 "Каждый чат хранит свою историю и никак не связан с другими. Модель помнит только текущий чат.",
@@ -645,7 +644,7 @@ fun SettingsScreen(
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
-                Switch(checked = autoApprove, onCheckedChange = { autoApprove = it })
+                AppSwitch(checked = autoApprove, onCheckedChange = { autoApprove = it })
             }
 
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -656,7 +655,7 @@ fun SettingsScreen(
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
-                Switch(checked = smartApprove, onCheckedChange = { smartApprove = it })
+                AppSwitch(checked = smartApprove, onCheckedChange = { smartApprove = it })
             }
             OutlinedTextField(
                 value = allowRules,
@@ -676,8 +675,15 @@ fun SettingsScreen(
                     Text("Крупный ввод (удобнее одной рукой)")
                     Text("Поле ввода выше, шрифт в нём крупнее.", style = MaterialTheme.typography.bodySmall)
                 }
-                Switch(checked = vm.bigInput, onCheckedChange = { vm.setBigInputValue(it) })
+                AppSwitch(checked = vm.bigInput, onCheckedChange = { vm.setBigInputValue(it) })
             }
+            Text("Стиль интерфейса", style = MaterialTheme.typography.bodyMedium, modifier = sec("uistyle"))
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                UiStyle.values().forEach { st ->
+                    androidx.compose.material3.FilterChip(selected = vm.uiStyle == st.id, onClick = { vm.setUiStyleValue(st.id) }, label = { Text(st.title) })
+                }
+            }
+            Text(uiStyleById(vm.uiStyle).about, style = MaterialTheme.typography.bodySmall)
             Text("Тема", style = MaterialTheme.typography.bodyMedium, modifier = sec("theme"))
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 listOf("dark" to "Тёмная", "light" to "Светлая", "system" to "Как в системе").forEach { (v, l) ->
@@ -689,7 +695,7 @@ fun SettingsScreen(
                     Text("AMOLED: чисто чёрный фон")
                     Text("Экономит заряд на OLED-экранах. Действует в тёмной теме.", style = MaterialTheme.typography.bodySmall)
                 }
-                Switch(checked = vm.amoled, onCheckedChange = { vm.setAmoledValue(it) })
+                AppSwitch(checked = vm.amoled, onCheckedChange = { vm.setAmoledValue(it) })
             }
             Text("Цвет акцента", style = MaterialTheme.typography.bodyMedium, modifier = sec("accent"))
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -709,7 +715,7 @@ fun SettingsScreen(
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
-                Switch(checked = vm.appLock, onCheckedChange = { vm.setAppLockValue(it) })
+                AppSwitch(checked = vm.appLock, onCheckedChange = { vm.setAppLockValue(it) })
             }
 
             }

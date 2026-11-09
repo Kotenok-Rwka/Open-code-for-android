@@ -1,5 +1,7 @@
 package com.pocketcode.video
 
+import com.pocketcode.ui.backIcon
+import com.pocketcode.ui.AppTopBar
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -17,7 +19,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -36,9 +37,9 @@ fun VideoProjectsScreen(store: VideoStore, v: VideoPipeline, onBack: () -> Unit,
     BackHandler { onBack() }
     var list by remember { mutableStateOf(store.projects()) }
     Scaffold(topBar = {
-        TopAppBar(
+        AppTopBar(
             title = { Text("Мои проекты", maxLines = 1) },
-            navigationIcon = { IconButton(onClick = onBack) { Icon(AppIcons.Back, contentDescription = "Назад") } },
+            navigationIcon = { IconButton(onClick = onBack) { Icon(backIcon(), contentDescription = "Назад") } },
         )
     }) { pad ->
         Column(

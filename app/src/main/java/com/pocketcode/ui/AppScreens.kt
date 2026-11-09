@@ -20,7 +20,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import com.pocketcode.ui.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -33,9 +32,9 @@ private const val VPN_NOTE = "Скачивание может идти быст�
 private fun Page(title: String, onBack: () -> Unit, content: @Composable () -> Unit) {
     Scaffold(
         topBar = {
-            TopAppBar(
+            AppTopBar(
                 title = { Text(title) },
-                navigationIcon = { IconButton(onClick = onBack) { androidx.compose.material3.Icon(AppIcons.Back, contentDescription = "Назад") } },
+                navigationIcon = { IconButton(onClick = onBack) { androidx.compose.material3.Icon(backIcon(), contentDescription = "Назад") } },
             )
         },
     ) { pad ->
@@ -106,7 +105,7 @@ fun UpdateScreen(vm: ChatController, onBack: () -> Unit) = Page("Обновле�
             Text("Проверять при запуске")
             Text("Если есть новая сборка, приложение предложит обновиться.", style = MaterialTheme.typography.bodySmall)
         }
-        Switch(checked = vm.autoUpdate, onCheckedChange = { vm.setAutoUpdateValue(it) })
+        AppSwitch(checked = vm.autoUpdate, onCheckedChange = { vm.setAutoUpdateValue(it) })
     }
     OutlinedButton(onClick = { vm.checkUpdate() }, enabled = !vm.updateBusy, modifier = Modifier.fillMaxWidth()) {
         Text(if (vm.updateBusy) "Подожди…" else "Проверить обновления")

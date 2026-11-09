@@ -16,7 +16,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import com.pocketcode.ui.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -41,6 +40,7 @@ val SETTING_INDEX = listOf(
     SettingEntry("Размер шрифта и компактный вид", "Ещё → Настройки", "шрифт размер текста компактный вид мельче крупнее", "SETTINGS", "view"),
     SettingEntry("Git: автор коммитов и токен GitHub", "Ещё → Настройки", "git гитхаб github токен автор коммитов имя email почта", "SETTINGS", "git"),
     SettingEntry("Безопасность: подтверждение команд", "Ещё → Настройки", "безопасность подтверждение без подтверждения безопасные команды разрешённые команды правила запрет", "SETTINGS", "safe"),
+    SettingEntry("Стиль интерфейса: Material 3 или iOS", "Ещё → Настройки", "стиль интерфейса дизайн оформление внешний вид md3 material материал ios айфон iphone apple", "SETTINGS", "uistyle"),
     SettingEntry("Тема: тёмная, светлая, AMOLED", "Ещё → Настройки", "тема тёмная светлая темная amoled амолед чёрный фон", "SETTINGS", "theme"),
     SettingEntry("Цвет акцента и защита приложения", "Ещё → Настройки", "цвет акцент палитра обои защита приложения pin пароль отпечаток блокировка", "SETTINGS", "accent"),
     SettingEntry("Диалоги OpenCode", "Агент → Диалоги OpenCode", "opencode беседа сессия диалоги список открыть удалить переименовать", "OCSESSIONS"),
@@ -81,9 +81,9 @@ fun SettingsSearchScreen(onBack: () -> Unit, onOpen: (SettingEntry) -> Unit) {
     else SETTING_INDEX.filter { e -> val hay = (e.title + " " + e.words + " " + e.where).lowercase(); tokens.all { it in hay } }
     Scaffold(
         topBar = {
-            TopAppBar(
+            AppTopBar(
                 title = { Text("Поиск") },
-                navigationIcon = { IconButton(onClick = onBack) { androidx.compose.material3.Icon(AppIcons.Back, contentDescription = "Назад") } },
+                navigationIcon = { IconButton(onClick = onBack) { androidx.compose.material3.Icon(backIcon(), contentDescription = "Назад") } },
             )
         },
     ) { pad ->

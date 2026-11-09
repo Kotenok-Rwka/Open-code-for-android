@@ -2655,7 +2655,7 @@ class ChatController(
 
     private val backupPrefKeys = listOf(
         "syncRepo", "syncProjects", "syncInterval", "syncHost", "ocFallback", "ocAutoSwitch", "ocAutoCompact", "ocRateRetryMin",
-        "hostMode", "rootDelay", "rpmLimit", "ratePeriod", "learnDone", "savedModels", "fallbackChain", "profileRates", "sf_undo", "ocBudget", "ocListLim", "ocShowLim", "ocFresh", "ocExtMode", "ocModel", "ocCards", "themeMode", "palette", "amoled", "templates", "stars", "ocPins", "ocTitles", "bigInput",
+        "hostMode", "rootDelay", "rpmLimit", "ratePeriod", "learnDone", "savedModels", "fallbackChain", "profileRates", "sf_undo", "ocBudget", "ocListLim", "ocShowLim", "ocFresh", "ocExtMode", "ocModel", "ocCards", "themeMode", "palette", "amoled", "uiStyle", "templates", "stars", "ocPins", "ocTitles", "bigInput",
     )
 
     private fun cryptKey(password: String, salt: ByteArray): javax.crypto.spec.SecretKeySpec {
@@ -3776,6 +3776,10 @@ class ChatController(
     var amoled by mutableStateOf(settingsStore.rawGet("amoled") == "1")
         private set
     fun setAmoledValue(v: Boolean) { amoled = v; settingsStore.rawPut("amoled", if (v) "1" else "0") }
+    /** Стиль интерфейса: код из UiStyle (md3 или ios). */
+    var uiStyle by mutableStateOf(uiStyleById(settingsStore.rawGet("uiStyle")).id)
+        private set
+    fun setUiStyleValue(v: String) { uiStyle = uiStyleById(v).id; settingsStore.rawPut("uiStyle", uiStyle) }
 
     var ocFallbackModel by mutableStateOf(settingsStore.rawGet("ocFallback").orEmpty())
         private set
