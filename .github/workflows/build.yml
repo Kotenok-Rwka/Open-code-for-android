@@ -50,7 +50,16 @@ jobs:
             echo "Секретов нет: общий debug-ключ"
           fi
 
+      - name: ffmpeg для проверки команд видео
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg fonts-dejavu-core
+          ffmpeg -version | head -1
+
       - name: Unit-тесты
+        env:
+          # В CI тесты с настоящим ffmpeg обязаны запускаться, а не молча пропускаться
+          REQUIRE_FFMPEG: "1"
         run: |
           set -o pipefail
           gradle :app:testDebugUnitTest --no-daemon --stacktrace 2>&1 | tee test.log

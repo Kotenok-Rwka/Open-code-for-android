@@ -90,6 +90,59 @@ data class VideoSettings(
     }
 }
 
+/** Что сейчас включено в настройках, короткими метками (названия переводятся отдельно). */
+fun VideoSettings.summary(): List<String> = buildList {
+    VideoPresets.byId(presetId)?.let { add(it.label) }
+    if (doCut) add("Без пауз")
+    if (doSubs) add(subStyle.label)
+    if (doCut || doSubs) add(transition.label)
+    if (shorts) add("Shorts 9:16")
+    if (enhance) add("Чистый звук")
+    if (finTitle.isNotBlank()) add("Заголовок")
+    if (finBar) add("Полоска прогресса")
+    if (finSpeed > 1.001) add("Ускорение")
+}
+
+/**
+ * Очередь пакетной обработки: видео уже скопированы в проект, поэтому после закрытия приложения её можно продолжить.
+ * [done] и [failed] — элементы очереди, [outs] — готовые файлы.
+ */
+data class BatchState(
+    val items: List<String>,
+    val settings: VideoSettings,
+    val music: String = "",
+    val done: List<String> = emptyList(),
+    val failed: List<String> = emptyList(),
+    val outs: List<String> = emptyList(),
+) {
+    fun remaining(): List<String> = items.filter { it !in done && it !in failed }
+    fun withDone(item: String, out: String?): BatchState = copy(done = done + item, outs = if (out != null) outs + out else outs)
+    fun withFailed(item: String): BatchState = copy(failed = failed + item)
+    val finished: Boolean get() = remaining().isEmpty()
+
+    fun toJson(): JsonObject = buildJsonObject {
+        put("items", buildJsonArray { items.forEach { add(JsonPrimitive(it)) } })
+        put("settings", settings.toJson())
+        put("music", music)
+        put("done", buildJsonArray { done.forEach { add(JsonPrimitive(it)) } })
+        put("failed", buildJsonArray { failed.forEach { add(JsonPrimitive(it)) } })
+        put("outs", buildJsonArray { outs.forEach { add(JsonPrimitive(it)) } })
+    }
+
+    companion object {
+        fun parse(s: String?): BatchState? = runCatching {
+            val o = Json.parseToJsonElement(s ?: return null).jsonObject
+            fun list(k: String) = (o[k] as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.contentOrNull }.orEmpty()
+            val items = list("items")
+            if (items.isEmpty()) return null
+            BatchState(
+                items, VideoSettings.fromJson((o["settings"] as? JsonObject) ?: JsonObject(emptyMap())),
+                (o["music"] as? JsonPrimitive)?.contentOrNull.orEmpty(), list("done"), list("failed"), list("outs"),
+            )
+        }.getOrNull()
+    }
+}
+
 /** Свой стиль с названием. */
 data class UserPreset(val name: String, val settings: VideoSettings)
 
@@ -131,6 +184,20 @@ class VideoStore(private val kv: KeyValue) {
 
     fun projects(): List<String> =
         kv.get("projects")?.let { s -> runCatching { (json.parseToJsonElement(s) as JsonArray).mapNotNull { (it as? JsonPrimitive)?.contentOrNull } }.getOrNull() } ?: emptyList()
+
+    fun forgetProject(rel: String) {
+        kv.remove(projKey(rel))
+        kv.put("projects", buildJsonArray { projects().filter { it != rel }.forEach { add(JsonPrimitive(it)) } }.toString())
+    }
+
+    // незавершённая пакетная обработка
+    fun batch(): BatchState? = BatchState.parse(kv.get("batch"))
+    fun saveBatch(b: BatchState) = kv.put("batch", b.toJson().toString())
+    fun clearBatch() = kv.remove("batch")
+
+    // подсказка для первого запуска
+    fun hintSeen(): Boolean = kv.get("hint_seen") == "1"
+    fun markHintSeen() = kv.put("hint_seen", "1")
 
     // свои стили
     fun presets(): List<UserPreset> =

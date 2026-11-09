@@ -108,6 +108,9 @@ fun VideoScreen(v: VideoPipeline, onBack: () -> Unit, onOpenLinux: () -> Unit, o
     val musicPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri -> if (uri != null) v.pickMusic(uri) }
     var frame by remember { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
     var restoredFor by remember { mutableStateOf<String?>(null) }
+    var pending by remember { mutableStateOf(store.batch()) }
+    var hint by remember { mutableStateOf(!store.hintSeen()) }
+    var projectsOpen by rememberSaveable { mutableStateOf(false) }
 
     fun current() = VideoSettings(
         doCut, noise.toInt(), minSilence, doSubs, subStyle, SubTweak(subAccent, subScale, subPos), lang, transition, quality, small, shorts, blurBg, enhance,
@@ -160,7 +163,6 @@ fun VideoScreen(v: VideoPipeline, onBack: () -> Unit, onOpenLinux: () -> Unit, o
         v.produceUi(rel, cut, minSilence, noise.toInt(), opt, subs, lang)
     }
 
-    val finOpts = FinishOptions(finTitle, finSec, finBar, finSpeed, quality, v.musicRel.orEmpty(), finVol, finDuck)
     val batchPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
         if (uris.isNotEmpty()) {
             note = null
@@ -168,12 +170,17 @@ fun VideoScreen(v: VideoPipeline, onBack: () -> Unit, onOpenLinux: () -> Unit, o
             if (subs != null && !v.speechReady) {
                 sttOpen = true
                 note = "Для субтитров нужен ключ распознавания речи: введите его в блоке «Распознавание речи» ниже."
-            } else v.batchUi(uris, doCut, minSilence, noise.toInt(), opt, subs, lang, finOpts.takeIf { !it.isEmpty })
+            } else v.batchUi(uris, current(), v.musicRel.orEmpty()) { st -> pending = st; if (st == null || st.finished) store.clearBatch() else store.saveBatch(st) }
         }
     }
 
     if (genMode && gen != null) {
         VideoGenScreen(gen, v, onBack = { genMode = false }, onEdit = { rel -> genMode = false; note = null; v.select(rel) }, onAsk = onAsk)
+        return
+    }
+
+    if (projectsOpen) {
+        VideoProjectsScreen(store, v, onBack = { projectsOpen = false }, onOpen = { rel -> projectsOpen = false; note = null; restoredFor = null; v.select(rel) })
         return
     }
 
@@ -213,6 +220,42 @@ fun VideoScreen(v: VideoPipeline, onBack: () -> Unit, onOpenLinux: () -> Unit, o
                     )
                     Button(onClick = onOpenLinux) { Text("Открыть «Среда Linux»") }
                 }
+            }
+
+            if (hint) {
+                SoftCard {
+                    Text("Как начать", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "1. Выберите видео.\n2. Нажмите готовый стиль, например «Вирусные Shorts»: все настройки встанут сами.\n3. Нажмите «Смонтировать»: лишние паузы вырежутся, субтитры вошьются.\n4. В блоке «Финальная отделка» добавьте заголовок, музыку или ускорение.\n5. Смотрите результат, сохраняйте в галерею или отправляйте.",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    TextButton(onClick = { hint = false; store.markHintSeen() }) { Text("Понятно") }
+                }
+            }
+
+            val pend = pending
+            if (pend != null && !pend.finished && !v.busy) {
+                SoftCard {
+                    Text("Пакетная обработка не закончена", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "Готово ${pend.done.size + pend.failed.size} из ${pend.items.size}. Осталось ${pend.remaining().size}.",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = {
+                            note = null
+                            if (pend.settings.doSubs && !v.speechReady) {
+                                sttOpen = true
+                                note = "Для субтитров нужен ключ распознавания речи: введите его в блоке «Распознавание речи» ниже."
+                            } else v.resumeBatchUi(pend) { st -> pending = st; if (st == null || st.finished) store.clearBatch() else store.saveBatch(st) }
+                        }) { Text("Продолжить") }
+                        OutlinedButton(onClick = { store.clearBatch(); pending = null }) { Text("Сбросить") }
+                    }
+                }
+            }
+
+            if (store.projects().isNotEmpty()) {
+                OutlinedButton(onClick = { projectsOpen = true }) { Text("Мои проекты") }
             }
 
             if (gen != null) {

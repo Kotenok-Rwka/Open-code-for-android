@@ -1,5 +1,6 @@
 package com.pocketcode
 
+import com.pocketcode.video.BatchState
 import com.pocketcode.video.GenHistoryItem
 import com.pocketcode.video.MapKeyValue
 import com.pocketcode.video.SubPos
@@ -9,6 +10,7 @@ import com.pocketcode.video.Transition
 import com.pocketcode.video.VideoQuality
 import com.pocketcode.video.VideoSettings
 import com.pocketcode.video.VideoStore
+import com.pocketcode.video.summary
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -90,5 +92,51 @@ class VideoSettingsTest {
         for (i in 1..20) st.addHistory(item("p$i"))
         assertEquals(VideoStore.MAX_HISTORY, st.history().size)
         assertEquals("p20", st.history().first().prompt)
+    }
+
+    @Test
+    fun batchResumesWhereItStopped() {
+        val st = VideoStore(MapKeyValue())
+        assertNull(st.batch())
+        val b = BatchState(listOf("video/a.mp4", "video/b.mp4", "video/c.mp4"), sample, "video/music/m.mp3")
+        assertEquals(3, b.remaining().size)
+        val b2 = b.withDone("video/a.mp4", "video/a_cut.mp4").withFailed("video/b.mp4")
+        st.saveBatch(b2)
+        val back = st.batch()!!
+        assertEquals(b2, back)
+        assertEquals(listOf("video/c.mp4"), back.remaining())
+        assertEquals(listOf("video/a_cut.mp4"), back.outs)
+        assertTrue(!back.finished)
+        assertTrue(back.withDone("video/c.mp4", null).finished)
+        st.clearBatch()
+        assertNull(st.batch())
+    }
+
+    @Test
+    fun brokenBatchIsIgnored() {
+        assertNull(BatchState.parse("не json"))
+        assertNull(BatchState.parse("{\"items\":[]}"))
+        assertNull(BatchState.parse(null))
+    }
+
+    @Test
+    fun summaryListsEnabledSteps() {
+        assertEquals(listOf("Без пауз", Transition.ZOOM.label), VideoSettings().summary())
+        val s = sample.summary()
+        assertTrue(SubStyle.NEON.label in s && "Shorts 9:16" in s && "Заголовок" in s && "Полоска прогресса" in s && "Ускорение" in s)
+        assertTrue("Без пауз" !in s)
+    }
+
+    @Test
+    fun forgetProjectAndHint() {
+        val st = VideoStore(MapKeyValue())
+        st.saveProject("video/a.mp4", sample)
+        st.saveProject("video/b.mp4", sample)
+        st.forgetProject("video/a.mp4")
+        assertNull(st.project("video/a.mp4"))
+        assertEquals(listOf("video/b.mp4"), st.projects())
+        assertTrue(!st.hintSeen())
+        st.markHintSeen()
+        assertTrue(st.hintSeen())
     }
 }

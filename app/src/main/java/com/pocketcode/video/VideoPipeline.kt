@@ -924,37 +924,77 @@ class VideoPipeline(
         }
     }
 
-    /** Пакетный монтаж: несколько видео из галереи подряд с одними настройками (и отделкой, если задана). */
-    fun batchUi(uris: List<Uri>, cut: Boolean, minSilence: Double, noiseDb: Int, opt: VideoOptions, subs: SubStyle?, lang: String, fin: FinishOptions?) = launch {
-        val outs = ArrayList<String>()
-        val fails = ArrayList<String>()
+    private fun VideoSettings.options() = VideoOptions(quality, if (small) 720 else 0, transition, shorts, enhance, blurBg, subTweak)
+
+    /** Пакетный монтаж: видео из галереи копируются в проект, потом обрабатываются подряд с одними настройками. Очередь сохраняется через [onState]. */
+    fun batchUi(uris: List<Uri>, settings: VideoSettings, music: String, onState: (BatchState?) -> Unit) = launch {
+        val rels = ArrayList<String>()
         try {
             for ((i, u) in uris.withIndex()) {
-                batchText = "Ролик ${i + 1} из ${uris.size}"
+                batchText = "Копирую ролик ${i + 1} из ${uris.size}"
                 try {
-                    val rel = importUri(u).rel
-                    produce(rel, cut, minSilence, noiseDb, opt, subs, lang)
-                    var out = resultRel
-                    if (out != null && fin != null && !fin.isEmpty) {
-                        finish(out, fin)
-                        out = resultRel
-                    }
-                    if (out != null) outs += out
+                    rels += importUri(u).rel
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Throwable) {
-                    fails += "${i + 1}: " + (e.message ?: e.javaClass.simpleName).take(160)
+                    // не скопировался: остальные продолжают
                 }
             }
         } finally {
             batchText = ""
         }
-        resultRel = outs.lastOrNull()
-        resultNote = "Готово роликов: ${outs.size} из ${uris.size}. Файлы лежат в папке video/."
+        if (rels.isEmpty()) {
+            error = "Не удалось скопировать ни одного видео"
+            stage = VideoStage.ERROR
+            return@launch
+        }
+        val st = BatchState(rels, settings, music)
+        onState(st)
+        runBatch(st, onState)
+    }
+
+    /** Продолжает сохранённую очередь с того места, где остановились. */
+    fun resumeBatchUi(state: BatchState, onState: (BatchState?) -> Unit) = launch { runBatch(state, onState) }
+
+    private suspend fun runBatch(state: BatchState, onState: (BatchState?) -> Unit) {
+        var st = state
+        val total = st.items.size
+        val subs = if (st.settings.doSubs) st.settings.subStyle else null
+        val fin = FinishOptions(st.settings.finTitle, st.settings.finSec, st.settings.finBar, st.settings.finSpeed, st.settings.quality, st.music, st.settings.finVol, st.settings.finDuck)
+        val fails = ArrayList<String>()
+        try {
+            for (item in st.remaining()) {
+                batchText = "Ролик ${st.items.indexOf(item) + 1} из $total"
+                try {
+                    if (!File(root(), item).isFile) throw IllegalStateException("файл не найден")
+                    produce(item, st.settings.doCut, st.settings.minSilence, st.settings.noiseDb, st.settings.options(), subs, st.settings.lang)
+                    var out = resultRel
+                    if (out != null && !fin.isEmpty) {
+                        finish(out, fin)
+                        out = resultRel
+                    }
+                    st = st.withDone(item, out)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Throwable) {
+                    st = st.withFailed(item)
+                    fails += "${File(item).name}: " + (e.message ?: e.javaClass.simpleName).take(160)
+                }
+                onState(st)
+            }
+        } finally {
+            batchText = ""
+        }
+        onState(null)
+        resultRel = st.outs.lastOrNull()
+        resultNote = "Готово роликов: ${st.outs.size} из $total. Файлы лежат в папке video/."
         error = if (fails.isEmpty()) null else "Не получилось: " + fails.joinToString("; ")
-        stage = if (outs.isNotEmpty()) VideoStage.DONE else VideoStage.ERROR
+        stage = if (st.outs.isNotEmpty()) VideoStage.DONE else VideoStage.ERROR
         message = resultNote
     }
+
+    /** Файл проекта ещё лежит на месте. */
+    fun fileExists(rel: String): Boolean = File(root(), rel).isFile
 
     fun finishUi(rel: String, o: FinishOptions) = launch { finish(rel, o) }
 
