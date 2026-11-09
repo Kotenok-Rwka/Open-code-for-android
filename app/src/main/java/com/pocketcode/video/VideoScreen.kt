@@ -470,6 +470,7 @@ fun VideoScreen(v: VideoPipeline, onBack: () -> Unit, onOpenLinux: () -> Unit, o
                     }) { Text("Умный монтаж (ИИ в чате)") }
                     OutlinedButton(enabled = !v.busy, onClick = {
                         note = null
+                        val styleName = if (doSubs) subStyle.name.lowercase() else "pop"
                         onAsk(
                             "Нарежь длинное видео ${info.rel} на вирусные клипы: распознай речь (video_transcribe), выбери 3–5 самых сильных законченных моментов по 20–60 секунд " +
                                 "(мысль с началом и концом, цепляющее начало, без воды) и для каждого вызови video_clip с shorts=true, subtitles=true, style=$styleName" +
