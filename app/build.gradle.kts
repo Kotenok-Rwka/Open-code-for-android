@@ -46,6 +46,11 @@ android {
     }
 
     buildTypes {
+        // В релизы GitHub уходит именно debug-APK. С включённой отладкой Android запускает приложение
+        // в медленном режиме, и Compose теряет в разы кадров, поэтому отладку выключаем.
+        debug {
+            isDebuggable = false
+        }
         release {
             isMinifyEnabled = false
             signingConfig = signingConfigs.getByName("debug")

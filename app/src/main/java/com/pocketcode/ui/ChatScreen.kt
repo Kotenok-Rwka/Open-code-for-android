@@ -2,6 +2,7 @@ package com.pocketcode.ui
 
 import androidx.compose.foundation.gestures.scrollBy
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.collectLatest
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.height
@@ -110,6 +111,15 @@ fun ChatScreen(
         androidx.activity.result.contract.ActivityResultContracts.GetContent(),
     ) { uri -> if (uri != null) vm.attachImage(uri) }
     val listState = rememberLazyListState()
+    // Список сообщений меняется на каждый токен стрима. Читаем из него только нужные значения через derivedStateOf,
+    // иначе весь экран (панель, чипы, поле ввода) перерисовывался бы на каждый токен.
+    val hasItems by remember(vm) { androidx.compose.runtime.derivedStateOf { vm.items.isNotEmpty() } }
+    val lastItemIndex by remember(vm) { androidx.compose.runtime.derivedStateOf { vm.items.lastIndex } }
+    val askedQuestion by remember(vm) {
+        androidx.compose.runtime.derivedStateOf {
+            !vm.running && vm.items.lastOrNull().let { it is UiItem.Assistant && isQuestionReply(it.text) }
+        }
+    }
     val ctx = androidx.compose.ui.platform.LocalContext.current
     val clip = androidx.compose.ui.platform.LocalClipboardManager.current
     var adviceText by remember { mutableStateOf("") }
@@ -139,17 +149,23 @@ fun ChatScreen(
     // Очень длинный последний элемент выше одного прыжка: докручиваем кусками, пока низ не достигнут
     suspend fun toBottom() {
         if (vm.items.isEmpty()) return
-        listState.scrollToItem(vm.items.lastIndex)
+        val last = vm.items.lastIndex
+        // Если последний элемент уже на экране, к его началу прыгать не нужно: хватает прокрутки вниз (так дешевле на каждом токене)
+        if (shouldJumpToItem(listState.layoutInfo.visibleItemsInfo.map { it.index }, last)) listState.scrollToItem(last)
         var n = 0
         while (listState.canScrollForward && n < 200) {
             listState.scrollBy(20000f)
             n++
         }
     }
-    LaunchedEffect(vm.items.size, vm.items.lastOrNull()) {
-        if (vm.items.isNotEmpty() && stick) {
-            toBottom()
-        }
+    // Ключи раньше читались прямо в теле функции, и экран перерисовывался на каждый токен. В snapshotFlow чтение идёт вне композиции.
+    LaunchedEffect(listState, vm) {
+        androidx.compose.runtime.snapshotFlow { vm.items.size to vm.items.lastOrNull() }
+            .collectLatest {
+                if (vm.items.isNotEmpty() && stick) {
+                    toBottom()
+                }
+            }
     }
 
     Scaffold(
@@ -230,7 +246,7 @@ fun ChatScreen(
                 }
             }
             Box(Modifier.weight(1f).fillMaxWidth()) {
-                if (vm.items.isEmpty()) {
+                if (!hasItems) {
                     EmptyHint(vm.workspacePath, welcome = if (!vm.welcomeSeen || vm.needsFreeStart) ({ Column(verticalArrangement = Arrangement.spacedBy(12.dp)) { if (vm.needsFreeStart) FreeStartCard(vm, onOpenSettings); if (!vm.welcomeSeen) WelcomeCard(vm) { runCatching { ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://t.me/pocket_code_github")).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) } } } }) else null) { input = it }
                 } else {
                     LazyColumn(
@@ -239,10 +255,10 @@ fun ChatScreen(
                         contentPadding = PaddingValues(12.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        itemsIndexed(vm.items, key = { i, _ -> i }) { i, item ->
+                        itemsIndexed(vm.items, key = { i, _ -> i }, contentType = { _, item -> item::class }) { i, item ->
                             Column {
-                                ItemView(item, live = vm.running && i == vm.items.lastIndex)
-                                if (item is UiItem.Assistant && !item.text.startsWith("⏳") && !(vm.running && i == vm.items.lastIndex)) {
+                                ItemView(item, live = vm.running && i == lastItemIndex)
+                                if (item is UiItem.Assistant && !item.text.startsWith("⏳") && !(vm.running && i == lastItemIndex)) {
                                     Row {
                                         val star = vm.isStarred(item.text)
                                         TextButton(onClick = { vm.toggleStar(item.text) }, contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp)) { Text(if (star) "★" else "☆", style = MaterialTheme.typography.labelMedium) }
@@ -343,8 +359,7 @@ fun ChatScreen(
                     }
                 }
             }
-            val lastIt = vm.items.lastOrNull()
-            if (!vm.running && lastIt is UiItem.Assistant && !imeOpen && lastIt.text.trimEnd().endsWith("?") && !lastIt.text.startsWith("⏳")) {
+            if (askedQuestion && !imeOpen) {
                 Row(Modifier.padding(horizontal = 8.dp)) {
                     listOf("Да", "Нет", "Продолжай").forEach { a ->
                         androidx.compose.material3.AssistChip(border = null, colors = chipColors(), onClick = { vm.send(a) }, label = { Text(a) }, modifier = Modifier.padding(end = 6.dp))
@@ -1015,10 +1030,9 @@ private fun ItemView(item: UiItem, live: Boolean = false) {
                     )
                     .padding(horizontal = if (ios) 14.dp else 4.dp, vertical = if (ios) 10.dp else 4.dp),
             ) {
-                SelectionContainer {
-                    if (live && !LocalReduceMotion.current) SmoothMarkdown(item.text, modifier = Modifier.fillMaxWidth())
-                    else MarkdownText(item.text, modifier = Modifier.fillMaxWidth())
-                }
+                // Пока текст дописывается, выделение не включаем: оно пересчитывается на каждый кадр и заметно тормозит
+                if (live && !LocalReduceMotion.current) SmoothMarkdown(item.text, modifier = Modifier.fillMaxWidth())
+                else SelectionContainer { MarkdownText(item.text, modifier = Modifier.fillMaxWidth()) }
             }
         }
         is UiItem.Tool -> {
@@ -1127,6 +1141,12 @@ private fun chipColors() = androidx.compose.material3.AssistChipDefaults.assistC
     labelColor = MaterialTheme.colorScheme.onSurface,
     leadingIconContentColor = MaterialTheme.colorScheme.primary,
 )
+
+/** Ответ агента заканчивается вопросом: под ним показываем быстрые кнопки «Да», «Нет», «Продолжай». Заглушка «⏳…» не считается. */
+fun isQuestionReply(text: String): Boolean = text.trimEnd().endsWith("?") && !text.startsWith("⏳")
+
+/** Нужно ли прыгать к началу элемента списка: только если его ещё нет среди показанных на экране. */
+fun shouldJumpToItem(visibleIndices: List<Int>, target: Int): Boolean = target !in visibleIndices
 
 /** Предупреждение об опасной команде в окне подтверждения. */
 internal fun dangerNote(desc: String): String? {

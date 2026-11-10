@@ -34,6 +34,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.style.TextAlign
@@ -101,12 +102,13 @@ fun ThinkingDots(modifier: Modifier = Modifier) {
     val t = rememberInfiniteTransition(label = "dots")
     Row(modifier, horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
         for (i in 0 until 3) {
-            val a by t.animateFloat(
+            // Значение читается внутри graphicsLayer, то есть при отрисовке: кадры анимации не вызывают перекомпозицию
+            val a = t.animateFloat(
                 initialValue = 0.25f, targetValue = 1f,
                 animationSpec = infiniteRepeatable(tween(durationMillis = 600, delayMillis = i * 160, easing = LinearEasing), RepeatMode.Reverse),
                 label = "dot$i",
             )
-            Box(Modifier.size(7.dp).alpha(a).clip(CircleShape).background(MaterialTheme.colorScheme.primary))
+            Box(Modifier.size(7.dp).graphicsLayer { alpha = a.value }.clip(CircleShape).background(MaterialTheme.colorScheme.primary))
         }
     }
 }
@@ -148,20 +150,20 @@ fun TapRow(onClick: () -> Unit, modifier: Modifier = Modifier, content: @Composa
 @Composable
 fun SkeletonRows(count: Int = 6, modifier: Modifier = Modifier) {
     val t = rememberInfiniteTransition(label = "skeleton")
-    val pulse by t.animateFloat(
+    val pulse = t.animateFloat(
         initialValue = 0.35f, targetValue = 0.75f,
         animationSpec = infiniteRepeatable(tween(durationMillis = 900), RepeatMode.Reverse),
         label = "skeletonAlpha",
     )
-    val a = if (LocalReduceMotion.current) 0.5f else pulse
+    val still = LocalReduceMotion.current
     val c = MaterialTheme.colorScheme.surfaceContainerHighest
     Column(modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         for (i in 0 until count) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Box(Modifier.size(36.dp).alpha(a).clip(RoundedCornerShape(10.dp)).background(c))
+                Box(Modifier.size(36.dp).graphicsLayer { alpha = if (still) 0.5f else pulse.value }.clip(RoundedCornerShape(10.dp)).background(c))
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Box(Modifier.fillMaxWidth(skeletonWidth(i)).height(12.dp).alpha(a).clip(RoundedCornerShape(6.dp)).background(c))
-                    Box(Modifier.fillMaxWidth(skeletonWidth(i) * 0.55f).height(10.dp).alpha(a).clip(RoundedCornerShape(5.dp)).background(c))
+                    Box(Modifier.fillMaxWidth(skeletonWidth(i)).height(12.dp).graphicsLayer { alpha = if (still) 0.5f else pulse.value }.clip(RoundedCornerShape(6.dp)).background(c))
+                    Box(Modifier.fillMaxWidth(skeletonWidth(i) * 0.55f).height(10.dp).graphicsLayer { alpha = if (still) 0.5f else pulse.value }.clip(RoundedCornerShape(5.dp)).background(c))
                 }
             }
         }
@@ -177,6 +179,9 @@ fun revealStep(shown: Int, total: Int): Int {
     return minOf(total, shown + maxOf(1, (total - shown) / 8))
 }
 
+/** Шаг плавного текста за один тик в 32 мс: ровно два шага revealStep, как раньше за два кадра по 16 мс, но разбор разметки идёт вдвое реже. */
+fun smoothStep(shown: Int, total: Int): Int = revealStep(revealStep(shown, total), total)
+
 /** Обрезка текста по числу знаков без разрыва суррогатной пары (эмодзи). */
 fun cutText(text: String, n: Int): String {
     if (n >= text.length) return text
@@ -191,8 +196,8 @@ fun SmoothMarkdown(text: String, modifier: Modifier = Modifier) {
     LaunchedEffect(text) {
         if (shown > text.length) shown = text.length
         while (shown < text.length) {
-            kotlinx.coroutines.delay(16)
-            shown = revealStep(shown, text.length)
+            kotlinx.coroutines.delay(32)
+            shown = smoothStep(shown, text.length)
         }
     }
     MarkdownText(cutText(text, shown), modifier = modifier)

@@ -207,7 +207,12 @@ class MainActivity : ComponentActivity() {
                 val noMotion = com.pocketcode.ui.LocalReduceMotion.current
                 val imeDensity = androidx.compose.ui.platform.LocalDensity.current
                 // Клавиатура считается открытой только если она действительно высокая (плавающие панели ввода давали ложное срабатывание)
-                val imeOn = androidx.compose.foundation.layout.WindowInsets.ime.getBottom(imeDensity) > with(imeDensity) { 160.dp.roundToPx() }
+                // Читаем высоту клавиатуры через derivedStateOf: иначе весь экран перерисовывался бы на каждом кадре её анимации
+                val imeInsets = androidx.compose.foundation.layout.WindowInsets.ime
+                val imeMinPx = with(imeDensity) { 160.dp.roundToPx() }
+                val imeOn by remember(imeInsets, imeDensity, imeMinPx) {
+                    androidx.compose.runtime.derivedStateOf { imeInsets.getBottom(imeDensity) > imeMinPx }
+                }
                 val section = when (screen) {
                     Screen.CHAT -> 0
                     Screen.HUB_PROJECT, Screen.PROJECTS, Screen.FILES, Screen.SEARCH, Screen.DIFF, Screen.GIT, Screen.TERMINAL, Screen.VIDEO -> 1
