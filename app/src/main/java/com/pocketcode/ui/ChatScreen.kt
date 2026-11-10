@@ -339,7 +339,7 @@ fun ChatScreen(
                 val sugg = mentionFiles.filter { it.contains(q, ignoreCase = true) }.take(10)
                 if (sugg.isNotEmpty()) Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     sugg.forEach { f ->
-                        androidx.compose.material3.AssistChip(onClick = { input = input.removeSuffix("@$q") + "@$f " }, label = { Text(f.takeLast(34)) })
+                        androidx.compose.material3.AssistChip(border = null, colors = chipColors(), onClick = { input = input.removeSuffix("@$q") + "@$f " }, label = { Text(f.takeLast(34)) })
                     }
                 }
             }
@@ -347,7 +347,7 @@ fun ChatScreen(
             if (!vm.running && lastIt is UiItem.Assistant && !imeOpen && lastIt.text.trimEnd().endsWith("?") && !lastIt.text.startsWith("⏳")) {
                 Row(Modifier.padding(horizontal = 8.dp)) {
                     listOf("Да", "Нет", "Продолжай").forEach { a ->
-                        androidx.compose.material3.AssistChip(onClick = { vm.send(a) }, label = { Text(a) }, modifier = Modifier.padding(end = 6.dp))
+                        androidx.compose.material3.AssistChip(border = null, colors = chipColors(), onClick = { vm.send(a) }, label = { Text(a) }, modifier = Modifier.padding(end = 6.dp))
                     }
                 }
             }
@@ -416,9 +416,9 @@ fun ChatScreen(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                if (vm.running) androidx.compose.material3.AssistChip(onClick = { vm.stop() }, label = { Text("Остановить") })
+                if (vm.running) androidx.compose.material3.AssistChip(border = null, colors = chipColors(), onClick = { vm.stop() }, label = { Text("Остановить") })
                 Box {
-                    androidx.compose.material3.AssistChip(
+                    androidx.compose.material3.AssistChip(border = null, colors = chipColors(), 
                         onClick = { modeMenu = true },
                         label = { Text((if (vm.openCodeMode) "OpenCode" else if (vm.planMode) "План" else "Обычный") + " ▾") },
                     )
@@ -429,16 +429,17 @@ fun ChatScreen(
                     }
                 }
                 if (vm.openCodeMode) {
-                    androidx.compose.material3.AssistChip(onClick = { modelDraft = vm.ocModel; vm.loadOcModels(); dlg = "ocmodel" }, label = { Text("🧠 " + vm.ocModel.ifBlank { "по умолчанию" }.take(22), maxLines = 1) })
-                    androidx.compose.material3.AssistChip(onClick = onOpenOcSessions, label = { Text("📂 " + (if (vm.ocSessionId != null) vm.ocSessionTitle.take(16) else "Диалоги"), maxLines = 1) })
-                    if (vm.ocCtxTokens > 60_000 && !vm.running) androidx.compose.material3.AssistChip(onClick = { vm.compactOcSession() }, label = { Text("Сжать ≈${vm.ocCtxTokens / 1000}к") })
+                    androidx.compose.material3.AssistChip(border = null, colors = chipColors(), onClick = { modelDraft = vm.ocModel; vm.loadOcModels(); dlg = "ocmodel" }, label = { Text(vm.ocModel.ifBlank { "по умолчанию" }.take(22), maxLines = 1) }, leadingIcon = { Icon(AppIcons.Cpu, null, Modifier.size(16.dp)) })
+                    androidx.compose.material3.AssistChip(border = null, colors = chipColors(), onClick = onOpenOcSessions, label = { Text(if (vm.ocSessionId != null) vm.ocSessionTitle.take(16) else "Диалоги", maxLines = 1) }, leadingIcon = { Icon(AppIcons.History, null, Modifier.size(16.dp)) })
+                    if (vm.ocCtxTokens > 60_000 && !vm.running) androidx.compose.material3.AssistChip(border = null, colors = chipColors(), onClick = { vm.compactOcSession() }, label = { Text("Сжать ≈${vm.ocCtxTokens / 1000}к") })
                 } else {
                     val active = vm.profiles.firstOrNull { it.id == vm.activeProfileId }
                     Box {
-                        androidx.compose.material3.AssistChip(
+                        androidx.compose.material3.AssistChip(border = null, colors = chipColors(), 
                             onClick = { if (vm.profiles.size > 1) profileMenu = true else { modelDraft = vm.settings.model; dlg = "model" } },
                             enabled = !vm.running,
-                            label = { Text("🔑 ${active?.label ?: "?"} · ${active?.model.orEmpty().take(18)}", maxLines = 1) },
+                            label = { Text("${active?.label ?: "?"} · ${active?.model.orEmpty().take(18)}", maxLines = 1) },
+                            leadingIcon = { Icon(AppIcons.Key, null, Modifier.size(16.dp)) },
                         )
                         DropdownMenu(expanded = profileMenu, onDismissRequest = { profileMenu = false }) {
                             vm.profiles.forEach { p ->
@@ -447,27 +448,26 @@ fun ChatScreen(
                         }
                     }
                 }
-                if (!vm.openCodeMode) androidx.compose.material3.AssistChip(onClick = onOpenSessions, label = { Text("🕘 История") })
-                androidx.compose.material3.AssistChip(onClick = onOpenFiles, label = { Text("Файлы") }, leadingIcon = { Icon(AppIcons.Folder, null, Modifier.size(16.dp)) })
-                androidx.compose.material3.AssistChip(onClick = onOpenTerminal, label = { Text("Терминал") })
-                if (vm.changes.isNotEmpty()) androidx.compose.material3.AssistChip(onClick = onOpenDiff, label = { Text("Правки (${vm.changes.size})") })
+                if (!vm.openCodeMode) androidx.compose.material3.AssistChip(border = null, colors = chipColors(), onClick = onOpenSessions, label = { Text("История") }, leadingIcon = { Icon(AppIcons.History, null, Modifier.size(16.dp)) })
+                androidx.compose.material3.AssistChip(border = null, colors = chipColors(), onClick = onOpenFiles, label = { Text("Файлы") }, leadingIcon = { Icon(AppIcons.Folder, null, Modifier.size(16.dp)) })
+                androidx.compose.material3.AssistChip(border = null, colors = chipColors(), onClick = onOpenTerminal, label = { Text("Терминал") }, leadingIcon = { Icon(AppIcons.Terminal, null, Modifier.size(16.dp)) })
+                if (vm.changes.isNotEmpty()) androidx.compose.material3.AssistChip(border = null, colors = chipColors(), onClick = onOpenDiff, label = { Text("Правки (${vm.changes.size})") })
                 if (vm.todos.isNotEmpty()) {
                     val done = vm.todos.count { it.startsWith("[x]", true) }
-                    androidx.compose.material3.AssistChip(onClick = { showTodos = !showTodos }, label = { Text("Задачи $done/${vm.todos.size}") })
+                    androidx.compose.material3.AssistChip(border = null, colors = chipColors(), onClick = { showTodos = !showTodos }, label = { Text("Задачи $done/${vm.todos.size}") })
                 }
-                vm.lastPreview?.let { pv -> androidx.compose.material3.AssistChip(onClick = { vm.previewUrl = pv }, label = { Text("Превью") }) }
-                androidx.compose.material3.AssistChip(onClick = { showNewChat = true }, label = { Text("Новый чат") }, leadingIcon = { Icon(Icons.Filled.Add, null, Modifier.size(16.dp)) })
+                vm.lastPreview?.let { pv -> androidx.compose.material3.AssistChip(border = null, colors = chipColors(), onClick = { vm.previewUrl = pv }, label = { Text("Превью") }) }
+                androidx.compose.material3.AssistChip(border = null, colors = chipColors(), onClick = { showNewChat = true }, label = { Text("Новый чат") }, leadingIcon = { Icon(AppIcons.Plus, null, Modifier.size(16.dp)) })
             }
             androidx.compose.material3.Surface(
                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                border = hairline(),
                 shape = RoundedCornerShape(28.dp),
-                shadowElevation = if (LocalUiStyle.current == UiStyle.IOS) 0.dp else 2.dp,
+                shadowElevation = 0.dp,
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp).tourAnchor("input"),
             ) {
                 Row(Modifier.padding(start = 4.dp, end = 4.dp, top = 2.dp, bottom = 2.dp), verticalAlignment = Alignment.Bottom) {
                     Column {
-                        IconButton(onClick = { pickImage.launch("image/*") }, enabled = !vm.running) { Text("🖼") }
+                        IconButton(onClick = { pickImage.launch("image/*") }, enabled = !vm.running) { Icon(AppIcons.Image, contentDescription = "Прикрепить картинку", tint = MaterialTheme.colorScheme.onSurfaceVariant) }
                     }
                     androidx.compose.material3.TextField(
                         value = input,
@@ -496,7 +496,7 @@ fun ChatScreen(
                             try { voice.launch(i) } catch (e: Exception) {
                                 android.widget.Toast.makeText(ctx, "На телефоне нет сервиса распознавания речи", android.widget.Toast.LENGTH_LONG).show()
                             }
-                        }) { Text("🎤") }
+                        }) { Icon(AppIcons.Mic, contentDescription = "Голосовой ввод", tint = MaterialTheme.colorScheme.onSurfaceVariant) }
                     } else {
                         androidx.compose.material3.FilledIconButton(
                             onClick = {
@@ -506,7 +506,7 @@ fun ChatScreen(
                             },
                             enabled = input.isNotBlank() || (!vm.running && vm.pendingImages.isNotEmpty()),
                         ) {
-                            Icon(Icons.AutoMirrored.Filled.Send, contentDescription = if (vm.running) "В очередь" else "Отправить")
+                            Icon(AppIcons.ArrowUp, contentDescription = if (vm.running) "В очередь" else "Отправить")
                         }
                     }
                 }
@@ -926,30 +926,51 @@ private fun EmptyHint(workspacePath: String, welcome: (@Composable () -> Unit)?,
         verticalArrangement = Arrangement.Center,
     ) {
         if (welcome != null) { welcome(); Spacer(Modifier.height(20.dp)) }
-        Text("Что будем делать?", style = MaterialTheme.typography.headlineSmall)
+        val cs = MaterialTheme.colorScheme
+        Text(
+            "Что будем делать?",
+            style = MaterialTheme.typography.headlineMedium.copy(
+                brush = androidx.compose.ui.graphics.Brush.linearGradient(listOf(cs.primary, androidx.compose.ui.graphics.lerp(cs.primary, cs.onSurface, 0.35f))),
+            ),
+        )
         Text(
             "Агент читает и правит файлы, запускает команды и работает с git прямо на телефоне.",
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(top = 8.dp, bottom = 16.dp),
+            color = cs.onSurfaceVariant,
+            modifier = Modifier.padding(top = 8.dp, bottom = 18.dp),
         )
-        androidx.compose.foundation.layout.FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             listOf(
-                "🔍 Разберись в проекте" to "Изучи проект и коротко опиши его структуру и как его запускать.",
-                "🐞 Найди ошибки" to "Проверь проект на ошибки и исправь найденное. Перед правками перечисли, что собираешься менять.",
-                "🧪 Напиши тесты" to "Напиши тесты для основных функций проекта и запусти их.",
-                "🤖 Telegram-бот" to "Создай простого Telegram-бота на aiogram 3 с командами /start и /help. Токен читай из переменной окружения BOT_TOKEN.",
-                "🌐 Сайт" to "Сделай простую адаптивную страницу index.html и открой превью.",
-                "📝 README" to "Напиши README.md для этого проекта.",
-                "🔧 Почини сборку" to "Запусти сборку или проверку проекта, найди причину ошибки и исправь её. Покажи, что именно было не так.",
-                "📖 Объясни код" to "Объясни простыми словами, как устроен главный файл этого проекта и что в нём важно.",
-                "♻️ Упрости код" to "Найди самое запутанное место в проекте и предложи, как его упростить. Сначала покажи план, ничего не меняй без моего согласия.",
-                "📦 Зависимости" to "Проверь зависимости проекта: что устарело или не используется. Покажи список, ничего не обновляй без моего согласия.",
-            ).forEach { (title, text) ->
-                androidx.compose.material3.SuggestionChip(onClick = { onPick(text) }, label = { Text(title) })
+                Triple(AppIcons.Search, "Разберись в проекте", "Изучи проект и коротко опиши его структуру и как его запускать."),
+                Triple(AppIcons.Bug, "Найди ошибки", "Проверь проект на ошибки и исправь найденное. Перед правками перечисли, что собираешься менять."),
+                Triple(AppIcons.Flask, "Напиши тесты", "Напиши тесты для основных функций проекта и запусти их."),
+                Triple(AppIcons.Bot, "Telegram-бот", "Создай простого Telegram-бота на aiogram 3 с командами /start и /help. Токен читай из переменной окружения BOT_TOKEN."),
+                Triple(AppIcons.Globe, "Сайт", "Сделай простую адаптивную страницу index.html и открой превью."),
+                Triple(AppIcons.File, "README", "Напиши README.md для этого проекта."),
+                Triple(AppIcons.Wrench, "Почини сборку", "Запусти сборку или проверку проекта, найди причину ошибки и исправь её. Покажи, что именно было не так."),
+                Triple(AppIcons.Book, "Объясни код", "Объясни простыми словами, как устроен главный файл этого проекта и что в нём важно."),
+                Triple(AppIcons.Layers, "Упрости код", "Найди самое запутанное место в проекте и предложи, как его упростить. Сначала покажи план, ничего не меняй без моего согласия."),
+                Triple(AppIcons.Package, "Зависимости", "Проверь зависимости проекта: что устарело или не используется. Покажи список, ничего не обновляй без моего согласия."),
+            ).chunked(2).forEach { pair ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    pair.forEach { (icon, title, text) ->
+                        Column(
+                            Modifier.weight(1f)
+                                .clip(RoundedCornerShape(20.dp))
+                                .background(cs.surfaceContainer)
+                                .clickable { onPick(text) }
+                                .padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            Box(
+                                Modifier.size(34.dp).clip(RoundedCornerShape(11.dp)).background(cs.primary.copy(alpha = 0.14f)),
+                                contentAlignment = Alignment.Center,
+                            ) { Icon(icon, contentDescription = null, tint = cs.primary, modifier = Modifier.size(19.dp)) }
+                            Text(title, style = MaterialTheme.typography.titleSmall, maxLines = 2)
+                        }
+                    }
+                    if (pair.size == 1) Spacer(Modifier.weight(1f))
+                }
             }
         }
         Text(
@@ -1008,14 +1029,13 @@ private fun ItemView(item: UiItem, live: Boolean = false) {
                 Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(14.dp))
-                    .background(if (item.isError) cs.errorContainer else cs.surfaceContainer)
-                    .border(hairline(), RoundedCornerShape(14.dp))
+                    .background(if (item.isError) cs.error.copy(alpha = 0.10f) else cs.surfaceContainer)
                     .then(if (LocalReduceMotion.current) Modifier else Modifier.animateContentSize())
                     .clickable { expanded = !expanded }
                     .padding(horizontal = 12.dp, vertical = 8.dp),
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(toolIcon(item.name), fontSize = 14.sp)
+                    Icon(toolIcon(item.name), contentDescription = null, tint = if (item.isError) cs.error else cs.primary, modifier = Modifier.size(16.dp))
                     Text(item.name, style = MaterialTheme.typography.labelLarge)
                     Text(
                         toolTitle(item.description),
@@ -1088,20 +1108,25 @@ private fun ItemView(item: UiItem, live: Boolean = false) {
     }
 }
 
-private fun toolIcon(name: String): String = when (name) {
-    "read_file", "list_dir" -> "📄"
-    "write_file", "edit_file" -> "✏️"
-    "bash", "bg" -> "⌨️"
-    "python" -> "🐍"
-    "git", "github" -> "🌿"
-    "grep", "code_search" -> "🔍"
-    "web_search", "web_fetch" -> "🌐"
-    "run_tests" -> "🧪"
-    "task", "spawn", "worker_result" -> "🧩"
-    "todo", "present_plan" -> "📋"
-    else -> "🔧"
+private fun toolIcon(name: String): androidx.compose.ui.graphics.vector.ImageVector = when (name) {
+    "read_file", "list_dir" -> AppIcons.File
+    "write_file", "edit_file" -> AppIcons.Pencil
+    "bash", "bg", "python" -> AppIcons.Terminal
+    "git", "github" -> AppIcons.Branch
+    "grep", "code_search" -> AppIcons.Search
+    "web_search", "web_fetch" -> AppIcons.Globe
+    "run_tests" -> AppIcons.Flask
+    "task", "spawn", "worker_result" -> AppIcons.Layers
+    "todo", "present_plan" -> AppIcons.Check
+    else -> AppIcons.Wrench
 }
 
+@Composable
+private fun chipColors() = androidx.compose.material3.AssistChipDefaults.assistChipColors(
+    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+    labelColor = MaterialTheme.colorScheme.onSurface,
+    leadingIconContentColor = MaterialTheme.colorScheme.primary,
+)
 
 /** Предупреждение об опасной команде в окне подтверждения. */
 internal fun dangerNote(desc: String): String? {

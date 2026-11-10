@@ -37,4 +37,20 @@ class I18nFilesTest {
             for (k in required) assertTrue("Нет перевода «$k» в $l", !m[k].isNullOrBlank())
         }
     }
+
+    @Test
+    fun startScreenSuggestionsAreTranslatedEverywhere() {
+        val titles = listOf(
+            "Разберись в проекте", "Найди ошибки", "Напиши тесты", "Telegram-бот", "Сайт",
+            "Почини сборку", "Объясни код", "Упрости код", "Зависимости",
+        )
+        for (l in langs) {
+            val m = load(l)
+            for (k in titles) {
+                val v = m[k]
+                assertTrue("Нет перевода «$k» в $l", !v.isNullOrBlank())
+                assertTrue("В переводе «$k» ($l) остался эмодзи в начале", v!!.first().isLetterOrDigit())
+            }
+        }
+    }
 }

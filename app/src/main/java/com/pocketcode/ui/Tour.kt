@@ -167,16 +167,20 @@ fun BackgroundBanner(vm: ChatController) {
         else -> null
     }
     if (text == null) return
-    Surface(color = MaterialTheme.colorScheme.secondaryContainer, modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(horizontal = 14.dp, vertical = 8.dp)) {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        shape = RoundedCornerShape(18.dp),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+    ) {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(text, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f), maxLines = 2)
                 if (!busy && vm.updateReady != null) TextButton(onClick = { vm.applyUpdate() }) { Text("Установить") }
                 else if (!busy && vm.doneNote != null) TextButton(onClick = { vm.clearDoneNote() }) { Text("Ок") }
             }
             if (busy) {
-                LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 4.dp))
-                Text("Можно пользоваться приложением. С VPN обычно быстрее.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f))
+                LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 6.dp).clip(RoundedCornerShape(2.dp)))
+                Text("Можно пользоваться приложением. С VPN обычно быстрее.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }

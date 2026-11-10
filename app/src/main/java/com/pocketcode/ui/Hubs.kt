@@ -1,6 +1,5 @@
 package com.pocketcode.ui
 
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -26,6 +25,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -49,21 +51,16 @@ private fun Md3Hub(title: String, subtitle: String, items: List<HubItem>, onSear
     LazyColumn(
         Modifier.fillMaxSize(),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         item {
-            Box(
-                Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 8.dp)
-                    .clip(RoundedCornerShape(m.heroRadius.dp))
-                    .background(MaterialTheme.colorScheme.primaryContainer)
-                    .padding(horizontal = 24.dp, vertical = 28.dp),
-            ) {
-                if (onSearch != null) androidx.compose.material3.IconButton(onClick = onSearch, modifier = Modifier.align(Alignment.TopEnd)) {
-                    Icon(androidx.compose.material.icons.Icons.Default.Search, contentDescription = "Поиск по настройкам", tint = MaterialTheme.colorScheme.onPrimaryContainer)
+            Row(Modifier.fillMaxWidth().padding(start = 8.dp, top = 12.dp, bottom = 8.dp), verticalAlignment = Alignment.Top) {
+                Column(Modifier.weight(1f)) {
+                    Text(title, style = MaterialTheme.typography.headlineMedium)
+                    if (subtitle.isNotBlank()) Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                Column {
-                    Text(title, style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
-                    if (subtitle.isNotBlank()) Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f))
+                if (onSearch != null) androidx.compose.material3.IconButton(onClick = onSearch) {
+                    Icon(AppIcons.Search, contentDescription = "Поиск по настройкам", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
@@ -77,15 +74,15 @@ private fun Md3Hub(title: String, subtitle: String, items: List<HubItem>, onSear
             }
             Card(
                 onClick = entry.onClick,
-                shape = RoundedCornerShape(m.cardRadius.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+                shape = RoundedCornerShape(24.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Row(Modifier.padding(horizontal = 16.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                     Box(
-                        Modifier.size(m.iconTile.dp).clip(RoundedCornerShape(m.iconTileRadius.dp)).background(MaterialTheme.colorScheme.secondaryContainer),
+                        Modifier.size(44.dp).clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)),
                         contentAlignment = Alignment.Center,
-                    ) { Icon(entry.icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSecondaryContainer, modifier = Modifier.size(22.dp)) }
+                    ) { Icon(entry.icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp)) }
                     Column(Modifier.weight(1f)) {
                         Text(entry.title, style = MaterialTheme.typography.titleMedium)
                         Text(entry.about, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -118,7 +115,7 @@ private fun IosHub(title: String, subtitle: String, items: List<HubItem>, onSear
                     if (subtitle.isNotBlank()) Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 if (onSearch != null) androidx.compose.material3.IconButton(onClick = onSearch) {
-                    Icon(androidx.compose.material.icons.Icons.Default.Search, contentDescription = "Поиск по настройкам", tint = MaterialTheme.colorScheme.primary)
+                    Icon(AppIcons.Search, contentDescription = "Поиск по настройкам", tint = MaterialTheme.colorScheme.primary)
                 }
             }
         }
@@ -136,7 +133,7 @@ private fun IosHub(title: String, subtitle: String, items: List<HubItem>, onSear
                 }
                 Column(
                     Modifier.fillMaxWidth()
-                        .clip(RoundedCornerShape(m.cardRadius.dp))
+                        .clip(RoundedCornerShape(22.dp))
                         .background(MaterialTheme.colorScheme.surfaceContainer),
                 ) {
                     rows.forEachIndexed { i, row -> IosRow(row, last = i == rows.lastIndex) }
@@ -156,9 +153,9 @@ private fun IosRow(entry: HubItem, last: Boolean) {
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Box(
-                Modifier.size(m.iconTile.dp).clip(RoundedCornerShape(m.iconTileRadius.dp)).background(MaterialTheme.colorScheme.primary),
+                Modifier.size(34.dp).clip(RoundedCornerShape(9.dp)).background(Brush.linearGradient(listOf(lerp(MaterialTheme.colorScheme.primary, Color.White, 0.28f), MaterialTheme.colorScheme.primary))),
                 contentAlignment = Alignment.Center,
-            ) { Icon(entry.icon, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(18.dp)) }
+            ) { Icon(entry.icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(19.dp)) }
             Column(Modifier.weight(1f)) {
                 Text(entry.title, style = MaterialTheme.typography.bodyLarge)
                 if (entry.about.isNotBlank()) {
@@ -171,6 +168,6 @@ private fun IosRow(entry: HubItem, last: Boolean) {
             entry.badge?.let { b -> Text(b, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             Icon(AppIcons.Chevron, contentDescription = null, tint = MaterialTheme.colorScheme.outline, modifier = Modifier.size(20.dp))
         }
-        if (!last) HorizontalDivider(Modifier.padding(start = 58.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
+        if (!last) HorizontalDivider(Modifier.padding(start = 62.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
     }
 }

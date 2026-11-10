@@ -1,6 +1,20 @@
 package com.pocketcode.ui
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.Alignment
+import androidx.compose.material3.Surface
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -74,7 +88,7 @@ fun appTypography(style: UiStyle): Typography = if (style == UiStyle.IOS) IosTyp
 @Composable
 fun backIcon(): ImageVector = if (LocalUiStyle.current == UiStyle.IOS) AppIcons.ChevronLeft else AppIcons.Back
 
-/** Верхняя панель экрана: в Material 3 слева, в iOS по центру на цвете фона. */
+/** Верхняя панель экрана: плоская, на цвете фона; в Material 3 заголовок слева, в iOS по центру. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AppTopBar(
@@ -83,13 +97,17 @@ fun AppTopBar(
     navigationIcon: @Composable () -> Unit = {},
     actions: @Composable RowScope.() -> Unit = {},
 ) {
+    val colors = TopAppBarDefaults.topAppBarColors(
+        containerColor = MaterialTheme.colorScheme.background,
+        scrolledContainerColor = MaterialTheme.colorScheme.background,
+    )
     if (LocalUiStyle.current == UiStyle.IOS) {
         CenterAlignedTopAppBar(
             title = title,
             modifier = modifier,
             navigationIcon = navigationIcon,
             actions = actions,
-            colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
+            colors = colors,
         )
     } else {
         TopAppBar(
@@ -97,6 +115,7 @@ fun AppTopBar(
             modifier = modifier,
             navigationIcon = navigationIcon,
             actions = actions,
+            colors = colors,
         )
     }
 }
@@ -141,33 +160,68 @@ fun AppSwitch(
     }
 }
 
-/** Нижняя панель разделов: в iOS с тонкой линией сверху и без заливки под значком. */
+/**
+ * Нижняя панель разделов: плавающая «капсула» с отступами от краёв и мягкой тенью.
+ * Пункты рисует AppNavItem.
+ */
 @Composable
 fun AppNavigationBar(content: @Composable RowScope.() -> Unit) {
     val cs = MaterialTheme.colorScheme
-    if (LocalUiStyle.current == UiStyle.IOS) {
-        Column {
-            HorizontalDivider(thickness = 0.5.dp, color = cs.outlineVariant)
-            NavigationBar(containerColor = cs.surfaceContainerLow, tonalElevation = 0.dp, content = content)
+    val ios = LocalUiStyle.current == UiStyle.IOS
+    Box(Modifier.fillMaxWidth().navigationBarsPadding().padding(start = 14.dp, end = 14.dp, top = 6.dp, bottom = 10.dp)) {
+        Surface(
+            shape = RoundedCornerShape(if (ios) 34.dp else 30.dp),
+            color = cs.surfaceContainerHigh,
+            tonalElevation = 0.dp,
+            shadowElevation = 10.dp,
+            border = BorderStroke(0.5.dp, cs.outlineVariant),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Row(
+                Modifier.fillMaxWidth().height(if (ios) 68.dp else 64.dp).padding(horizontal = 8.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically,
+                content = content,
+            )
         }
-    } else {
-        NavigationBar(containerColor = cs.surfaceContainer, content = content)
     }
 }
 
-/** Цвета пункта нижней панели под текущий стиль. */
+/** Пункт нижней панели. В Material 3 выбранный раздел растягивается в «таблетку» с подписью, в iOS подпись всегда под значком. */
 @Composable
-fun navItemColors(): NavigationBarItemColors {
+fun AppNavItem(selected: Boolean, onClick: () -> Unit, icon: ImageVector, label: String, modifier: Modifier = Modifier) {
     val cs = MaterialTheme.colorScheme
-    return if (metricsOf(LocalUiStyle.current).navIndicator) {
-        NavigationBarItemDefaults.colors()
+    val ios = LocalUiStyle.current == UiStyle.IOS
+    val tick = rememberTick()
+    val tint = if (selected) cs.primary else cs.onSurfaceVariant
+    val bg = when {
+        !selected -> Color.Transparent
+        ios -> cs.onSurface.copy(alpha = 0.08f)
+        else -> cs.primary.copy(alpha = 0.16f)
+    }
+    val reduce = LocalReduceMotion.current
+    val base = modifier
+        .then(if (reduce || ios) Modifier else Modifier.animateContentSize())
+        .clip(RoundedCornerShape(if (ios) 27.dp else 23.dp))
+        .background(bg)
+        .clickable { tick(); onClick() }
+    if (ios) {
+        Column(
+            base.height(54.dp).padding(horizontal = 14.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(24.dp))
+            Text(label, style = MaterialTheme.typography.labelSmall, color = tint, maxLines = 1)
+        }
     } else {
-        NavigationBarItemDefaults.colors(
-            selectedIconColor = cs.primary,
-            selectedTextColor = cs.primary,
-            indicatorColor = Color.Transparent,
-            unselectedIconColor = cs.onSurfaceVariant,
-            unselectedTextColor = cs.onSurfaceVariant,
-        )
+        Row(
+            base.height(46.dp).padding(horizontal = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Icon(icon, contentDescription = label, tint = tint, modifier = Modifier.size(24.dp))
+            if (selected) Text(label, style = MaterialTheme.typography.labelLarge, color = tint, maxLines = 1)
+        }
     }
 }

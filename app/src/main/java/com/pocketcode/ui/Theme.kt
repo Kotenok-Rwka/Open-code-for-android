@@ -47,16 +47,17 @@ fun buildScheme(dark: Boolean, amoled: Boolean, a: Accent): ColorScheme {
             onSurface = Color(0xFFE6E7EB),
             surfaceVariant = lerp(base, white, if (amoled) 0.12f else 0.13f),
             onSurfaceVariant = Color(0xFFABB1BD),
+            // Слои без обводок: карточка (Container) заметно светлее фона, поля ввода и чипы (High) ещё светлее.
             surfaceContainerLowest = lerp(base, black, 0.4f),
-            surfaceContainerLow = lerp(base, white, 0.035f),
-            surfaceContainer = lerp(base, white, 0.06f),
-            surfaceContainerHigh = lerp(base, white, 0.09f),
-            surfaceContainerHighest = lerp(base, white, 0.12f),
+            surfaceContainerLow = lerp(base, white, 0.045f),
+            surfaceContainer = lerp(base, white, 0.075f),
+            surfaceContainerHigh = lerp(base, white, 0.11f),
+            surfaceContainerHighest = lerp(base, white, 0.15f),
             outline = Color(0xFF666D7A),
-            outlineVariant = lerp(base, white, 0.14f),
+            outlineVariant = lerp(base, white, 0.10f),
         )
     } else {
-        val base = Color(0xFFF8F9FC)
+        val base = Color(0xFFF4F6F9)
         val c = a.light
         lightColorScheme(
             primary = c,
@@ -72,13 +73,14 @@ fun buildScheme(dark: Boolean, amoled: Boolean, a: Accent): ColorScheme {
             onSurface = Color(0xFF1A1C20),
             surfaceVariant = lerp(base, black, 0.07f),
             onSurfaceVariant = Color(0xFF4A505C),
+            // Карточки белые на сером фоне, поля ввода и чипы чуть темнее фона.
             surfaceContainerLowest = white,
-            surfaceContainerLow = lerp(base, black, 0.02f),
-            surfaceContainer = lerp(base, black, 0.04f),
-            surfaceContainerHigh = lerp(base, black, 0.06f),
+            surfaceContainerLow = lerp(base, white, 0.6f),
+            surfaceContainer = white,
+            surfaceContainerHigh = lerp(base, black, 0.045f),
             surfaceContainerHighest = lerp(base, black, 0.08f),
             outline = Color(0xFF8A909C),
-            outlineVariant = lerp(base, black, 0.12f),
+            outlineVariant = lerp(base, black, 0.09f),
         )
     }
 }
@@ -152,8 +154,8 @@ fun buildIosScheme(dark: Boolean, amoled: Boolean, a: Accent): ColorScheme {
 fun amoledize(s: ColorScheme): ColorScheme = s.copy(
     background = Color.Black, surface = Color.Black,
     surfaceContainerLowest = Color.Black,
-    surfaceContainerLow = Color(0xFF0A0A0A), surfaceContainer = Color(0xFF111111),
-    surfaceContainerHigh = Color(0xFF181818), surfaceContainerHighest = Color(0xFF202020),
+    surfaceContainerLow = Color(0xFF0E0F11), surfaceContainer = Color(0xFF15171A),
+    surfaceContainerHigh = Color(0xFF1D2024), surfaceContainerHighest = Color(0xFF272B30),
 )
 
 val AppTypography = androidx.compose.material3.Typography(
