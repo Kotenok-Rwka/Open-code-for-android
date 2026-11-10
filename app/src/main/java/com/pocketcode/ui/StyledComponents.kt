@@ -108,10 +108,12 @@ fun AppSwitch(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
 ) {
+    val tick = rememberTick()
+    val change: ((Boolean) -> Unit)? = onCheckedChange?.let { f -> { v: Boolean -> tick(); f(v) } }
     if (LocalUiStyle.current == UiStyle.IOS) {
         Switch(
             checked = checked,
-            onCheckedChange = onCheckedChange,
+            onCheckedChange = change,
             modifier = modifier,
             enabled = enabled,
             colors = SwitchDefaults.colors(
@@ -126,7 +128,7 @@ fun AppSwitch(
     } else {
         Switch(
             checked = checked,
-            onCheckedChange = onCheckedChange,
+            onCheckedChange = change,
             modifier = modifier,
             enabled = enabled,
             thumbContent = if (checked) ({

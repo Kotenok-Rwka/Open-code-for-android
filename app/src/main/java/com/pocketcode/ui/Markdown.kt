@@ -1,6 +1,9 @@
 package com.pocketcode.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.Alignment
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -224,14 +227,25 @@ fun MarkdownText(text: String, modifier: Modifier = Modifier) {
                     },
                     modifier = Modifier.padding(top = 4.dp),
                 )
-                is MdBlock.Code -> Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .background(codeBg, MaterialTheme.shapes.small)
-                        .horizontalScroll(rememberScrollState())
-                        .padding(8.dp),
-                ) {
-                    Text(block.code, fontFamily = FontFamily.Monospace, fontSize = 12.sp)
+                is MdBlock.Code -> {
+                    val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(codeBg),
+                    ) {
+                        Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text("код", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+                            androidx.compose.material3.TextButton(
+                                onClick = { clipboard.setText(androidx.compose.ui.text.AnnotatedString(block.code)) },
+                                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                            ) { Text("Копировать", style = MaterialTheme.typography.labelSmall) }
+                        }
+                        Box(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(start = 12.dp, end = 12.dp, bottom = 10.dp)) {
+                            Text(block.code, fontFamily = FontFamily.Monospace, fontSize = 12.sp)
+                        }
+                    }
                 }
                 is MdBlock.Item -> Row(Modifier.padding(start = (block.indent * 16).dp)) {
                     Text(block.marker, modifier = Modifier.width(22.dp))

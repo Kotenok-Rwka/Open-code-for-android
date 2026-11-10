@@ -9,6 +9,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -97,6 +98,7 @@ fun ChatScreen(
     var newProjectName by remember { mutableStateOf("") }
     var profileMenu by remember { mutableStateOf(false) }
     var input by remember { mutableStateOf(vm.draft) }
+    val tick = rememberTick()
     val atTok = Regex("(?:^|\\s)@([\\w./\\-]*)$").find(input)
     var showChanges by remember { mutableStateOf(false) }
     var showTodos by remember { mutableStateOf(false) }
@@ -354,6 +356,7 @@ fun ChatScreen(
             }
             if (vm.running) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    ThinkingDots(Modifier.padding(end = 8.dp))
                     Text("Агент работает…", style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
                     TextButton(onClick = { confirmStop = true }) { Text("Остановить") }
                 }
@@ -457,8 +460,9 @@ fun ChatScreen(
             }
             androidx.compose.material3.Surface(
                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                border = hairline(),
                 shape = RoundedCornerShape(28.dp),
+                shadowElevation = if (LocalUiStyle.current == UiStyle.IOS) 0.dp else 2.dp,
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp).tourAnchor("input"),
             ) {
                 Row(Modifier.padding(start = 4.dp, end = 4.dp, top = 2.dp, bottom = 2.dp), verticalAlignment = Alignment.Bottom) {
@@ -479,7 +483,11 @@ fun ChatScreen(
                             unfocusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
                         ),
                     )
-                    if (input.isBlank() && vm.pendingImages.isEmpty()) {
+                    if (vm.running && input.isBlank()) {
+                        androidx.compose.material3.FilledIconButton(onClick = { tick(); confirmStop = true }) {
+                            Icon(AppIcons.Stop, contentDescription = "Остановить")
+                        }
+                    } else if (input.isBlank() && vm.pendingImages.isEmpty()) {
                         IconButton(onClick = {
                             val i = android.content.Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
                                 putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL, android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
@@ -492,6 +500,7 @@ fun ChatScreen(
                     } else {
                         androidx.compose.material3.FilledIconButton(
                             onClick = {
+                                tick()
                                 if (vm.running) vm.enqueue(input) else vm.send(input)
                                 input = ""
                             },
@@ -957,85 +966,102 @@ private fun EmptyHint(workspacePath: String, welcome: (@Composable () -> Unit)?,
 private fun ItemView(item: UiItem) {
     when (item) {
         is UiItem.User -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            val ios = LocalUiStyle.current == UiStyle.IOS
+            val cs = MaterialTheme.colorScheme
             Box(
                 Modifier.fillMaxWidth(0.85f)
-                    .clip(RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp, bottomStart = 22.dp, bottomEnd = 5.dp))
-                    .background(
-                        androidx.compose.ui.graphics.Brush.linearGradient(
-                            listOf(
-                                MaterialTheme.colorScheme.primaryContainer,
-                                androidx.compose.ui.graphics.lerp(MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.primary, 0.28f),
-                            ),
-                        ),
-                    ),
+                    .clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp, bottomStart = 20.dp, bottomEnd = 6.dp))
+                    .background(if (ios) cs.primary else cs.primaryContainer),
             ) {
                 SelectionContainer {
                     Text(
                         (if (item.images > 0) "🖼 ×${item.images}\n" else "") + item.text,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer,
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 11.dp),
+                        color = if (ios) cs.onPrimary else cs.onPrimaryContainer,
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
                     )
                 }
             }
         }
-        is UiItem.Assistant -> Box(
-            Modifier.fillMaxWidth()
-                .clip(RoundedCornerShape(topStart = 5.dp, topEnd = 22.dp, bottomStart = 22.dp, bottomEnd = 22.dp))
-                .background(MaterialTheme.colorScheme.surfaceContainerLow)
-                .padding(horizontal = 14.dp, vertical = 10.dp),
-        ) {
-            SelectionContainer {
-                MarkdownText(item.text, modifier = Modifier.fillMaxWidth())
+        is UiItem.Assistant -> {
+            val ios = LocalUiStyle.current == UiStyle.IOS
+            Box(
+                Modifier.fillMaxWidth()
+                    .then(
+                        if (ios) Modifier
+                            .clip(RoundedCornerShape(topStart = 6.dp, topEnd = 20.dp, bottomStart = 20.dp, bottomEnd = 20.dp))
+                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                        else Modifier,
+                    )
+                    .padding(horizontal = if (ios) 14.dp else 4.dp, vertical = if (ios) 10.dp else 4.dp),
+            ) {
+                SelectionContainer {
+                    MarkdownText(item.text, modifier = Modifier.fillMaxWidth())
+                }
             }
         }
         is UiItem.Tool -> {
             var expanded by remember { mutableStateOf(false) }
             val output = item.output
-            Card(
-                colors = CardDefaults.cardColors(
-                    containerColor = if (item.isError) MaterialTheme.colorScheme.errorContainer
-                    else MaterialTheme.colorScheme.surfaceContainer,
-                ),
-                border = androidx.compose.foundation.BorderStroke(1.dp, if (item.isError) MaterialTheme.colorScheme.error.copy(alpha = 0.4f) else MaterialTheme.colorScheme.outlineVariant),
-                shape = RoundedCornerShape(14.dp),
-                modifier = Modifier
+            val cs = MaterialTheme.colorScheme
+            Column(
+                Modifier
                     .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(if (item.isError) cs.errorContainer else cs.surfaceContainer)
+                    .border(hairline(), RoundedCornerShape(14.dp))
                     .animateContentSize()
-                    .clickable { expanded = !expanded },
+                    .clickable { expanded = !expanded }
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
             ) {
-                Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(toolIcon(item.name), fontSize = 14.sp)
+                    Text(item.name, style = MaterialTheme.typography.labelLarge)
                     Text(
-                        (if (expanded) "▾ " else "▸ ") + toolIcon(item.name) + " " + item.name + "  " + item.description.trim(),
+                        toolTitle(item.description),
                         fontFamily = FontFamily.Monospace,
                         fontSize = 12.sp,
+                        color = cs.onSurfaceVariant,
                         maxLines = if (expanded) Int.MAX_VALUE else 1,
                         overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
                     )
-                    when {
-                        output == null -> Text(
-                            "выполняется…",
-                            style = MaterialTheme.typography.labelSmall,
-                            modifier = Modifier.padding(top = 4.dp),
-                        )
-                        output.isBlank() -> {}
-                        expanded -> SelectionContainer {
-                            Text(
-                                if (output.length > 6000) output.take(6000) + "\n… (показано 6000 из ${output.length} символов)" else output,
-                                fontFamily = FontFamily.Monospace,
-                                fontSize = 11.sp,
-                                modifier = Modifier.padding(top = 6.dp),
-                            )
-                        }
-                        else -> Text(
-                            output.trim().lines().filter { it.isNotBlank() }.take(2).joinToString("\n"),
+                    if (output == null) ThinkingDots()
+                    else Text(
+                        toolStateLabel(running = false, error = item.isError),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (item.isError) cs.error else cs.onSurfaceVariant,
+                    )
+                }
+                if (expanded && item.description.trim().lines().size > 1) {
+                    SelectionContainer {
+                        Text(
+                            item.description.trim(),
                             fontFamily = FontFamily.Monospace,
                             fontSize = 11.sp,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(top = 4.dp),
+                            modifier = Modifier.padding(top = 6.dp),
                         )
                     }
+                }
+                when {
+                    output == null -> {}
+                    output.isBlank() -> {}
+                    expanded -> SelectionContainer {
+                        Text(
+                            if (output.length > 6000) output.take(6000) + "\n… (показано 6000 из ${output.length} символов)" else output,
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 11.sp,
+                            modifier = Modifier.padding(top = 6.dp),
+                        )
+                    }
+                    else -> Text(
+                        output.trim().lines().filter { it.isNotBlank() }.take(2).joinToString("\n"),
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 11.sp,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        color = cs.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
                 }
             }
         }

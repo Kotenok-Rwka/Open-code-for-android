@@ -1,5 +1,6 @@
 package com.pocketcode
 
+import androidx.compose.animation.togetherWith
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -238,7 +239,15 @@ class MainActivity : ComponentActivity() {
                 androidx.compose.foundation.layout.Box(Modifier.weight(1f)) {
                 if (pv != null) {
                     PreviewScreen(pv, "Превью", onBack = { vm.previewUrl = null })
-                } else when (screen) {
+                } else androidx.compose.animation.AnimatedContent(
+                    targetState = screen,
+                    transitionSpec = {
+                        (androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(200)) +
+                            androidx.compose.animation.slideInHorizontally(androidx.compose.animation.core.tween(220)) { it / 16 })
+                            .togetherWith(androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(110)))
+                    },
+                    label = "screen",
+                ) { sc -> when (sc) {
                     Screen.HUB_PROJECT -> {
                         BackHandler { screen = Screen.CHAT }
                         com.pocketcode.ui.HubScreen(
@@ -498,6 +507,7 @@ class MainActivity : ComponentActivity() {
                             onImport = { importBackup.launch(arrayOf("*/*")) },
                         )
                     }
+                }
                 }
                 }
                 }

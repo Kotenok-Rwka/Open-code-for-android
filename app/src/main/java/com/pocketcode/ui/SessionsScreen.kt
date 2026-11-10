@@ -24,6 +24,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.layout.Box
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
@@ -51,18 +52,11 @@ fun SessionsScreen(vm: ChatController, onBack: () -> Unit) {
         },
     ) { padding ->
         if (vm.sessionList.isEmpty()) {
-            Column(
-                Modifier
-                    .padding(padding)
-                    .fillMaxSize()
-                    .padding(24.dp),
-                verticalArrangement = Arrangement.Center,
-            ) {
-                Text("Сохранённых сессий пока нет.", style = MaterialTheme.typography.titleMedium)
-                Text(
-                    "Чат сохраняется автоматически после первого сообщения.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.padding(top = 8.dp),
+            Box(Modifier.padding(padding).fillMaxSize(), contentAlignment = Alignment.Center) {
+                EmptyState(
+                    icon = AppIcons.Chat,
+                    title = "Сохранённых сессий пока нет.",
+                    text = "Чат сохраняется автоматически после первого сообщения.",
                 )
             }
         } else {

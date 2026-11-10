@@ -17,6 +17,9 @@ val ACCENTS = listOf(
     Accent("green", "Зелёный", Color(0xFF7BD88F), Color(0xFF2E7D45)),
     Accent("orange", "Оранжевый", Color(0xFFFFB067), Color(0xFFC25E00)),
     Accent("rose", "Розовый", Color(0xFFF48FB1), Color(0xFFB4246B)),
+    Accent("vscode", "Как в VS Code", Color(0xFF4FC1FF), Color(0xFF007ACC)),
+    Accent("sand", "Песочный", Color(0xFFE6C48F), Color(0xFF8A5A00)),
+    Accent("contrast", "Контрастный", Color(0xFFFFE54C), Color(0xFF0030A0)),
 )
 
 fun accentById(id: String): Accent? = ACCENTS.firstOrNull { it.id == id }

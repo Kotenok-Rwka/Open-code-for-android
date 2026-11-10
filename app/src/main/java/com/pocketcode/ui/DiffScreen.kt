@@ -94,7 +94,11 @@ fun DiffScreen(vm: ChatController, onBack: () -> Unit) {
                     }
                 }
             }
-            if (vm.changes.isEmpty()) Text("Правок пока нет. После работы агента здесь появятся его изменения файлов.", style = MaterialTheme.typography.bodyMedium)
+            if (vm.changes.isEmpty()) EmptyState(
+                icon = AppIcons.Folder,
+                title = "Правок пока нет.",
+                text = "После работы агента здесь появятся его изменения файлов.",
+            )
             // по одному разу на файл: сравниваем самое раннее «до» с текущим содержимым
             val firstByPath = LinkedHashMap<String, ChatController.FileChange>()
             vm.changes.forEach { if (it.path !in firstByPath) firstByPath[it.path] = it }
