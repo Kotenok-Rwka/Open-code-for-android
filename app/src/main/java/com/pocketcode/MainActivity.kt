@@ -10,6 +10,7 @@ import android.os.Bundle
 import android.provider.Settings as AndroidSettings
 import androidx.compose.runtime.key
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.ui.Modifier
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -201,7 +202,8 @@ class MainActivity : ComponentActivity() {
                 var focusKey by remember { mutableStateOf<String?>(null) }
                 fun openFrom(hub: Screen, target: Screen) { focusKey = null; backTo = hub; screen = target }
                 val pv = vm.previewUrl
-                val wide = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp >= 840
+                val wide = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp.let { com.pocketcode.ui.isWideScreen(it) }
+                val noMotion = com.pocketcode.ui.LocalReduceMotion.current
                 val imeDensity = androidx.compose.ui.platform.LocalDensity.current
                 // Клавиатура считается открытой только если она действительно высокая (плавающие панели ввода давали ложное срабатывание)
                 val imeOn = androidx.compose.foundation.layout.WindowInsets.ime.getBottom(imeDensity) > with(imeDensity) { 160.dp.roundToPx() }
@@ -242,12 +244,21 @@ class MainActivity : ComponentActivity() {
                 } else androidx.compose.animation.AnimatedContent(
                     targetState = screen,
                     transitionSpec = {
-                        (androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(200)) +
-                            androidx.compose.animation.slideInHorizontally(androidx.compose.animation.core.tween(220)) { it / 16 })
-                            .togetherWith(androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(110)))
+                        if (noMotion) {
+                            androidx.compose.animation.EnterTransition.None.togetherWith(androidx.compose.animation.ExitTransition.None)
+                        } else {
+                            (androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(200)) +
+                                androidx.compose.animation.slideInHorizontally(androidx.compose.animation.core.tween(220)) { it / 16 })
+                                .togetherWith(androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(110)))
+                        }
                     },
                     label = "screen",
-                ) { sc -> when (sc) {
+                ) { sc ->
+                  // Планшет: экраны-списки не растягиваются на всю ширину, а стоят по центру
+                  androidx.compose.foundation.layout.Box(Modifier.fillMaxSize(), contentAlignment = androidx.compose.ui.Alignment.TopCenter) {
+                  androidx.compose.foundation.layout.Box(
+                    if (wide && com.pocketcode.ui.isReadingScreen(sc.name)) Modifier.widthIn(max = com.pocketcode.ui.READING_WIDTH_DP.dp).fillMaxSize() else Modifier.fillMaxSize(),
+                  ) { when (sc) {
                     Screen.HUB_PROJECT -> {
                         BackHandler { screen = Screen.CHAT }
                         com.pocketcode.ui.HubScreen(
@@ -512,6 +523,8 @@ class MainActivity : ComponentActivity() {
                 }
                 }
                 }
+                }
+                }
                 if (!pocketApp.controller.tourDone && !crashed) com.pocketcode.ui.TourOverlay(onDone = { pocketApp.controller.finishTour() }, onOpenLearn = { pocketApp.controller.finishTour(); screen = Screen.LEARN; backTo = Screen.HUB_MORE })
             }
         }
@@ -593,6 +606,10 @@ private fun AppTheme(content: @Composable () -> Unit) {
     val ctl = (context.applicationContext as PocketCodeApp).controller
     val accent = com.pocketcode.ui.accentById(ctl.palette)
     val style = com.pocketcode.ui.uiStyleById(ctl.uiStyle)
+    val systemNoAnim = remember(context) {
+        runCatching { android.provider.Settings.Global.getFloat(context.contentResolver, android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f }.getOrDefault(false)
+    }
+    val reduceMotion = ctl.reduceMotion || systemNoAnim
     val ios = style == com.pocketcode.ui.UiStyle.IOS
     val scheme = when {
         accent == null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
@@ -613,6 +630,7 @@ private fun AppTheme(content: @Composable () -> Unit) {
         androidx.compose.ui.platform.LocalDensity provides dens,
         androidx.compose.ui.platform.LocalLayoutDirection provides if (com.pocketcode.ui.I18n.isRtl) androidx.compose.ui.unit.LayoutDirection.Rtl else androidx.compose.ui.unit.LayoutDirection.Ltr,
         com.pocketcode.ui.LocalUiStyle provides style,
+        com.pocketcode.ui.LocalReduceMotion provides reduceMotion,
     ) {
         MaterialTheme(
             colorScheme = scheme,

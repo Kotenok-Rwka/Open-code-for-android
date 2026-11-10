@@ -241,7 +241,7 @@ fun ChatScreen(
                     ) {
                         itemsIndexed(vm.items, key = { i, _ -> i }) { i, item ->
                             Column {
-                                ItemView(item)
+                                ItemView(item, live = vm.running && i == vm.items.lastIndex)
                                 if (item is UiItem.Assistant && !item.text.startsWith("⏳") && !(vm.running && i == vm.items.lastIndex)) {
                                     Row {
                                         val star = vm.isStarred(item.text)
@@ -963,7 +963,7 @@ private fun EmptyHint(workspacePath: String, welcome: (@Composable () -> Unit)?,
 }
 
 @Composable
-private fun ItemView(item: UiItem) {
+private fun ItemView(item: UiItem, live: Boolean = false) {
     when (item) {
         is UiItem.User -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
             val ios = LocalUiStyle.current == UiStyle.IOS
@@ -995,7 +995,8 @@ private fun ItemView(item: UiItem) {
                     .padding(horizontal = if (ios) 14.dp else 4.dp, vertical = if (ios) 10.dp else 4.dp),
             ) {
                 SelectionContainer {
-                    MarkdownText(item.text, modifier = Modifier.fillMaxWidth())
+                    if (live && !LocalReduceMotion.current) SmoothMarkdown(item.text, modifier = Modifier.fillMaxWidth())
+                    else MarkdownText(item.text, modifier = Modifier.fillMaxWidth())
                 }
             }
         }
@@ -1009,7 +1010,7 @@ private fun ItemView(item: UiItem) {
                     .clip(RoundedCornerShape(14.dp))
                     .background(if (item.isError) cs.errorContainer else cs.surfaceContainer)
                     .border(hairline(), RoundedCornerShape(14.dp))
-                    .animateContentSize()
+                    .then(if (LocalReduceMotion.current) Modifier else Modifier.animateContentSize())
                     .clickable { expanded = !expanded }
                     .padding(horizontal = 12.dp, vertical = 8.dp),
             ) {

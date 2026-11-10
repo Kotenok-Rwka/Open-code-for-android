@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -24,7 +25,11 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -87,6 +92,12 @@ fun EmptyState(
 /** Три пульсирующие точки: агент думает или работает. */
 @Composable
 fun ThinkingDots(modifier: Modifier = Modifier) {
+    if (LocalReduceMotion.current) {
+        Row(modifier, horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
+            for (i in 0 until 3) Box(Modifier.size(7.dp).alpha(0.6f).clip(CircleShape).background(MaterialTheme.colorScheme.primary))
+        }
+        return
+    }
     val t = rememberInfiniteTransition(label = "dots")
     Row(modifier, horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
         for (i in 0 until 3) {
@@ -131,4 +142,58 @@ fun toolTitle(description: String): String {
 @Composable
 fun TapRow(onClick: () -> Unit, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
     Box(modifier.fillMaxWidth().clickable(onClick = onClick)) { content() }
+}
+
+/** Серые «заглушки» строк списка, пока данные грузятся. Мерцают, если анимации не уменьшены. */
+@Composable
+fun SkeletonRows(count: Int = 6, modifier: Modifier = Modifier) {
+    val t = rememberInfiniteTransition(label = "skeleton")
+    val pulse by t.animateFloat(
+        initialValue = 0.35f, targetValue = 0.75f,
+        animationSpec = infiniteRepeatable(tween(durationMillis = 900), RepeatMode.Reverse),
+        label = "skeletonAlpha",
+    )
+    val a = if (LocalReduceMotion.current) 0.5f else pulse
+    val c = MaterialTheme.colorScheme.surfaceContainerHighest
+    Column(modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        for (i in 0 until count) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Box(Modifier.size(36.dp).alpha(a).clip(RoundedCornerShape(10.dp)).background(c))
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Box(Modifier.fillMaxWidth(skeletonWidth(i)).height(12.dp).alpha(a).clip(RoundedCornerShape(6.dp)).background(c))
+                    Box(Modifier.fillMaxWidth(skeletonWidth(i) * 0.55f).height(10.dp).alpha(a).clip(RoundedCornerShape(5.dp)).background(c))
+                }
+            }
+        }
+    }
+}
+
+/** Ширина строки-заглушки по номеру: разная, но всегда между 0.45 и 0.9, чтобы не выглядело как таблица. */
+fun skeletonWidth(index: Int): Float = 0.45f + ((index * 37) % 10) * 0.05f
+
+/** Следующее число показанных знаков: догоняет весь текст быстро, но не рывком (минимум 1 знак за кадр). */
+fun revealStep(shown: Int, total: Int): Int {
+    if (shown >= total) return total
+    return minOf(total, shown + maxOf(1, (total - shown) / 8))
+}
+
+/** Обрезка текста по числу знаков без разрыва суррогатной пары (эмодзи). */
+fun cutText(text: String, n: Int): String {
+    if (n >= text.length) return text
+    if (n <= 0) return ""
+    return if (Character.isHighSurrogate(text[n - 1])) text.substring(0, n - 1) else text.substring(0, n)
+}
+
+/** Текст ответа агента, который плавно «дописывается», пока идёт работа. */
+@Composable
+fun SmoothMarkdown(text: String, modifier: Modifier = Modifier) {
+    var shown by remember { mutableStateOf(0) }
+    LaunchedEffect(text) {
+        if (shown > text.length) shown = text.length
+        while (shown < text.length) {
+            kotlinx.coroutines.delay(16)
+            shown = revealStep(shown, text.length)
+        }
+    }
+    MarkdownText(cutText(text, shown), modifier = modifier)
 }

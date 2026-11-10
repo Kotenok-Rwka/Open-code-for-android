@@ -23,6 +23,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
@@ -41,7 +42,7 @@ import androidx.compose.ui.unit.sp
 private sealed class MdBlock {
     data class Paragraph(val text: String) : MdBlock()
     data class Heading(val level: Int, val text: String) : MdBlock()
-    data class Code(val code: String) : MdBlock()
+    data class Code(val code: String, val lang: String = "") : MdBlock()
     data class Item(val indent: Int, val marker: String, val text: String) : MdBlock()
     data class Quote(val text: String) : MdBlock()
     data class Table(val lines: List<String>) : MdBlock()
@@ -77,7 +78,7 @@ private fun parseBlocks(text: String): List<MdBlock> {
                     code += lines[i]
                     i++
                 }
-                blocks += MdBlock.Code(code.joinToString("\n"))
+                blocks += MdBlock.Code(code.joinToString("\n"), trimmed.removePrefix("```").trim())
             }
             line.isBlank() -> flushParagraph()
             ruleRe.matches(line) -> {
@@ -236,14 +237,23 @@ fun MarkdownText(text: String, modifier: Modifier = Modifier) {
                             .background(codeBg),
                     ) {
                         Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Text("код", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+                            Text(langLabel(block.lang).ifEmpty { "код" }, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
                             androidx.compose.material3.TextButton(
                                 onClick = { clipboard.setText(androidx.compose.ui.text.AnnotatedString(block.code)) },
                                 contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 0.dp),
                             ) { Text("Копировать", style = MaterialTheme.typography.labelSmall) }
                         }
                         Box(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(start = 12.dp, end = 12.dp, bottom = 10.dp)) {
-                            Text(block.code, fontFamily = FontFamily.Monospace, fontSize = 12.sp)
+                            val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+                            val colored = remember(block.code, block.lang, dark) {
+                                val pal = codePalette(dark)
+                                val lang = normLang(block.lang)
+                                buildAnnotatedString {
+                                    append(block.code)
+                                    for (t in highlight(block.code, lang)) addStyle(SpanStyle(color = pal.colorOf(t.kind)), t.start, t.end)
+                                }
+                            }
+                            Text(colored, fontFamily = FontFamily.Monospace, fontSize = 12.sp)
                         }
                     }
                 }

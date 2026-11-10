@@ -2655,7 +2655,7 @@ class ChatController(
 
     private val backupPrefKeys = listOf(
         "syncRepo", "syncProjects", "syncInterval", "syncHost", "ocFallback", "ocAutoSwitch", "ocAutoCompact", "ocRateRetryMin",
-        "hostMode", "rootDelay", "rpmLimit", "ratePeriod", "learnDone", "savedModels", "fallbackChain", "profileRates", "sf_undo", "ocBudget", "ocListLim", "ocShowLim", "ocFresh", "ocExtMode", "ocModel", "ocCards", "themeMode", "palette", "amoled", "uiStyle", "templates", "stars", "ocPins", "ocTitles", "bigInput",
+        "hostMode", "rootDelay", "rpmLimit", "ratePeriod", "learnDone", "savedModels", "fallbackChain", "profileRates", "sf_undo", "ocBudget", "ocListLim", "ocShowLim", "ocFresh", "ocExtMode", "ocModel", "ocCards", "themeMode", "palette", "amoled", "uiStyle", "reduceMotion", "templates", "stars", "ocPins", "ocTitles", "bigInput",
     )
 
     private fun cryptKey(password: String, salt: ByteArray): javax.crypto.spec.SecretKeySpec {
@@ -3780,6 +3780,10 @@ class ChatController(
     var uiStyle by mutableStateOf(uiStyleById(settingsStore.rawGet("uiStyle")).id)
         private set
     fun setUiStyleValue(v: String) { uiStyle = uiStyleById(v).id; settingsStore.rawPut("uiStyle", uiStyle) }
+    /** Уменьшить анимации: без переходов между экранами, пульсации и плавного появления текста. */
+    var reduceMotion by mutableStateOf(settingsStore.rawGet("reduceMotion") == "1")
+        private set
+    fun setReduceMotionValue(v: Boolean) { reduceMotion = v; settingsStore.rawPut("reduceMotion", if (v) "1" else "0") }
 
     var ocFallbackModel by mutableStateOf(settingsStore.rawGet("ocFallback").orEmpty())
         private set

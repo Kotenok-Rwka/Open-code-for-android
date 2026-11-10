@@ -31,6 +31,9 @@ import androidx.compose.ui.unit.sp
 /** Текущий стиль оформления; задаётся один раз в теме приложения. */
 val LocalUiStyle = compositionLocalOf { DEFAULT_UI_STYLE }
 
+/** true: анимации выключены (настройка приложения или системная шкала анимации 0). */
+val LocalReduceMotion = compositionLocalOf { false }
+
 /** Скругления по спецификации Material 3 или как у элементов iOS. */
 fun appShapes(style: UiStyle): Shapes = when (style) {
     UiStyle.MD3 -> Shapes(

@@ -55,3 +55,20 @@ fun <T> groupBySections(items: List<T>, isHeader: (T) -> Boolean, titleOf: (T) -
     if (cur.isNotEmpty()) out.add(Pair(head, cur))
     return out
 }
+
+/** Максимальная ширина экранов-списков на планшете, dp: дальше строки становятся слишком длинными для чтения. */
+const val READING_WIDTH_DP = 720
+
+/** Экраны, которые на широком дисплее ставятся по центру. Чат, файлы, терминал и редактор остаются на всю ширину. */
+private val READING_SCREENS = setOf(
+    "HUB_PROJECT", "HUB_AGENT", "HUB_MORE", "SETTINGS", "MODELS", "SESSIONS", "PROJECTS", "LEARN", "SMART",
+    "UPDATE", "BACKUP", "LANGUAGE", "DEVICES", "DIAG", "REMOTE", "FIND", "ROOT", "OCSETTINGS", "OCSESSIONS",
+    "PLUGINS", "CONTEXT", "COMPARE", "LINUX",
+)
+
+fun isReadingScreen(name: String): Boolean = name in READING_SCREENS
+
+/** Планшет или развёрнутый складной телефон: от 840 dp по ширине. */
+const val WIDE_MIN_DP = 840
+
+fun isWideScreen(widthDp: Int): Boolean = widthDp >= WIDE_MIN_DP

@@ -111,11 +111,13 @@ fun FilesScreen(
     var newKind by remember { mutableStateOf<String?>(null) } // "file" | "dir"
     var newName by remember { mutableStateOf("") }
 
+    var loaded by remember(dir) { mutableStateOf(false) }
     LaunchedEffect(dir, tick, refreshKey) {
         entries = withContext(Dispatchers.IO) {
             (dir.listFiles() ?: emptyArray())
                 .sortedWith(compareBy<File>({ !it.isDirectory }, { it.name.lowercase() }))
         }
+        loaded = true
     }
 
     fun rel(f: File): String = f.relativeTo(root).path.ifEmpty { "." }
@@ -375,6 +377,8 @@ fun FilesScreen(
                         )
                     }
                 }
+            } else if (!loaded) {
+                SkeletonRows()
             } else if (entries.isEmpty()) {
                 if (dir.canonicalPath != root.canonicalPath) {
                     TextButton(onClick = { onStartHere(dir) }) { Text("Начать работу в этой папке") }

@@ -697,6 +697,13 @@ fun SettingsScreen(
                 }
                 AppSwitch(checked = vm.amoled, onCheckedChange = { vm.setAmoledValue(it) })
             }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Уменьшить анимации", modifier = sec("motion"))
+                    Text("Без переходов между экранами, пульсации и плавного появления текста. Включается и сама, если анимации выключены в системе.", style = MaterialTheme.typography.bodySmall)
+                }
+                AppSwitch(checked = vm.reduceMotion, onCheckedChange = { vm.setReduceMotionValue(it) })
+            }
             Text("Цвет акцента", style = MaterialTheme.typography.bodyMedium, modifier = sec("accent"))
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 (ACCENTS.map { Triple(it.id, it.title, it.dark) } + Triple("system", "Из обоев", androidx.compose.ui.graphics.Color(0xFF9E9E9E))).forEach { (id, title, color) ->

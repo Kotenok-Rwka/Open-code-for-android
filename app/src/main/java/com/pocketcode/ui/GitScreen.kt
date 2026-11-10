@@ -53,6 +53,7 @@ fun GitScreen(vm: ChatController, onBack: () -> Unit) {
                 if (vm.gitBusy) "Выполняется…" else vm.gitOut.ifEmpty { "—" },
                 fontFamily = FontFamily.Monospace, fontSize = 12.sp, modifier = Modifier.fillMaxWidth(),
             )
+            if (vm.gitBusy) SkeletonRows(count = 2)
             Text("Коммит", style = MaterialTheme.typography.titleSmall)
             OutlinedTextField(value = message, onValueChange = { message = it }, label = { Text("Сообщение коммита") }, modifier = Modifier.fillMaxWidth())
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
