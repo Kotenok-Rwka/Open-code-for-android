@@ -202,6 +202,8 @@ class Agent(
             }
 
             val results = mutableListOf<Block>()
+            // картинки, которые инструменты (например, скриншоты телефона) хотят показать модели; идут после результатов
+            val toolImages = mutableListOf<Block>()
             for (call in calls) {
                 val tool = byName[call.name]
                 val description = tool?.describe(call.input) ?: call.input.toString().take(200)
@@ -227,6 +229,7 @@ class Agent(
                         hooks.before(tool, call.input)
                         output = withContext(Dispatchers.IO) { tool.run(call.input) }
                         hooks.after(tool, call.input, output, false)?.let { output += it }
+                        (tool as? com.pocketcode.tools.ImageProducer)?.takeImages()?.let { toolImages += it }
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Exception) {
@@ -247,7 +250,7 @@ class Agent(
                 send(AgentEvent.ToolResult(call.name, output, isError))
                 results += Block.ToolResult(call.id, output, isError)
             }
-            history += Message("user", results)
+            history += Message("user", results + toolImages)
         }
         send(AgentEvent.Done)
     }.buffer(Channel.UNLIMITED)

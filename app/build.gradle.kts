@@ -66,6 +66,8 @@ android {
     }
     buildFeatures {
         compose = true
+        // AIDL-интерфейс помощника управления телефоном (src/main/aidl)
+        aidl = true
     }
     packaging {
         // proot лежит в jniLibs и должен быть распакован на диск, чтобы его можно было запустить

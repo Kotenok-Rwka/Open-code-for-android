@@ -1318,6 +1318,9 @@ class ChatController(
     var rootEnabled by mutableStateOf(settingsStore.loadRootEnabled())
         private set
 
+    /** Режим «Управление телефоном»: служба доступности + помощник (root или беспроводная отладка). */
+    val phoneMode = PhoneModeState(app, settingsStore, scope) { if (!running) agent = null }
+
     private fun deviceTask(start: String, block: suspend () -> String) {
         if (deviceBusy) return
         if (!linuxEnv.isInstalled()) {
@@ -4824,7 +4827,7 @@ class ChatController(
             if (linuxActive) VideoConcatTool(video) else null,
             if (videoGen.key.isNotBlank()) VideoGenerateTool(videoGen) else null,
             if (rootEnabled) RootTool(workspace, rootShell) else null,
-        )
+        ) + phoneMode.tools()
         val sysPrompt = systemPrompt(
             workspace.root.absolutePath, shell.info, linuxActive,
             adbDevices = if (linuxActive) devices.map { "${it.label} (${it.address})" } else null,
@@ -4840,7 +4843,7 @@ class ChatController(
                 },
             ).joinToString("\n\n").ifEmpty { null },
             skills = skills,
-        )
+        ) + (phoneMode.promptSection()?.let { "\n\n" + it } ?: "")
         val workerTools: List<Tool> = baseTools + devTools.filter { it.name != "preview" }
         val workerFactory = { name: String, _: String, isolated: Boolean ->
             var tools2 = workerTools

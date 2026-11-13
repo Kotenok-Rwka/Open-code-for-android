@@ -2,4 +2,5 @@
 <resources>
     <string name="app_name">PocketCode</string>
     <string name="shortcut_new_task">Новая задача</string>
+    <string name="phone_a11y_description">Позволяет агенту PocketCode читать экран и нажимать элементы, когда вы включили режим «Управление телефоном». Данные с экрана уходят только выбранной вами модели.</string>
 </resources>

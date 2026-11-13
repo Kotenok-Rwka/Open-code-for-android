@@ -1,0 +1,9 @@
+Режим «Управление телефоном» (пакет com.pocketcode.phone) основан на проекте Mika:
+  https://github.com/wangzan101/Mika
+  Copyright 2026 wangzan101
+  Лицензия: Apache License 2.0 (https://www.apache.org/licenses/LICENSE-2.0)
+
+Из Mika перенесены и изменены для PocketCode: схема «служба доступности + помощник с правами shell», встроенный клиент
+беспроводной отладки ADB (сопряжение SPAKE2, TLS, Ed25519), передача Binder помощника через ContentProvider, фоновый
+виртуальный экран, ввод через InputManager. В каждом перенесённом файле оставлен комментарий-атрибуция.
+Часть файлов помощника (ShellContext и др.) в свою очередь основана на scrcpy (Apache-2.0, Genymobile).

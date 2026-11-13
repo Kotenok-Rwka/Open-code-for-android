@@ -7,6 +7,7 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <!-- Доступ к общим файлам телефона: проекты в видимой папке и работа с любыми папками -->
@@ -17,6 +18,14 @@
     <uses-permission
         android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="29" />
+
+    <!-- Список приложений с иконкой запуска для режима «Управление телефоном» -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
 
     <application
         android:name=".PocketCodeApp"
@@ -86,5 +95,33 @@
             android:name=".service.AgentService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
+
+        <!-- Режим «Управление телефоном»: служба доступности читает экран и жмёт элементы -->
+        <service
+            android:name=".phone.a11y.PocketAccessibilityService"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/phone_accessibility_service" />
+        </service>
+
+        <!-- Помощник с правами shell отдаёт сюда свой Binder. Звонить может только процесс с
+             INTERACT_ACROSS_USERS_FULL (shell); дальше проверяются uid, одноразовый пароль и APK. -->
+        <provider
+            android:name=".phone.helper.HelperHandoffProvider"
+            android:authorities="${applicationId}.helper"
+            android:exported="true"
+            android:multiprocess="false"
+            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
+
+        <!-- Ввод кода сопряжения из уведомления (режим «Управление телефоном») -->
+        <receiver
+            android:name=".phone.adb.PairingCodeReceiver"
+            android:exported="false" />
     </application>
 </manifest>

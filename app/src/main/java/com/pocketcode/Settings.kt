@@ -183,6 +183,20 @@ class SettingsStore(context: Context) {
         prefs.edit().putBoolean("rootEnabled", v).apply()
     }
 
+    /** Режим «Управление телефоном» включён. */
+    fun loadPhoneEnabled(): Boolean = prefs.getBoolean("phoneEnabled", false)
+
+    fun savePhoneEnabled(v: Boolean) {
+        prefs.edit().putBoolean("phoneEnabled", v).apply()
+    }
+
+    /** Когда спрашивать подтверждение действий на телефоне: EVERY или RISKY. */
+    fun loadPhoneConfirm(): String? = prefs.getString("phoneConfirm", null)
+
+    fun savePhoneConfirm(v: String) {
+        prefs.edit().putString("phoneConfirm", v).apply()
+    }
+
     fun loadQueue(): List<String> = try {
         Json.decodeFromString<List<String>>(prefs.getString("queue", null) ?: "[]")
     } catch (e: Exception) {

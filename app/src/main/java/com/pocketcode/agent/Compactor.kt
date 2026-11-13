@@ -28,10 +28,14 @@ class Compactor(private val llm: LlmClient, private val limitTokens: Int) {
         val until = history.size - keepRecent
         for (i in 0 until until) {
             val m = history[i]
-            if (m.blocks.none { it is Block.ToolResult && it.content.length > over }) continue
+            // картинки в сообщении с результатами инструментов (скриншоты телефона) старые не нужны; картинки пользователя не трогаем
+            val toolImages = m.blocks.any { it is Block.ToolResult } && m.blocks.any { it is Block.Image }
+            if (!toolImages && m.blocks.none { it is Block.ToolResult && it.content.length > over }) continue
             history[i] = m.copy(blocks = m.blocks.map { b ->
                 if (b is Block.ToolResult && b.content.length > over) {
                     b.copy(content = b.content.take(keep) + "\n...[старый вывод сокращён, вызови инструмент снова, если нужен целиком]")
+                } else if (toolImages && b is Block.Image) {
+                    Block.Text("[старый скриншот удалён]")
                 } else b
             })
         }
