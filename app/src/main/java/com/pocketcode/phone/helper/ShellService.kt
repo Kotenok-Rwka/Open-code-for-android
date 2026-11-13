@@ -588,7 +588,7 @@ class ShellService(
     override fun openScreencap(): ParcelFileDescriptor? = try {
         val pipe = ParcelFileDescriptor.createPipe()
         val process = ProcessBuilder("/system/bin/screencap", "-p")
-            .redirectError(ProcessBuilder.Redirect.DISCARD).start()
+            .redirectError(java.io.File("/dev/null")).start()
         Thread {
             try {
                 ParcelFileDescriptor.AutoCloseOutputStream(pipe[1]).use { out -> process.inputStream.copyTo(out) }
