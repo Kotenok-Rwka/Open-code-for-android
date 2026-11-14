@@ -73,6 +73,9 @@ data class AppInfo(val pkg: String, val label: String, val system: Boolean)
  * а функции возвращают null/false и не бросают исключений.
  */
 interface PhoneScreenReader {
+    /** Что служба доступности видит по экранам (для диагностики, когда дерево пустое). */
+    fun describeWindows(): String = ""
+
     /** Служба доступности включена и подключена. */
     val available: Boolean
 

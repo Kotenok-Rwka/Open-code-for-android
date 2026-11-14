@@ -190,6 +190,13 @@ class SettingsStore(context: Context) {
         prefs.edit().putBoolean("phoneEnabled", v).apply()
     }
 
+    /** Отправлять ли модели скриншоты в режиме «Управление телефоном» (иначе только текст дерева экрана). */
+    fun loadPhoneShots(): Boolean = prefs.getBoolean("phoneShots", true)
+
+    fun savePhoneShots(v: Boolean) {
+        prefs.edit().putBoolean("phoneShots", v).apply()
+    }
+
     /** Когда спрашивать подтверждение действий на телефоне: EVERY или RISKY. */
     fun loadPhoneConfirm(): String? = prefs.getString("phoneConfirm", null)
 

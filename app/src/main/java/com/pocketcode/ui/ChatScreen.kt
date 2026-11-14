@@ -84,6 +84,7 @@ fun ChatScreen(
     onMenu: () -> Unit = {},
     onOpenOcSessions: () -> Unit = {},
     onOpenDiff: () -> Unit = {},
+    onOpenPhone: () -> Unit = {},
 ) {
     var showNewChat by remember { mutableStateOf(false) }
     val imeOpen = androidx.compose.foundation.layout.WindowInsets.isImeVisible
@@ -247,7 +248,7 @@ fun ChatScreen(
             }
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 if (!hasItems) {
-                    EmptyHint(vm.workspacePath, welcome = if (!vm.welcomeSeen || vm.needsFreeStart) ({ Column(verticalArrangement = Arrangement.spacedBy(12.dp)) { if (vm.needsFreeStart) FreeStartCard(vm, onOpenSettings); if (!vm.welcomeSeen) WelcomeCard(vm) { runCatching { ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://t.me/pocket_code_github")).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) } } } }) else null) { input = it }
+                    EmptyHint(vm.workspacePath, welcome = if (!vm.welcomeSeen || vm.needsFreeStart) ({ Column(verticalArrangement = Arrangement.spacedBy(12.dp)) { if (vm.needsFreeStart) FreeStartCard(vm, onOpenSettings); if (!vm.welcomeSeen) WelcomeCard(vm) { runCatching { ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://t.me/pocket_code_github")).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) } } } }) else null, phone = vm.phoneMode.takeIf { it.enabled }, onOpenPhone = onOpenPhone) { input = it }
                 } else {
                     LazyColumn(
                         state = listState,
@@ -435,13 +436,26 @@ fun ChatScreen(
                 Box {
                     androidx.compose.material3.AssistChip(border = null, colors = chipColors(), 
                         onClick = { modeMenu = true },
-                        label = { Text((if (vm.openCodeMode) "OpenCode" else if (vm.planMode) "План" else "Обычный") + " ▾") },
+                        label = { Text((if (vm.phoneMode.enabled) "Телефон" else if (vm.openCodeMode) "OpenCode" else if (vm.planMode) "План" else "Обычный") + " ▾") },
                     )
                     DropdownMenu(expanded = modeMenu, onDismissRequest = { modeMenu = false }) {
-                        listOf("Обычный", "OpenCode", "План").forEachIndexed { i, label ->
-                            DropdownMenuItem(text = { Text(label) }, onClick = { vm.openCodeMode = i == 1; vm.planMode = i == 2; modeMenu = false })
+                        listOf("Обычный", "OpenCode", "План", "Телефон").forEachIndexed { i, label ->
+                            DropdownMenuItem(text = { Text(label) }, onClick = {
+                                vm.openCodeMode = i == 1; vm.planMode = i == 2
+                                vm.phoneMode.chooseEnabled(i == 3)
+                                modeMenu = false
+                                // режим «Телефон» без службы доступности бесполезен: сразу ведём на настройку
+                                if (i == 3 && !vm.phoneMode.ready) onOpenPhone()
+                            })
                         }
                     }
+                }
+                if (vm.phoneMode.enabled) {
+                    androidx.compose.material3.AssistChip(
+                        border = null, colors = chipColors(), onClick = onOpenPhone,
+                        label = { Text(if (vm.phoneMode.ready) "Настройки телефона" else "Завершить настройку") },
+                        leadingIcon = { Icon(AppIcons.Phone, null, Modifier.size(16.dp)) },
+                    )
                 }
                 if (vm.openCodeMode) {
                     androidx.compose.material3.AssistChip(border = null, colors = chipColors(), onClick = { modelDraft = vm.ocModel; vm.loadOcModels(); dlg = "ocmodel" }, label = { Text(vm.ocModel.ifBlank { "по умолчанию" }.take(22), maxLines = 1) }, leadingIcon = { Icon(AppIcons.Cpu, null, Modifier.size(16.dp)) })
@@ -932,7 +946,7 @@ fun ChatScreen(
 
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
-private fun EmptyHint(workspacePath: String, welcome: (@Composable () -> Unit)?, onPick: (String) -> Unit) {
+private fun EmptyHint(workspacePath: String, welcome: (@Composable () -> Unit)?, phone: PhoneModeState? = null, onOpenPhone: () -> Unit = {}, onPick: (String) -> Unit) {
     Column(
         Modifier
             .fillMaxSize()
@@ -949,13 +963,29 @@ private fun EmptyHint(workspacePath: String, welcome: (@Composable () -> Unit)?,
             ),
         )
         Text(
-            "Агент читает и правит файлы, запускает команды и работает с git прямо на телефоне.",
+            if (phone != null) "Агент смотрит на экран и управляет телефоном: открывает приложения, нажимает, вводит текст. Можно в фоне, не трогая твой экран." else "Агент читает и правит файлы, запускает команды и работает с git прямо на телефоне.",
             style = MaterialTheme.typography.bodyMedium,
             color = cs.onSurfaceVariant,
             modifier = Modifier.padding(top = 8.dp, bottom = 18.dp),
         )
+        if (phone != null && !phone.ready) {
+            Column(
+                Modifier.fillMaxWidth().padding(bottom = 14.dp).clip(RoundedCornerShape(20.dp)).background(cs.errorContainer).clickable { onOpenPhone() }.padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text("Нужна настройка", style = MaterialTheme.typography.titleSmall, color = cs.onErrorContainer)
+                Text("Включи службу доступности (и, по желанию, помощника) — нажми сюда.", style = MaterialTheme.typography.bodySmall, color = cs.onErrorContainer)
+            }
+        }
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            listOf(
+            (if (phone != null) listOf(
+                Triple(AppIcons.Phone, "Версия Android", "Открой Настройки и скажи, какая версия Android и сколько свободно памяти."),
+                Triple(AppIcons.Globe, "Погода в браузере", "Открой браузер и найди прогноз погоды на завтра, перескажи коротко."),
+                Triple(AppIcons.Activity, "Будильник", "Поставь будильник на завтра на 7:30."),
+                Triple(AppIcons.Layers, "Что в уведомлениях", "Открой шторку уведомлений и перескажи, что там нового. Ничего не удаляй и ни на что не отвечай."),
+                Triple(AppIcons.Bot, "Написать в фоне", "В фоновом режиме открой Telegram и покажи список последних чатов. Ничего не отправляй."),
+                Triple(AppIcons.Sparkles, "Калькулятор в фоне", "В фоновом режиме открой калькулятор и посчитай 17 × 23, не трогая мой экран."),
+            ) else listOf(
                 Triple(AppIcons.Search, "Разберись в проекте", "Изучи проект и коротко опиши его структуру и как его запускать."),
                 Triple(AppIcons.Bug, "Найди ошибки", "Проверь проект на ошибки и исправь найденное. Перед правками перечисли, что собираешься менять."),
                 Triple(AppIcons.Flask, "Напиши тесты", "Напиши тесты для основных функций проекта и запусти их."),
@@ -966,7 +996,7 @@ private fun EmptyHint(workspacePath: String, welcome: (@Composable () -> Unit)?,
                 Triple(AppIcons.Book, "Объясни код", "Объясни простыми словами, как устроен главный файл этого проекта и что в нём важно."),
                 Triple(AppIcons.Layers, "Упрости код", "Найди самое запутанное место в проекте и предложи, как его упростить. Сначала покажи план, ничего не меняй без моего согласия."),
                 Triple(AppIcons.Package, "Зависимости", "Проверь зависимости проекта: что устарело или не используется. Покажи список, ничего не обновляй без моего согласия."),
-            ).chunked(2).forEach { pair ->
+            )).chunked(2).forEach { pair ->
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     pair.forEach { (icon, title, text) ->
                         Column(

@@ -74,7 +74,7 @@ import com.pocketcode.ui.ProjectsScreen
 import com.pocketcode.ui.SessionsScreen
 import com.pocketcode.ui.SettingsScreen
 
-private enum class Screen { CHAT, SETTINGS, SESSIONS, PROJECTS, FILES, DEVICES, PLUGINS, DIAG, COMPARE, CONTEXT, TERMINAL, GIT, OCSESSIONS, REMOTE, DIFF, SEARCH, HUB_PROJECT, HUB_AGENT, HUB_MORE, FIND, ROOT, OCSETTINGS, MODELS, LINUX, UPDATE, BACKUP, VIDEO, LANGUAGE, SMART, LEARN }
+private enum class Screen { CHAT, SETTINGS, SESSIONS, PROJECTS, FILES, DEVICES, PLUGINS, DIAG, COMPARE, CONTEXT, TERMINAL, GIT, OCSESSIONS, REMOTE, DIFF, SEARCH, HUB_PROJECT, HUB_AGENT, HUB_MORE, FIND, ROOT, PHONE, OCSETTINGS, MODELS, LINUX, UPDATE, BACKUP, VIDEO, LANGUAGE, SMART, LEARN }
 
 class MainActivity : ComponentActivity() {
     private val controller: ChatController
@@ -312,6 +312,7 @@ class MainActivity : ComponentActivity() {
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Terminal, "Среда Linux", "Установка мини-Linux, python, git, node", if (!pocketApp.controller.linuxInstalled && pocketApp.controller.linuxSupported) "не установлен" else null) { openFrom(Screen.HUB_MORE, Screen.LINUX) },
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Sparkles, "Умные функции", "Авто-режим, предохранитель, корзина, автовыбор модели, карта проекта", if (pocketApp.controller.rootAuto) "авто вкл" else null) { openFrom(Screen.HUB_MORE, Screen.SMART) },
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Shield, "Root и Android", "Как дать агенту данные с телефона: четыре способа", if (pocketApp.controller.rootAuto) "авто-режим вкл" else if (pocketApp.controller.hostMode == "ask") "мост вкл" else null) { openFrom(Screen.HUB_MORE, Screen.ROOT) },
+                                com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Phone, "Управление телефоном", "Агент смотрит на экран и нажимает: служба доступности, помощник, фон", if (pocketApp.controller.phoneMode.enabled) "вкл" else null) { openFrom(Screen.HUB_MORE, Screen.PHONE) },
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Phone, "Устройства", "ADB, root, подключённые устройства") { openFrom(Screen.HUB_MORE, Screen.DEVICES) },
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Refresh, "Синхронизация и пульт", "Файлы между телефонами и задачи на другой телефон") { openFrom(Screen.HUB_MORE, Screen.REMOTE) },
                                 com.pocketcode.ui.hubHeader("Приложение"),
@@ -345,6 +346,7 @@ class MainActivity : ComponentActivity() {
                                 onOpenGit = { screen = Screen.GIT },
                                 onOpenOcSessions = { screen = Screen.OCSESSIONS },
                                 onOpenDiff = { screen = Screen.DIFF },
+                                onOpenPhone = { openFrom(Screen.CHAT, Screen.PHONE) },
                                 onMenu = { screen = Screen.HUB_MORE },
                                 onExport = { exportMd.launch("chat-" + vm.currentProject + ".md") },
                                 onPickFolder = {
@@ -468,6 +470,10 @@ class MainActivity : ComponentActivity() {
                     Screen.SESSIONS -> {
                         BackHandler { screen = backTo }
                         SessionsScreen(vm, onBack = { screen = backTo })
+                    }
+                    Screen.PHONE -> {
+                        BackHandler { screen = backTo }
+                        com.pocketcode.ui.PhoneScreen(vm, onBack = { screen = backTo }, onToChat = { screen = Screen.CHAT })
                     }
                     Screen.ROOT -> {
                         BackHandler { screen = backTo }

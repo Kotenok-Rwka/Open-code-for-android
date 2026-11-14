@@ -62,7 +62,7 @@ abstract class PhoneTool(
             ?: input.node()?.let { "№$it" } ?: ""
 }
 
-class PhoneLookTool(phone: PhoneController, confirm: () -> PhoneConfirm) : PhoneTool(phone, confirm) {
+class PhoneLookTool(phone: PhoneController, confirm: () -> PhoneConfirm, private val screenshots: () -> Boolean = { true }) : PhoneTool(phone, confirm) {
     override val name = "phone_look"
     override val description =
         "Показывает текущий экран телефона: список элементов с номерами и координатами (текст) и скриншот. " +
@@ -71,9 +71,9 @@ class PhoneLookTool(phone: PhoneController, confirm: () -> PhoneConfirm) : Phone
     override val readOnly = true
     override fun describe(input: JsonObject): String { needsApproval(input); return "Смотрю на экран телефона" }
     override suspend fun run(input: JsonObject): String {
-        val r = phone.look(withImage = input.bool("image") != false)
+        val r = phone.look(withImage = input.bool("image") != false && screenshots())
         r.jpeg?.let { addImage(it) }
-        return r.text + if (r.jpeg == null) "\n(скриншот недоступен)" else ""
+        return r.text + if (r.jpeg == null && screenshots()) "\n(скриншот недоступен, ориентируйся по списку элементов)" else ""
     }
 }
 
@@ -182,6 +182,7 @@ class PhoneAppTool(phone: PhoneController, confirm: () -> PhoneConfirm) : PhoneT
     override val schema = objSchema(
         Prop("action", "string", "launch | open_url | list | background_on | background_off"),
         Prop("value", "string", "Название, пакет, адрес или фильтр", required = false),
+        Prop("background", "boolean", "Для launch: открыть на фоновом экране (включит его сам)", required = false),
     )
     override fun risky(input: JsonObject) =
         input.str("action") == "open_url" && PhoneSafety.riskyUrl(input.str("value").orEmpty())
@@ -204,7 +205,7 @@ class PhoneAppTool(phone: PhoneController, confirm: () -> PhoneConfirm) : PhoneT
     override suspend fun run(input: JsonObject): String {
         val value = input.str("value").orEmpty()
         return when (input.need("action")) {
-            "launch" -> { require(value.isNotBlank()) { "Не указано приложение" }; act { phone.launch(value) } }
+            "launch" -> { require(value.isNotBlank()) { "Не указано приложение" }; act { phone.launch(value, input.bool("background") == true) } }
             "open_url" -> {
                 require(value.startsWith("http://") || value.startsWith("https://") || PhoneSafety.riskyUrl(value)) { "Нужен адрес http/https" }
                 act { phone.openUrl(value) }
@@ -240,8 +241,8 @@ class PhoneWaitTool(phone: PhoneController, confirm: () -> PhoneConfirm) : Phone
 }
 
 /** Все инструменты режима. [confirm] читается при каждом вызове, поэтому смена настройки действует сразу. */
-fun phoneTools(phone: PhoneController, confirm: () -> PhoneConfirm): List<Tool> = listOf(
-    PhoneLookTool(phone, confirm), PhoneTapTool(phone, confirm), PhoneLongPressTool(phone, confirm),
+fun phoneTools(phone: PhoneController, confirm: () -> PhoneConfirm, screenshots: () -> Boolean = { true }): List<Tool> = listOf(
+    PhoneLookTool(phone, confirm, screenshots), PhoneTapTool(phone, confirm), PhoneLongPressTool(phone, confirm),
     PhoneSwipeTool(phone, confirm), PhoneTypeTool(phone, confirm), PhoneKeyTool(phone, confirm),
     PhoneAppTool(phone, confirm), PhoneWaitTool(phone, confirm),
 )

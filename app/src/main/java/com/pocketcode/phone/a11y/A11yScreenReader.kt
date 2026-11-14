@@ -33,6 +33,21 @@ object A11yScreenReader : PhoneScreenReader {
     private val lock = Any()
     private var lastNodes: List<AccessibilityNodeInfo?> = emptyList()
 
+    override fun describeWindows(): String {
+        val svc = service ?: return "служба доступности не подключена"
+        return try {
+            val sb = StringBuilder()
+            sb.append("экран 0: окон ").append(svc.windows.orEmpty().size)
+            if (Build.VERSION.SDK_INT >= 30) {
+                val all = svc.windowsOnAllDisplays
+                for (i in 0 until all.size()) {
+                    sb.append("; экран ").append(all.keyAt(i)).append(": окон ").append(all.valueAt(i).size)
+                }
+            }
+            sb.toString()
+        } catch (e: Exception) { "не удалось прочитать окна: " + e.javaClass.simpleName }
+    }
+
     override suspend fun snapshot(displayId: Int): ScreenSnapshot? = withContext(Dispatchers.Default) {
         val svc = service ?: return@withContext null
         try {

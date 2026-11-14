@@ -151,49 +151,6 @@ fun DevicesScreen(vm: ChatController, onBack: () -> Unit) {
                 modifier = Modifier.fillMaxWidth(),
             ) { Text("Проверить root") }
 
-            Text("Управление телефоном", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp))
-            Text(
-                "Агент сможет смотреть на экран и управлять этим телефоном: нажимать, листать, вводить текст, открывать приложения, " +
-                    "в том числе на отдельном фоновом экране. Нужна служба доступности и помощник: он запускается через root " +
-                    "или, без root, через беспроводную отладку Android 11+ (разовое сопряжение по коду). Идея и часть кода взяты из проекта Mika (Apache-2.0).",
-                style = MaterialTheme.typography.bodySmall,
-            )
-            val pm = vm.phoneMode
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(selected = pm.enabled, onClick = { pm.chooseEnabled(true) }, label = { Text("Режим включён") })
-                FilterChip(selected = !pm.enabled, onClick = { pm.chooseEnabled(false) }, label = { Text("Выключен") })
-            }
-            Text("Подтверждения", style = MaterialTheme.typography.labelLarge)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(
-                    selected = pm.confirm == com.pocketcode.phone.PhoneConfirm.EVERY,
-                    onClick = { pm.chooseConfirm(com.pocketcode.phone.PhoneConfirm.EVERY) },
-                    label = { Text("Каждое действие") },
-                )
-                FilterChip(
-                    selected = pm.confirm == com.pocketcode.phone.PhoneConfirm.RISKY,
-                    onClick = { pm.chooseConfirm(com.pocketcode.phone.PhoneConfirm.RISKY) },
-                    label = { Text("Только рискованные") },
-                )
-            }
-            Text(
-                "Рискованные: оплата, удаление, выдача разрешений, звонки и сообщения. Поля паролей агент не заполняет никогда.",
-                style = MaterialTheme.typography.bodySmall,
-            )
-            Text(if (pm.accessibilityOn) "Служба доступности: включена" else "Служба доступности: выключена", style = MaterialTheme.typography.bodyMedium)
-            Text(if (pm.helper.connected) pm.helper.message else "Помощник не запущен", style = MaterialTheme.typography.bodyMedium)
-            OutlinedButton(onClick = { pm.openAccessibilitySettings() }, modifier = Modifier.fillMaxWidth()) { Text("Открыть настройки доступности") }
-            OutlinedButton(onClick = { pm.startRoot() }, enabled = !pm.busy, modifier = Modifier.fillMaxWidth()) { Text("Запустить помощника (root)") }
-            OutlinedButton(onClick = { pm.beginPairing() }, enabled = !pm.busy, modifier = Modifier.fillMaxWidth()) { Text("Сопряжение с отладкой по Wi-Fi") }
-            OutlinedButton(onClick = { pm.startWireless() }, enabled = !pm.busy, modifier = Modifier.fillMaxWidth()) { Text("Запустить помощника (без root)") }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = { pm.enableAccessibilityViaHelper() }, enabled = !pm.busy && pm.helper.connected) { Text("Включить доступность") }
-                OutlinedButton(onClick = { pm.stopHelper() }, enabled = !pm.busy && pm.helper.connected) { Text("Остановить помощника") }
-            }
-            pm.status?.let {
-                Text(it, style = MaterialTheme.typography.bodySmall)
-            }
-
             vm.deviceStatus?.let {
                 Text(it, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
             }

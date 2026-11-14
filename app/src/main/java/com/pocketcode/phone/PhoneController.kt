@@ -39,10 +39,11 @@ class PhoneController(
             ScreenText.format(snap) + "\nКоординаты — в пикселях экрана ${snap.width}x${snap.height}; скриншот может быть уменьшен."
         } else if (!reader.available) {
             "Служба доступности выключена: дерево экрана недоступно. Попроси пользователя включить её в настройках режима."
-        } else "Не удалось прочитать экран."
+        } else "Не удалось прочитать экран $displayId. Видно службе доступности: ${reader.describeWindows()}."
         val jpeg = if (!withImage) null else if (displayId != 0) input.hiddenScreenshot(maxSide)
         else reader.screenshot(0, maxSide) ?: input.screencap(maxSide)
-        return Look(text, jpeg)
+        val diag = if (displayId != 0 && snap != null && snap.nodes.isEmpty()) "\nНа фоновом экране $displayId пока ничего нет: сначала запусти приложение (phone_app launch). Видно службе доступности: ${reader.describeWindows()}." else ""
+        return Look(text + diag, jpeg)
     }
 
     /** Ждёт, пока экран успокоится после действия. */
@@ -100,7 +101,11 @@ class PhoneController(
         return matchApp(apps, q)
     }
 
-    suspend fun launch(query: String): String? {
+    /** [background] — сначала включить фоновый экран (если ещё не включён) и открыть приложение на нём. */
+    suspend fun launch(query: String, background: Boolean = false): String? {
+        if (background && displayId == 0 && openBackground(1080, 1920, 420) <= 0) {
+            return "Фоновый экран недоступен: нужен помощник (root или беспроводная отладка)."
+        }
         val app = resolveApp(query)
         val pkg = app?.pkg ?: query.trim().takeIf { it.contains('.') && !it.contains(' ') } ?: return "Приложение «$query» не найдено."
         val ok = if (input.connected) input.launchApp(displayId, pkg) else displayId == 0 && localLaunch(pkg)

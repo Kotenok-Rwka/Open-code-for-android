@@ -39,6 +39,9 @@ class PhoneModeState(
         private set
     var confirm by mutableStateOf(PhoneConfirm.parse(store.loadPhoneConfirm()))
         private set
+    /** Прикладывать скриншоты к ответам инструментов (нужна модель с поддержкой изображений). */
+    var screenshots by mutableStateOf(store.loadPhoneShots())
+        private set
     var status by mutableStateOf<String?>(null)
         private set
     var busy by mutableStateOf(false)
@@ -69,16 +72,24 @@ class PhoneModeState(
         onChanged()
     }
 
+    fun chooseScreenshots(v: Boolean) {
+        screenshots = v
+        store.savePhoneShots(v)
+    }
+
+    /** Режим готов к работе: служба доступности включена или есть помощник. */
+    val ready: Boolean get() = accessibilityOn || helper.connected
+
     fun chooseConfirm(c: PhoneConfirm) {
         confirm = c
         store.savePhoneConfirm(c.name)
     }
 
     /** Инструменты агента; пусто, если режим выключен. */
-    fun tools(): List<Tool> = if (enabled) phoneTools(controller) { confirm } else emptyList()
+    fun tools(): List<Tool> = if (enabled) phoneTools(controller, { confirm }, { screenshots }) else emptyList()
 
     fun promptSection(): String? =
-        if (enabled) PhonePrompt.section(controller.capabilities(), confirm) else null
+        if (enabled) PhonePrompt.section(controller.capabilities(), confirm, screenshots) else null
 
     fun openAccessibilitySettings() {
         runCatching { app.startActivity(PocketAccessibilityService.openSettingsIntent()) }
