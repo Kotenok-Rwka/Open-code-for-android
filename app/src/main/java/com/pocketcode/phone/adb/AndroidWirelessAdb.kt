@@ -93,6 +93,9 @@ class AndroidWirelessAdb(context: Context) : WirelessAdb {
         }
     }
 
+    /** Сопряжение с отладкой по Wi-Fi уже проходило: ключ сохранён. */
+    fun isPaired(): Boolean = AndroidAdb.hasKey(app)
+
     override fun forgetPairing() {
         runCatching { AndroidAdb.forget(app) }.onFailure { Log.w(TAG, "forget pairing failed", it) }
         runCatching { prefs.edit().remove(KEY_PORT).apply() }

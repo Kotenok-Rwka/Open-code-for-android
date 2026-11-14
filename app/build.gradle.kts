@@ -111,6 +111,10 @@ dependencies {
     implementation("org.jsoup:jsoup:1.17.2")
     implementation("androidx.work:work-runtime-ktx:2.9.1")
 
+    // Распознавание текста с экрана (барабаны выбора, самописные интерфейсы): модели работают на телефоне, как в Mika
+    implementation("com.google.mlkit:text-recognition:16.0.1")
+    implementation("com.google.mlkit:text-recognition-chinese:16.0.1")
+
     // Git без внешних программ: чистая Java-реализация
     implementation("org.eclipse.jgit:org.eclipse.jgit:5.13.3.202401111512-r")
     implementation("org.slf4j:slf4j-nop:1.7.36")

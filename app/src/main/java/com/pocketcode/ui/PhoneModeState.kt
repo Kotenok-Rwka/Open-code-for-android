@@ -13,9 +13,14 @@ import com.pocketcode.phone.PhoneConfirm
 import com.pocketcode.phone.PhoneController
 import com.pocketcode.phone.PhonePrompt
 import com.pocketcode.phone.PhoneText
+import com.pocketcode.phone.BootRestore
+import com.pocketcode.phone.StartOutcome
+import com.pocketcode.phone.restoreText
+import com.pocketcode.phone.adb.DeveloperSettings
 import com.pocketcode.phone.HelperState
 import com.pocketcode.phone.HelperMode
 import com.pocketcode.phone.a11y.A11yScreenReader
+import com.pocketcode.phone.a11y.PhoneOcr
 import com.pocketcode.phone.a11y.PocketAccessibilityService
 import com.pocketcode.phone.adb.AndroidWirelessAdb
 import com.pocketcode.phone.adb.NotificationPairingFlow
@@ -42,6 +47,12 @@ class PhoneModeState(
     /** Прикладывать скриншоты к ответам инструментов (нужна модель с поддержкой изображений). */
     var screenshots by mutableStateOf(store.loadPhoneShots())
         private set
+    /** Запускать помощника заново после перезагрузки телефона. */
+    var restoreAfterBoot by mutableStateOf(store.loadPhoneRestore())
+        private set
+    /** Итог последнего автозапуска после перезагрузки (по-русски) или null. */
+    var restoreResult by mutableStateOf(restoreText(store.loadPhoneRestoreResult()))
+        private set
     var status by mutableStateOf<String?>(null)
         private set
     var busy by mutableStateOf(false)
@@ -63,6 +74,7 @@ class PhoneModeState(
             userTaps = { PocketAccessibilityService.recentUserTaps() },
             spillExcluded = { homePackages() + app.packageName },
             homePackages = ::homePackages,
+            ocr = { jpeg -> PhoneOcr.readJpeg(jpeg) },
         )
     }
 
@@ -121,9 +133,60 @@ class PhoneModeState(
         }
     }
 
-    fun startRoot() = run("Запускаю помощника через root… (менеджер root может показать запрос)") { PhoneText.outcome(hub.startViaRoot()) }
+    fun startRoot() = run("Запускаю помощника через root… (менеджер root может показать запрос)") {
+        remember(hub.startViaRoot(), BootRestore.MODE_ROOT)
+    }
 
-    fun startWireless() = run("Запускаю помощника через беспроводную отладку…") { PhoneText.outcome(hub.startViaWirelessDebugging()) }
+    fun startWireless() = run("Запускаю помощника через беспроводную отладку…") {
+        // если приложению выдано право менять системные настройки, отладку включаем сами
+        if (DeveloperSettings.wirelessDebugging(app.contentResolver) == false) DeveloperSettings.turnOnWirelessDebugging(app.contentResolver)
+        remember(hub.startViaWirelessDebugging(), BootRestore.MODE_WIRELESS)
+    }
+
+    /** Запоминает способ удачного запуска: так помощника запустят заново после перезагрузки. */
+    private fun remember(o: StartOutcome, mode: String): String {
+        if (o is StartOutcome.Started) store.savePhoneStartMode(mode)
+        return PhoneText.outcome(o)
+    }
+
+    /**
+     * Переключатель «Запускать помощника после перезагрузки». Для способа без root приложению нужно право менять системные настройки
+     * (чтобы включить беспроводную отладку): его выдаёт помощник командой pm grant, поэтому помощник должен быть запущен.
+     */
+    fun chooseRestore(v: Boolean) {
+        if (!v) {
+            restoreAfterBoot = false
+            store.savePhoneRestore(false)
+            return
+        }
+        if (busy) return
+        busy = true
+        scope.launch {
+            try {
+                val needsWrite = store.loadPhoneStartMode() != BootRestore.MODE_ROOT
+                val granted = app.checkSelfPermission(PERMISSION_WRITE_SECURE) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                if (needsWrite && !granted) {
+                    if (!hub.input.connected) {
+                        status = "Сначала запусти помощника: он выдаст приложению право включать отладку после перезагрузки."
+                        return@launch
+                    }
+                    val r = hub.input.shell("pm grant " + app.packageName + " " + PERMISSION_WRITE_SECURE)
+                    if (r.exitCode != 0) {
+                        status = "Не удалось выдать право менять системные настройки: " + r.output.trim()
+                        return@launch
+                    }
+                }
+                restoreAfterBoot = true
+                store.savePhoneRestore(true)
+                status = if (store.loadPhoneStartMode() == null) "Автозапуск включён. Запусти помощника один раз, и после перезагрузки он запустится сам."
+                else "Автозапуск включён."
+            } catch (e: Exception) {
+                status = "Ошибка: " + (e.message ?: e.javaClass.simpleName)
+            } finally {
+                busy = false
+            }
+        }
+    }
 
     fun stopHelper() = run("Останавливаю помощника…") { hub.stop(); "Помощник остановлен." }
 
@@ -142,6 +205,10 @@ class PhoneModeState(
     fun cancelPairing() {
         pairing.cancel()
         status = null
+    }
+
+    private companion object {
+        const val PERMISSION_WRITE_SECURE = "android.permission.WRITE_SECURE_SETTINGS"
     }
 
     private suspend fun launchLocal(target: String): Boolean = withContext(Dispatchers.Main) {

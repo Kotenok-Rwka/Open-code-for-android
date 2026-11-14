@@ -3,8 +3,9 @@ package com.pocketcode.phone
 /** Часть системного промпта для режима «Управление телефоном». */
 object PhonePrompt {
     fun section(capabilities: String, confirm: PhoneConfirm, screenshots: Boolean = true): String = """
-Phone control mode is ON. You can operate the user's phone like a person: phone_look (screen as numbered elements + screenshot), phone_tap, phone_long_press, phone_swipe, phone_type, phone_key, phone_app, phone_wait. Current capabilities: $capabilities.
+Phone control mode is ON. You can operate the user's phone like a person: phone_look (screen as numbered elements + screenshot), phone_tap, phone_long_press, phone_swipe, phone_type, phone_set_wheel, phone_key, phone_app, phone_wait. Current capabilities: $capabilities.
 - Always start with phone_look. Prefer tapping by element number (node) over coordinates; after every action check the result in the returned screen text.
+- Wheel pickers (time, date, region, numbers): do not swipe them by hand; call phone_set_wheel with the wheel (or one of its rows) as node and the target value as written on it. If the element list has almost no text, phone_look adds text recognized from the screenshot (Latin and Chinese only, not Cyrillic).
 - Element numbers are valid only until the next phone_look. If an action fails, look again instead of repeating blindly.
 - Never type into password fields, never enter payment details, and never confirm payments, deletions, permission grants or sending messages/money unless the user explicitly asked for exactly that. If unsure, ask the user.
 - Background work: when the user asks to do something "in the background" or without touching their screen, FIRST call phone_app background_on, then open the app with phone_app launch and operate it with the same tools: every action then goes to the hidden screen and phone_look shows it. Do not launch apps on the main screen in that case. Call phone_app background_off when finished. It needs the helper; if it is unavailable, say so instead of using the main screen.

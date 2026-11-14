@@ -95,7 +95,24 @@ interface PhoneScreenReader {
     /** Жесты через dispatchGesture; работают только на основном экране. */
     suspend fun gestureTap(x: Int, y: Int, durationMs: Long = 50): Boolean
     suspend fun gestureSwipe(x1: Int, y1: Int, x2: Int, y2: Int, durationMs: Long): Boolean
+
+    /**
+     * Поставить барабан выбора (время, дата, регион…), к которому относится элемент [id] последнего снимка, на значение [value].
+     * null — не поддерживается или службы нет. Перетаскивание и распознавание текста даёт вызывающий через [io].
+     */
+    suspend fun setWheel(id: Int, value: String, io: WheelIo): WheelOutcome? = null
 }
+
+/** Что нужно барабану от окружения: размер и номер экрана, перетаскивание пальцем и распознавание текста с экрана. */
+class WheelIo(
+    val displayId: Int,
+    val width: Int,
+    val height: Int,
+    /** Одним касанием пройти по точкам (пиксели); [slow] — медленно, без броска. */
+    val drag: suspend (points: List<Pair<Int, Int>>, slow: Boolean) -> Boolean,
+    /** Текст с экрана; null — распознать не вышло. */
+    val ocr: suspend () -> List<OcrLine>?,
+)
 
 /**
  * Помощник с правами shell. Реализация — пакет com.pocketcode.phone.helper.

@@ -16,6 +16,8 @@ import com.pocketcode.phone.PRect
 import com.pocketcode.phone.PhoneGlobal
 import com.pocketcode.phone.PhoneScreenReader
 import com.pocketcode.phone.ScreenSnapshot
+import com.pocketcode.phone.WheelIo
+import com.pocketcode.phone.WheelOutcome
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -143,6 +145,20 @@ object A11yScreenReader : PhoneScreenReader {
     override suspend fun scrollNode(id: Int, forward: Boolean): Boolean = withContext(Dispatchers.Default) {
         val n = fresh(id) ?: return@withContext false
         n.performAction(if (forward) AccessibilityNodeInfo.ACTION_SCROLL_FORWARD else AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD)
+    }
+
+    override suspend fun setWheel(id: Int, value: String, io: WheelIo): WheelOutcome? = withContext(Dispatchers.Default) {
+        val svc = service ?: return@withContext null
+        val n = fresh(id) ?: return@withContext WheelOutcome(false, null, null, 0, "none", error = "ref_expired")
+        val driver = WheelDriver(
+            io.width, io.height,
+            quiet = { q, cap -> delay(minOf(q + 150, cap)) },
+            drag = io.drag,
+            ocr = io.ocr,
+            imeShown = { io.displayId == Display.DEFAULT_DISPLAY && runCatching { svc.windows.orEmpty().any { it.type == AccessibilityWindowInfo.TYPE_INPUT_METHOD } }.getOrDefault(false) },
+            back = { runCatching { svc.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK) }.getOrDefault(false) },
+        )
+        driver.set(n, value)
     }
 
     override suspend fun global(action: PhoneGlobal): Boolean {

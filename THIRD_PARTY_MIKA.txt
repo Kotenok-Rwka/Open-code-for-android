@@ -21,3 +21,7 @@
 Изменения относительно Mika: код переписан и сокращён под PocketCode (пакет com.pocketcode.phone), русские сообщения,
 другие имена классов и интерфейса помощника (IPocketShell вместо IMikaShell), подключение к агенту PocketCode.
 Защита от «всплытия» приложений на основной экран (MainScreenLog, MainScreenWatch, MainScreenSpill) перенесена из Mika.
+Автозапуск помощника после перезагрузки с автовключением беспроводной отладки (BootRestore, RecoveryPolicy, BootRestorer),
+установка барабанов выбора (WheelMath, WheelSteps, WheelDrags, WheelDriver) и распознавание текста с экрана (PhoneOcr, на ML Kit)
+перенесены из Mika и изменены для PocketCode. Модели распознавания текста Google ML Kit подключены как отдельная зависимость.
+Распознавание латиницы и китайского, кириллицу эти модели не читают.

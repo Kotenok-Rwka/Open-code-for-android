@@ -197,6 +197,27 @@ class SettingsStore(context: Context) {
         prefs.edit().putBoolean("phoneShots", v).apply()
     }
 
+    /** Запускать помощника заново после перезагрузки телефона. */
+    fun loadPhoneRestore(): Boolean = prefs.getBoolean("phoneRestore", false)
+
+    fun savePhoneRestore(v: Boolean) {
+        prefs.edit().putBoolean("phoneRestore", v).apply()
+    }
+
+    /** Как помощника запускали в последний раз: ROOT или WIRELESS; null — ещё не запускали. */
+    fun loadPhoneStartMode(): String? = prefs.getString("phoneStartMode", null)
+
+    fun savePhoneStartMode(v: String) {
+        prefs.edit().putString("phoneStartMode", v).apply()
+    }
+
+    /** Итог последнего автозапуска после перезагрузки (имя RestoreOutcome). */
+    fun loadPhoneRestoreResult(): String? = prefs.getString("phoneRestoreResult", null)
+
+    fun savePhoneRestoreResult(v: String) {
+        prefs.edit().putString("phoneRestoreResult", v).apply()
+    }
+
     /** Когда спрашивать подтверждение действий на телефоне: EVERY или RISKY. */
     fun loadPhoneConfirm(): String? = prefs.getString("phoneConfirm", null)
 

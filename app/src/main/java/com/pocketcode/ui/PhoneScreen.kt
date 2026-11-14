@@ -4,6 +4,7 @@ package com.pocketcode.ui
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.ui.Alignment
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -17,6 +18,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -75,6 +77,17 @@ fun PhoneScreen(vm: ChatController, onBack: () -> Unit, onToChat: () -> Unit) {
                 OutlinedButton(onClick = { pm.stopHelper() }, enabled = !pm.busy && pm.helper.connected) { Text("Остановить помощника") }
             }
             pm.status?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Switch(checked = pm.restoreAfterBoot, onCheckedChange = { pm.chooseRestore(it) }, enabled = !pm.busy)
+                Text("Запускать помощника после перезагрузки", style = MaterialTheme.typography.bodyMedium)
+            }
+            Text(
+                "После перезагрузки телефона приложение само включит беспроводную отладку и запустит помощника (или запустит его через root). " +
+                    "Без root нужен один раз запущенный помощник: он выдаст приложению право менять системные настройки.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            pm.restoreResult?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
 
             Text("Шаг 3. Подтверждения", style = MaterialTheme.typography.titleMedium)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

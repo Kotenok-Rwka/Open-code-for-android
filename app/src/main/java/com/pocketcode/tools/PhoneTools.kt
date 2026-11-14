@@ -5,6 +5,7 @@ import com.pocketcode.llm.Block
 import com.pocketcode.phone.PhoneConfirm
 import com.pocketcode.phone.PhoneController
 import com.pocketcode.phone.PhoneSafety
+import com.pocketcode.phone.WheelText
 import kotlinx.coroutines.delay
 import kotlinx.serialization.json.JsonObject
 
@@ -69,12 +70,16 @@ class PhoneLookTool(phone: PhoneController, confirm: () -> PhoneConfirm, private
     override val name = "phone_look"
     override val description =
         "Показывает текущий экран телефона: список элементов с номерами и координатами (текст) и скриншот. " +
-            "Вызывай перед действиями и после них, чтобы убедиться в результате. Номера элементов действуют до следующего phone_look."
-    override val schema = objSchema(Prop("image", "boolean", "Прикладывать скриншот (по умолчанию true)", required = false))
+            "Вызывай перед действиями и после них, чтобы убедиться в результате. Номера элементов действуют до следующего phone_look. " +
+            "Если в дереве почти нет текста (игры, самописные интерфейсы), текст автоматически распознаётся по картинке; ocr=true делает это принудительно."
+    override val schema = objSchema(
+        Prop("image", "boolean", "Прикладывать скриншот (по умолчанию true)", required = false),
+        Prop("ocr", "boolean", "Всегда добавлять текст, распознанный по картинке экрана (по умолчанию — только когда в дереве почти нет текста)", required = false),
+    )
     override val readOnly = true
     override fun describe(input: JsonObject): String { needsApproval(input); return "Смотрю на экран телефона" }
     override suspend fun run(input: JsonObject): String {
-        val r = phone.look(withImage = input.bool("image") != false && screenshots())
+        val r = phone.look(withImage = input.bool("image") != false && screenshots(), ocrText = input.bool("ocr") == true)
         r.jpeg?.let { addImage(it) }
         return r.text + if (r.jpeg == null && screenshots()) "\n(скриншот недоступен, ориентируйся по списку элементов)" else ""
     }
@@ -164,6 +169,31 @@ class PhoneTypeTool(phone: PhoneController, confirm: () -> PhoneConfirm) : Phone
     override suspend fun run(input: JsonObject): String = act { phone.typeText(input.need("text"), input.node()) }
 }
 
+class PhoneSetWheelTool(phone: PhoneController, confirm: () -> PhoneConfirm) : PhoneTool(phone, confirm) {
+    override val name = "phone_set_wheel"
+    override val description =
+        "Ставит барабан выбора (время, дата, регион, числа) на нужное значение за один вызов: node — барабан или его строка из phone_look, " +
+            "value — значение так, как оно написано на барабане (например 9, 40, 2026, PM). Сам вводит значение, листает или тянет барабан и проверяет результат."
+    override val schema = objSchema(
+        Prop("node", "integer", "Номер барабана или его строки из phone_look"),
+        Prop("value", "string", "Нужное значение, как написано на барабане"),
+    )
+    override fun describe(input: JsonObject): String {
+        needsApproval(input)
+        return "Выбрать «" + input.str("value").orEmpty().take(60) + "» на барабане " + nodeLabel(input)
+    }
+    override suspend fun run(input: JsonObject): String {
+        val node = input.node() ?: throw IllegalArgumentException("Укажи node")
+        val value = input.need("value").trim()
+        require(value.isNotEmpty()) { "Не указано значение" }
+        phone.beginAction()
+        val outcome = phone.setWheel(node, value)
+        phone.settle()
+        val spill = phone.endAction()
+        return WheelText.result(outcome, value) + "\n" + (spill?.let { it + "\n" } ?: "") + phone.look(withImage = false).text
+    }
+}
+
 class PhoneKeyTool(phone: PhoneController, confirm: () -> PhoneConfirm) : PhoneTool(phone, confirm) {
     override val name = "phone_key"
     override val description =
@@ -246,6 +276,6 @@ class PhoneWaitTool(phone: PhoneController, confirm: () -> PhoneConfirm) : Phone
 /** Все инструменты режима. [confirm] читается при каждом вызове, поэтому смена настройки действует сразу. */
 fun phoneTools(phone: PhoneController, confirm: () -> PhoneConfirm, screenshots: () -> Boolean = { true }): List<Tool> = listOf(
     PhoneLookTool(phone, confirm, screenshots), PhoneTapTool(phone, confirm), PhoneLongPressTool(phone, confirm),
-    PhoneSwipeTool(phone, confirm), PhoneTypeTool(phone, confirm), PhoneKeyTool(phone, confirm),
+    PhoneSwipeTool(phone, confirm), PhoneTypeTool(phone, confirm), PhoneSetWheelTool(phone, confirm), PhoneKeyTool(phone, confirm),
     PhoneAppTool(phone, confirm), PhoneWaitTool(phone, confirm),
 )

@@ -22,6 +22,8 @@ class PhoneController(
     private val homePackages: () -> Set<String> = { emptySet() },
     /** Время в миллисекундах от запуска системы (SystemClock.uptimeMillis): в той же шкале помощник ставит время записей. */
     private val clock: () -> Long = ::uptimeMs,
+    /** Распознавание текста на картинке экрана (JPEG); null вместо функции — не поддерживается, null в ответе — не получилось. */
+    private val ocr: (suspend (ByteArray) -> List<OcrLine>?)? = null,
 ) {
     /** Экран, которым управляет агент: 0 — основной, иначе фоновый. */
     @Volatile var displayId: Int = 0
@@ -40,16 +42,51 @@ class PhoneController(
         append("; помощник: ").append(if (input.connected) "да" else "нет")
     }
 
-    suspend fun look(withImage: Boolean = true, maxSide: Int = 1024): Look {
+    /** Скриншот управляемого экрана в JPEG с длинной стороной не больше [maxSide]. */
+    private suspend fun shot(maxSide: Int): ByteArray? = if (displayId != 0) input.hiddenScreenshot(maxSide)
+    else reader.screenshot(0, maxSide) ?: input.screencap(maxSide)
+
+    /** Текст, распознанный по картинке экрана; null — не вышло. */
+    suspend fun readScreenText(): List<OcrLine>? = try {
+        val recognize = ocr
+        if (recognize == null) null else shot(OCR_SIDE)?.let { recognize(it) }
+    } catch (e: kotlinx.coroutines.CancellationException) {
+        throw e
+    } catch (_: Exception) {
+        null
+    }
+
+    /**
+     * Ставит барабан выбора, к которому относится элемент [id], на значение [value]. Перетаскивание идёт тем же путём, что и свайпы
+     * (помощник — на любом экране, иначе жест службы доступности — только на основном).
+     */
+    suspend fun setWheel(id: Int, value: String): WheelOutcome {
+        val snap = lastSnapshot ?: return WheelOutcome(false, null, null, 0, "none", error = "ref_expired")
+        val io = WheelIo(
+            displayId = displayId, width = snap.width, height = snap.height,
+            drag = { points, slow ->
+                val a = points.first()
+                val b = points.last()
+                swipe(a.first, a.second, b.first, b.second, if (slow) WHEEL_DRAG_MS else WHEEL_SWIPE_MS)
+            },
+            ocr = { readScreenText() },
+        )
+        return reader.setWheel(id, value, io) ?: WheelOutcome(false, null, null, 0, "none", error = "not_supported")
+    }
+
+    suspend fun look(withImage: Boolean = true, maxSide: Int = 1024, ocrText: Boolean = false): Look {
         val snap = reader.snapshot(displayId)
         lastSnapshot = snap
-        val text = if (snap != null) {
+        var text = if (snap != null) {
             ScreenText.format(snap) + "\nКоординаты — в пикселях экрана ${snap.width}x${snap.height}; скриншот может быть уменьшен."
         } else if (!reader.available) {
             "Служба доступности выключена: дерево экрана недоступно. Попроси пользователя включить её в настройках режима."
         } else "Не удалось прочитать экран $displayId. Видно службе доступности: ${reader.describeWindows()}."
-        val jpeg = if (!withImage) null else if (displayId != 0) input.hiddenScreenshot(maxSide)
-        else reader.screenshot(0, maxSide) ?: input.screencap(maxSide)
+        // экран почти без текста в дереве (игра, самописный интерфейс, барабаны): добавляем текст, распознанный по картинке
+        if (snap != null && (ocrText || OcrText.needsOcr(snap.nodes.count { it.text.isNotBlank() || it.desc.isNotBlank() }))) {
+            readScreenText()?.let { lines -> OcrText.format(lines, snap.width, snap.height).takeIf { it.isNotEmpty() }?.let { text += "\n" + it } }
+        }
+        val jpeg = if (!withImage) null else shot(maxSide)
         val diag = if (displayId != 0 && snap != null && snap.nodes.isEmpty()) "\nНа фоновом экране $displayId пока ничего нет: сначала запусти приложение (phone_app launch). Видно службе доступности: ${reader.describeWindows()}." else ""
         return Look(text + diag, jpeg)
     }
@@ -189,6 +226,15 @@ class PhoneController(
     companion object {
         /** Сколько после начала действия смотрим, не всплыло ли приложение на основном экране. */
         const val SPILL_WINDOW_MS = 6_000L
+
+        /** Длинная сторона картинки для распознавания текста: чем крупнее, тем точнее, на экранах телефонов уменьшения обычно нет. */
+        const val OCR_SIDE = 2400
+
+        /** Длительность медленного перетаскивания барабана: к отпусканию палец уже стоит, барабан не улетает. */
+        const val WHEEL_DRAG_MS = 1_000L
+
+        /** Быстрый свайп по барабану, когда медленное перетаскивание не сдвигает его. */
+        const val WHEEL_SWIPE_MS = 400L
 
         /** Точное совпадение пакета или названия, иначе единственное приложение, чьё название содержит запрос; пользовательские важнее системных. */
         fun matchApp(apps: List<AppInfo>, query: String): AppInfo? {

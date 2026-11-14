@@ -26,6 +26,13 @@ object DeveloperSettings {
     fun wirelessDebugging(cr: ContentResolver): Boolean? =
         runCatching { Settings.Global.getString(cr, ADB_WIFI_ENABLED) }.getOrNull()?.let { it == "1" }
 
+    /**
+     * Включает беспроводную отладку записью в системные настройки (нужно право WRITE_SECURE_SETTINGS).
+     * true — записали и прочитали обратно единицу; отказ системы или откат значения дают false.
+     */
+    fun turnOnWirelessDebugging(cr: ContentResolver): Boolean =
+        runCatching { Settings.Global.putInt(cr, ADB_WIFI_ENABLED, 1) && wirelessDebugging(cr) == true }.getOrDefault(false)
+
     /** Страница «Для разработчиков» (с запасным вариантом — общие настройки). */
     fun developerOptionsPage(): List<Intent> =
         listOf(Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS), Intent(Settings.ACTION_SETTINGS))
