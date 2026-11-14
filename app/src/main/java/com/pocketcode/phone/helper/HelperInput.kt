@@ -11,6 +11,7 @@ import android.os.ParcelFileDescriptor
 import android.os.RemoteException
 import android.view.KeyEvent
 import com.pocketcode.phone.AppInfo
+import com.pocketcode.phone.MainScreenSpill
 import com.pocketcode.phone.PhoneInput
 import com.pocketcode.phone.ShellResult
 import kotlinx.coroutines.Dispatchers
@@ -195,6 +196,40 @@ internal class HelperInput(
         val current = s.runCommand("settings get secure enabled_accessibility_services").getString("output")
         AccessibilityList.enableCommands(current, AccessibilityList.OUR_SERVICE)
             .all { s.runCommand(it).getInt("exitCode", -1) == 0 }
+    }
+
+    override suspend fun watchMainScreen(windowMs: Int): Int = io(-1) { it.watchMainScreen(windowMs) }
+
+    override suspend fun mainArrivals(sinceUptimeMs: Long): List<MainScreenSpill.Arrival> = io(emptyList()) { s ->
+        val b = s.mainArrivals(sinceUptimeMs) ?: return@io emptyList()
+        val tasks = b.getIntArray(MainScreenWatch.KEY_TASK) ?: return@io emptyList()
+        val packages = b.getStringArray(MainScreenWatch.KEY_PACKAGE)
+        val users = b.getIntArray(MainScreenWatch.KEY_USER)
+        val at = b.getLongArray(MainScreenWatch.KEY_AT)
+        val from = b.getIntArray(MainScreenWatch.KEY_FROM)
+        val same = b.getBooleanArray(MainScreenWatch.KEY_SAME_TASK)
+        val standard = b.getBooleanArray(MainScreenWatch.KEY_STANDARD)
+        val activity = b.getStringArray(MainScreenWatch.KEY_ACTIVITY)
+        val now = b.getIntArray(MainScreenWatch.KEY_NOW)
+        // массивы параллельные; если какой-то короче (повреждённый ответ), запись отбрасываем
+        tasks.indices.mapNotNull { i ->
+            MainScreenSpill.Arrival(
+                taskId = tasks[i],
+                packageName = packages?.getOrNull(i),
+                userId = users?.getOrNull(i) ?: return@mapNotNull null,
+                at = at?.getOrNull(i) ?: return@mapNotNull null,
+                from = from?.getOrNull(i) ?: return@mapNotNull null,
+                sameTask = same?.getOrNull(i) ?: return@mapNotNull null,
+                standard = standard?.getOrNull(i) ?: return@mapNotNull null,
+                now = now?.getOrNull(i) ?: return@mapNotNull null,
+                topActivity = activity?.getOrNull(i),
+            )
+        }
+    }
+
+    override suspend fun moveTaskToHidden(taskId: Int, displayId: Int): Boolean = io(false) { s ->
+        // переносим только на свой фоновый экран
+        hiddenId() == displayId && s.moveTask(taskId, displayId)
     }
 
     private companion object {

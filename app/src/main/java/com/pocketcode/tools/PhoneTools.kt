@@ -48,9 +48,12 @@ abstract class PhoneTool(
 
     /** Выполняет действие: [fail] — причина неудачи (null — успех); после успеха возвращает текст нового экрана. */
     protected suspend fun act(fail: suspend () -> String?): String {
+        // на фоновом экране следим, не откроется ли приложение у пользователя на основном (см. PhoneController.beginAction)
+        phone.beginAction()
         fail()?.let { throw IllegalStateException(it) }
         phone.settle()
-        return "Готово.\n" + phone.look(withImage = false).text
+        val spill = phone.endAction()
+        return "Готово.\n" + (spill?.let { it + "\n" } ?: "") + phone.look(withImage = false).text
     }
 
     protected fun JsonObject.node(): Int? = int("node")

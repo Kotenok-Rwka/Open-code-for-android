@@ -7,3 +7,17 @@
 беспроводной отладки ADB (сопряжение SPAKE2, TLS, Ed25519), передача Binder помощника через ContentProvider, фоновый
 виртуальный экран, ввод через InputManager. В каждом перенесённом файле оставлен комментарий-атрибуция.
 Часть файлов помощника (ShellContext и др.) в свою очередь основана на scrcpy (Apache-2.0, Genymobile).
+
+Автор Mika: wangzan101
+  Репозиторий: https://github.com/wangzan101/Mika
+  Автор: https://github.com/wangzan101
+Ассистент управления телефоном в PocketCode создан на основе Mika.
+
+Текст NOTICE из Mika:
+  Mika
+  Copyright 2026 wangzan101
+Полный текст лицензии Apache-2.0: licenses/Mika-LICENSE-Apache-2.0.txt
+
+Изменения относительно Mika: код переписан и сокращён под PocketCode (пакет com.pocketcode.phone), русские сообщения,
+другие имена классов и интерфейса помощника (IPocketShell вместо IMikaShell), подключение к агенту PocketCode.
+Защита от «всплытия» приложений на основной экран (MainScreenLog, MainScreenWatch, MainScreenSpill) перенесена из Mika.

@@ -5,12 +5,15 @@ import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
 import android.content.Context
 import android.content.Intent
+import android.os.SystemClock
 import android.provider.Settings
 import android.view.accessibility.AccessibilityEvent
+import com.pocketcode.phone.MainScreenSpill
 import com.pocketcode.phone.helper.AccessibilityList
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import java.util.concurrent.ConcurrentLinkedDeque
 
 /**
  * Служба доступности: читает дерево окон, нажимает элементы и выполняет жесты. Работой руководит [A11yScreenReader];
@@ -25,7 +28,26 @@ class PocketAccessibilityService : AccessibilityService() {
         _instance.value = this
     }
 
+    /**
+     * Запоминаем нажатия пользователя на основном экране: по ним решаем, открыл ли приложение сам пользователь или действие агента
+     * (см. MainScreenSpill). Нажатия агента на фоновом экране не считаются: их окна не входят в список окон основного экрана;
+     * собственные окна PocketCode тоже не считаются.
+     */
+    private fun noteUserTap(e: AccessibilityEvent) {
+        if (e.eventType != AccessibilityEvent.TYPE_VIEW_CLICKED && e.eventType != AccessibilityEvent.TYPE_VIEW_LONG_CLICKED) return
+        val pkg = e.packageName?.toString()
+        if (pkg == packageName) return
+        val main = try {
+            val ws = windows // окна основного экрана
+            ws.any { it.id == e.windowId }.also { ws.forEach { w -> runCatching { w.recycle() } } }
+        } catch (_: Throwable) { false }
+        if (!main) return
+        userTaps.addLast(MainScreenSpill.Tap(SystemClock.uptimeMillis(), pkg))
+        while (userTaps.size > MAX_USER_TAPS) userTaps.pollFirst()
+    }
+
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        event?.let { noteUserTap(it) }
         if (event?.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
         val cls = event.className?.toString() ?: return
         // диалоги и меню тоже шлют это событие, но у активностей имя не из пакета android.*
@@ -56,6 +78,12 @@ class PocketAccessibilityService : AccessibilityService() {
         @Volatile internal var lastActivityPkg: String = ""
 
         val isConnected: Boolean get() = _instance.value != null
+
+        private const val MAX_USER_TAPS = 32
+        private val userTaps = ConcurrentLinkedDeque<MainScreenSpill.Tap>()
+
+        /** Последние нажатия пользователя на основном экране, по порядку. */
+        fun recentUserTaps(): List<MainScreenSpill.Tap> = userTaps.toList()
 
         /** Включена ли наша служба в системных настройках (может быть включена, но ещё не подключена). */
         fun isEnabledInSettings(context: Context): Boolean {

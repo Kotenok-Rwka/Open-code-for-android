@@ -14,6 +14,14 @@ class PhoneController(
     /** Запуск приложения без помощника (обычный Intent). */
     private val localLaunch: suspend (String) -> Boolean = { false },
     private val localApps: suspend () -> List<AppInfo> = { emptyList() },
+    /** Касания пользователя на основном экране: по ним отличаем приложение, которое открыл сам пользователь, от открытого действием агента. */
+    private val userTaps: () -> List<MainScreenSpill.Tap> = { emptyList() },
+    /** Пакеты, которые не переносим с основного экрана: сам PocketCode и приложение рабочего стола. */
+    private val spillExcluded: () -> Set<String> = { emptySet() },
+    /** Рабочие столы: возврат на них перед открытием приложения означает, что открыл пользователь. */
+    private val homePackages: () -> Set<String> = { emptySet() },
+    /** Время в миллисекундах от запуска системы (SystemClock.uptimeMillis): в той же шкале помощник ставит время записей. */
+    private val clock: () -> Long = ::uptimeMs,
 ) {
     /** Экран, которым управляет агент: 0 — основной, иначе фоновый. */
     @Volatile var displayId: Int = 0
@@ -44,6 +52,50 @@ class PhoneController(
         else reader.screenshot(0, maxSide) ?: input.screencap(maxSide)
         val diag = if (displayId != 0 && snap != null && snap.nodes.isEmpty()) "\nНа фоновом экране $displayId пока ничего нет: сначала запусти приложение (phone_app launch). Видно службе доступности: ${reader.describeWindows()}." else ""
         return Look(text + diag, jpeg)
+    }
+
+    private class SpillWatch(val since: Long, val topBefore: Int)
+
+    @Volatile private var spillWatch: SpillWatch? = null
+
+    /**
+     * Вызывается перед действием на фоновом экране: помощник начинает следить за основным экраном, чтобы заметить приложение,
+     * которое действие откроет не на фоновом, а на основном экране. На основном экране ничего не делаем.
+     */
+    suspend fun beginAction() {
+        spillWatch = null
+        if (displayId == 0 || !input.connected) return
+        val since = clock()
+        spillWatch = SpillWatch(since, input.watchMainScreen(SPILL_WINDOW_MS.toInt()))
+    }
+
+    /**
+     * Вызывается после действия: если на основном экране всплыло приложение, открытое действием, переносит его на фоновый экран.
+     * Возвращает примечание для модели (что произошло) или null, если ничего не всплыло.
+     */
+    suspend fun endAction(): String? {
+        val w = spillWatch ?: return null
+        spillWatch = null
+        val target = displayId
+        if (target == 0) return null
+        val arrivals = input.mainArrivals(w.since)
+        if (arrivals.isEmpty()) return null
+        val verdicts = MainScreenSpill.decide(arrivals, w.since, SPILL_WINDOW_MS, w.topBefore, spillExcluded(), userTaps(), homePackages())
+        val notes = ArrayList<String>()
+        for (v in verdicts) {
+            val pkg = v.arrival.packageName ?: continue
+            when (v) {
+                is MainScreenSpill.PullBack ->
+                    if (input.moveTaskToHidden(v.arrival.taskId, target)) {
+                        notes += "Приложение $pkg открылось на основном экране пользователя и перенесено на фоновый экран. Вызови phone_look ещё раз."
+                    } else {
+                        notes += "Приложение $pkg открылось на основном экране пользователя, перенести его на фоновый экран не удалось."
+                    }
+                is MainScreenSpill.InUse ->
+                    notes += "Действие открыло $pkg на основном экране: пользователь им сейчас пользуется, я его не трогаю."
+            }
+        }
+        return notes.takeIf { it.isNotEmpty() }?.joinToString("\n")
     }
 
     /** Ждёт, пока экран успокоится после действия. */
@@ -108,6 +160,8 @@ class PhoneController(
         }
         val app = resolveApp(query)
         val pkg = app?.pkg ?: query.trim().takeIf { it.contains('.') && !it.contains(' ') } ?: return "Приложение «$query» не найдено."
+        // фоновый экран мог быть включён только что, уже после того, как инструмент вызвал beginAction: включаем слежение здесь
+        if (spillWatch == null) beginAction()
         val ok = if (input.connected) input.launchApp(displayId, pkg) else displayId == 0 && localLaunch(pkg)
         return if (ok) null else "Не удалось запустить $pkg."
     }
@@ -133,6 +187,9 @@ class PhoneController(
     }
 
     companion object {
+        /** Сколько после начала действия смотрим, не всплыло ли приложение на основном экране. */
+        const val SPILL_WINDOW_MS = 6_000L
+
         /** Точное совпадение пакета или названия, иначе единственное приложение, чьё название содержит запрос; пользовательские важнее системных. */
         fun matchApp(apps: List<AppInfo>, query: String): AppInfo? {
             val q = query.trim().lowercase()
@@ -141,4 +198,10 @@ class PhoneController(
             return part.firstOrNull { !it.system } ?: part.firstOrNull()
         }
     }
+}
+
+internal fun uptimeMs(): Long = try {
+    android.os.SystemClock.uptimeMillis()
+} catch (_: Throwable) {
+    System.nanoTime() / 1_000_000
 }

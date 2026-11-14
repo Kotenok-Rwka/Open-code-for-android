@@ -104,6 +104,28 @@ fun PhoneScreen(vm: ChatController, onBack: () -> Unit, onToChat: () -> Unit) {
             if (pm.enabled) {
                 OutlinedButton(onClick = { pm.chooseEnabled(false) }, modifier = Modifier.fillMaxWidth()) { Text("Выключить режим") }
             }
+
+            // Атрибуция: ассистент управления телефоном основан на Mika (Apache-2.0), автор — wangzan101
+            val ctx = androidx.compose.ui.platform.LocalContext.current
+            fun openLink(url: String) {
+                runCatching {
+                    ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url)).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+                }
+            }
+            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("Основано на проекте Mika", style = MaterialTheme.typography.titleSmall)
+                    Text(
+                        "Ассистент управления телефоном в PocketCode создан на основе проекта Mika. Автор Mika: wangzan101. " +
+                            "Лицензия Apache-2.0, код изменён для PocketCode.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = { openLink("https://github.com/wangzan101/Mika") }) { Text("Mika на GitHub") }
+                        OutlinedButton(onClick = { openLink("https://github.com/wangzan101") }) { Text("Автор: wangzan101") }
+                    }
+                }
+            }
         }
     }
 }

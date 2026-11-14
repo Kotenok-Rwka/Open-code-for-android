@@ -58,8 +58,19 @@ class PhoneModeState(
     private val pairing by lazy { NotificationPairingFlow(app, adb) }
 
     val controller: PhoneController by lazy {
-        PhoneController(A11yScreenReader, hub.input, ::launchLocal, ::appsLocal)
+        PhoneController(
+            A11yScreenReader, hub.input, ::launchLocal, ::appsLocal,
+            userTaps = { PocketAccessibilityService.recentUserTaps() },
+            spillExcluded = { homePackages() + app.packageName },
+            homePackages = ::homePackages,
+        )
     }
+
+    /** Приложения рабочего стола (лаунчеры): их не переносим, а возврат на них считаем действием самого пользователя. */
+    private fun homePackages(): Set<String> = runCatching {
+        val home = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
+        app.packageManager.queryIntentActivities(home, 0).map { it.activityInfo.packageName }.toSet()
+    }.getOrDefault(emptySet())
 
     init {
         scope.launch { hub.state.collect { helper = it } }

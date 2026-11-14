@@ -134,6 +134,15 @@ interface PhoneInput {
 
     /** Включить нашу службу доступности в системных настройках (нужен shell-доступ к Settings.Secure). */
     suspend fun enableAccessibility(): Boolean
+
+    /** Следить за основным экраном [windowMs]: какие задачи всплывают наверх. Возвращает верхнюю задачу основного экрана; -1 — нет или не поддерживается. */
+    suspend fun watchMainScreen(windowMs: Int): Int = -1
+
+    /** Задачи, всплывшие на основном экране после [sinceUptimeMs] (SystemClock.uptimeMillis), по порядку. */
+    suspend fun mainArrivals(sinceUptimeMs: Long): List<MainScreenSpill.Arrival> = emptyList()
+
+    /** Перенести задачу [taskId] на фоновый экран [displayId]; true — перенесена. */
+    suspend fun moveTaskToHidden(taskId: Int, displayId: Int): Boolean = false
 }
 
 /** Откуда запущен помощник; нужно только для показа состояния. */

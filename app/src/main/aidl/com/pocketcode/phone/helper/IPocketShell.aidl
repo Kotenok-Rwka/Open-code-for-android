@@ -14,6 +14,16 @@ interface IPocketShell {
     void releaseDisplay(int displayId) = 2;
     int startApp(int displayId, String packageName) = 3;
     int topTaskId(int displayId) = 4;
+    /** Перенести корневую задачу на экран displayId (например, вернуть всплывшее на основной экран приложение на фоновый). */
+    boolean moveTask(int taskId, int displayId) = 5;
+    /** Экран, на котором находится задача; -1, если задачи уже нет. */
+    int displayOfTask(int taskId) = 12;
+    /** Пакет верхней страницы задачи; null, если задачи нет. */
+    String packageOfTask(int taskId) = 13;
+    /** Следить за основным экраном windowMs: какие задачи всплывают наверх (см. mainArrivals). Возвращает верхнюю задачу основного экрана, нет — -1. */
+    int watchMainScreen(int windowMs) = 31;
+    /** Задачи, всплывшие на основном экране после sinceUptimeMs (SystemClock.uptimeMillis), по порядку; поля — в MainScreenWatch.toBundle. Ошибка — null. */
+    Bundle mainArrivals(long sinceUptimeMs) = 32;
     boolean injectKey(int displayId, int keyCode) = 6;
     boolean injectTap(int displayId, int x, int y) = 7;
     int startView(int displayId, String action, String uri, String packageName) = 17;

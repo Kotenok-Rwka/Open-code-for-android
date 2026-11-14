@@ -260,6 +260,91 @@ class ShellService(
         -1
     }
 
+    /** Задачи на всех экранах: перегрузка с номером экрана принимает INVALID_DISPLAY, то есть без фильтра по экрану. */
+    private fun allTasks(): List<Any> {
+        val methods = taskManager.javaClass.methods.filter { it.name == "getTasks" }
+        val withDisplay = methods.firstOrNull { it.parameterTypes.size == 4 }
+        val tasks = if (withDisplay != null) {
+            withDisplay.invoke(taskManager, MAX_TASKS, false, false, Display.INVALID_DISPLAY)
+        } else {
+            methods.first { it.parameterTypes.size == 3 }.invoke(taskManager, MAX_TASKS, false, false)
+        } as List<*>
+        return tasks.filterNotNull()
+    }
+
+    private fun task(taskId: Int): Any? {
+        val idField = TASK_INFO.getField("taskId")
+        return allTasks().firstOrNull { idField.getInt(it) == taskId }
+    }
+
+    override fun displayOfTask(taskId: Int): Int = try {
+        task(taskId)?.let { TASK_INFO.getField("displayId").getInt(it) } ?: -1
+    } catch (t: Throwable) {
+        Log.e(TAG, "displayOfTask failed", t)
+        -1
+    }
+
+    override fun packageOfTask(taskId: Int): String? = try {
+        task(taskId)?.let { t ->
+            listOf("topActivity", "baseActivity").firstNotNullOfOrNull { (TASK_INFO.getField(it).get(t) as? ComponentName)?.packageName }
+        }
+    } catch (t: Throwable) {
+        Log.e(TAG, "packageOfTask failed", t)
+        null
+    }
+
+    /**
+     * IActivityTaskManager.moveRootTaskToDisplay(taskId, displayId) — вызов за `am display move-stack`.
+     * Переносим только на свой фоновый экран: чужие экраны (в том числе основной) помощник не трогает.
+     */
+    override fun moveTask(taskId: Int, displayId: Int): Boolean {
+        if (!ownDisplay(displayId)) return false
+        return try {
+            taskManager.javaClass.getMethod("moveRootTaskToDisplay", Int::class.java, Int::class.java)
+                .invoke(taskManager, taskId, displayId)
+            true
+        } catch (t: Throwable) {
+            Log.w(TAG, "moveRootTaskToDisplay unavailable, falling back to am", t)
+            exec("am", "display", "move-stack", "$taskId", "$displayId") == 0
+        }
+    }
+
+    /** Журнал задач основного экрана: агент включает слежение перед действием, см. [MainScreenWatch]. Создаётся при первом обращении (поток, слушатель стека задач). */
+    private val mainWatch by lazy { MainScreenWatch({ taskManager }, ::taskRows) }
+
+    override fun watchMainScreen(windowMs: Int): Int = try {
+        mainWatch.watch(windowMs)
+    } catch (t: Throwable) {
+        Log.e(TAG, "watchMainScreen failed", t)
+        -1
+    }
+
+    override fun mainArrivals(sinceUptimeMs: Long): Bundle? = try {
+        mainWatch.arrivals(sinceUptimeMs)
+    } catch (t: Throwable) {
+        Log.e(TAG, "mainArrivals failed", t)
+        null
+    }
+
+    /** Все задачи в виде [MainScreenLog.Task]; если тип страницы не читается, считаем её страницей обычного приложения. */
+    private fun taskRows(): List<MainScreenLog.Task> {
+        val id = TASK_INFO.getField("taskId")
+        val display = TASK_INFO.getField("displayId")
+        val user = runCatching { TASK_INFO.getField("userId") }.getOrNull()
+        val type = runCatching { TASK_INFO.getField("topActivityType") }.getOrNull()
+        return allTasks().map { t ->
+            val top = TASK_INFO.getField("topActivity").get(t) as? ComponentName
+            MainScreenLog.Task(
+                taskId = id.getInt(t),
+                displayId = display.getInt(t),
+                packageName = top?.packageName ?: (TASK_INFO.getField("baseActivity").get(t) as? ComponentName)?.packageName,
+                userId = user?.getInt(t) ?: -1,
+                topActivity = top?.className,
+                standard = type?.getInt(t)?.let { it == ACTIVITY_TYPE_UNDEFINED || it == ACTIVITY_TYPE_STANDARD } ?: true,
+            )
+        }
+    }
+
     /** Верхняя активность экрана в виде «пакет/класс» (ComponentName.flattenToShortString); не наш экран или пусто — null. */
     override fun topActivity(displayId: Int): String? = try {
         if (!ownDisplay(displayId)) null else tasksOn(displayId).firstOrNull()?.let {
@@ -661,6 +746,10 @@ class ShellService(
         private const val EXTRA_SUPPRESS_CLIPBOARD_OVERLAY = "com.android.systemui.SUPPRESS_CLIPBOARD_OVERLAY"
 
         private val TASK_INFO: Class<*> by lazy { Class.forName("android.app.TaskInfo") }
+
+        // WindowConfiguration.ACTIVITY_TYPE_*: 0 — не определён, 1 — обычное приложение (остальное — рабочий стол, «недавние», ассистент)
+        private const val ACTIVITY_TYPE_UNDEFINED = 0
+        private const val ACTIVITY_TYPE_STANDARD = 1
 
         private const val USER_CURRENT = -2 // UserHandle.USER_CURRENT
         private const val VIRTUAL_KEYBOARD = -1 // KeyCharacterMap.VIRTUAL_KEYBOARD
