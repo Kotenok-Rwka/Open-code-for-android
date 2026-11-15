@@ -27,6 +27,15 @@ enum class AnswerKind(val key: String) {
     }
 }
 
+/** Насколько глубоко искать: быстрый короткий ответ, обычный или подробный разбор с несколькими страницами. */
+enum class AnswerDepth(val key: String, val maxSteps: Int) {
+    FAST("fast", 3), NORMAL("normal", 6), DEEP("deep", 12);
+
+    companion object {
+        fun parse(s: String?): AnswerDepth = values().firstOrNull { it.key == s } ?: NORMAL
+    }
+}
+
 data class AssistPrefs(
     val resultMode: ResultMode = ResultMode.ASK,
     val progressMode: ProgressMode = ProgressMode.COMPACT,
@@ -39,6 +48,7 @@ data class AssistPrefs(
     val notifyWhenHidden: Boolean = true,
     /** Профиль API для ассистента; пусто — тот же, что активен в чате. */
     val profileId: String = "",
+    val depth: AnswerDepth = AnswerDepth.NORMAL,
 )
 
 /** Хранит настройки ассистента в тех же настройках приложения; чтение и запись передаются функциями, чтобы это можно было проверить тестом. */
@@ -53,6 +63,7 @@ class AssistPrefsStore(private val get: (String) -> String?, private val put: (S
             useScreenText = flag(K_SCREEN, d.useScreenText),
             notifyWhenHidden = flag(K_NOTIFY, d.notifyWhenHidden),
             profileId = get(K_PROFILE).orEmpty(),
+            depth = AnswerDepth.parse(get(K_DEPTH)),
         )
     }
 
@@ -64,6 +75,7 @@ class AssistPrefsStore(private val get: (String) -> String?, private val put: (S
         put(K_SCREEN, if (p.useScreenText) "1" else "0")
         put(K_NOTIFY, if (p.notifyWhenHidden) "1" else "0")
         put(K_PROFILE, p.profileId)
+        put(K_DEPTH, p.depth.key)
     }
 
     private fun flag(key: String, default: Boolean): Boolean = when (get(key)) {
@@ -80,5 +92,6 @@ class AssistPrefsStore(private val get: (String) -> String?, private val put: (S
         const val K_SCREEN = "assistScreen"
         const val K_NOTIFY = "assistNotify"
         const val K_PROFILE = "assistProfile"
+        const val K_DEPTH = "assistDepth"
     }
 }

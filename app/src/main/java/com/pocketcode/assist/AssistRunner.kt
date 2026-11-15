@@ -48,7 +48,6 @@ object AssistRunner {
         val finishedAt: Long = 0L,
     )
 
-    private const val MAX_STEPS = 6
     private const val EMIT_EVERY_MS = 70L
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -108,7 +107,7 @@ object AssistRunner {
                 if (ready == null) {
                     runLinks(id, q, noKey = prefs.answerKind == AnswerKind.AI)
                 } else {
-                    runAgent(id, ready, q, forceSearch, screenText, pageUrl)
+                    runAgent(id, ready, q, forceSearch, screenText, pageUrl, prefs.depth)
                 }
                 finished(app, id, q, prefs)
             } catch (e: CancellationException) {
@@ -138,20 +137,21 @@ object AssistRunner {
         }
     }
 
-    private suspend fun runAgent(id: Int, ready: AssistBackend.Ready, q: String, forceSearch: Boolean, screenText: String?, pageUrl: String?) {
+    private suspend fun runAgent(id: Int, ready: AssistBackend.Ready, q: String, forceSearch: Boolean, screenText: String?, pageUrl: String?, depth: AnswerDepth) {
         val current = agent
-        val ag = if (current != null && agentKey == ready.key) current else {
+        val key = ready.key + "|" + depth.key
+        val ag = if (current != null && agentKey == key) current else {
             val now = java.text.SimpleDateFormat("EEEE, d MMMM yyyy, HH:mm", java.util.Locale.getDefault()).format(java.util.Date())
             Agent(
                 llm = ready.llm,
                 tools = listOf(WebSearchTool(), WebFetchTool()),
-                system = AssistPrompt.system(now, java.util.TimeZone.getDefault().id, com.pocketcode.ui.I18n.code),
+                system = AssistPrompt.system(now, java.util.TimeZone.getDefault().id, com.pocketcode.ui.I18n.code, depth),
                 autoApprove = true,
                 contextLimit = ready.contextLimit,
                 approve = { _, _ -> true },
-                maxSteps = MAX_STEPS,
+                maxSteps = depth.maxSteps,
                 fallbackLlm = ready.fallback,
-            ).also { agent = it; agentKey = ready.key }
+            ).also { agent = it; agentKey = key }
         }
         val tracker = ProgressTracker()
         val cur = StringBuilder()

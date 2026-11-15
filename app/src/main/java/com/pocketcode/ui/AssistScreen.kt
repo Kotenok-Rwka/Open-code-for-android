@@ -36,6 +36,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.pocketcode.SettingsStore
+import com.pocketcode.assist.AnswerDepth
 import com.pocketcode.assist.AnswerKind
 import com.pocketcode.assist.AssistHints
 import com.pocketcode.assist.AssistPrefs
@@ -110,6 +111,21 @@ fun AssistScreen(onBack: () -> Unit) {
             Text(
                 if (prefs.answerKind == AnswerKind.AI) "Ассистент ищет в интернете, читает страницы и коротко отвечает со ссылками на источники. Нужен ключ API."
                 else "Обычный поиск без нейросети: список страниц с описанием. Ключ API не нужен.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+
+            Text("Глубина ответа", style = MaterialTheme.typography.titleMedium)
+            Chips {
+                Choice("Быстро", prefs.depth == AnswerDepth.FAST) { change(prefs.copy(depth = AnswerDepth.FAST)) }
+                Choice("Обычно", prefs.depth == AnswerDepth.NORMAL) { change(prefs.copy(depth = AnswerDepth.NORMAL)) }
+                Choice("Глубоко", prefs.depth == AnswerDepth.DEEP) { change(prefs.copy(depth = AnswerDepth.DEEP)) }
+            }
+            Text(
+                when (prefs.depth) {
+                    AnswerDepth.FAST -> "Один поиск и короткий ответ в пару фраз: быстрее и дешевле."
+                    AnswerDepth.NORMAL -> "Поиск, при необходимости одна-две страницы, ответ в несколько абзацев."
+                    AnswerDepth.DEEP -> "Несколько поисков, чтение страниц и сверка источников: дольше и дороже, зато полнее. Не влияет на режим «Только ссылки»."
+                },
                 style = MaterialTheme.typography.bodySmall,
             )
 

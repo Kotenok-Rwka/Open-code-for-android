@@ -1,6 +1,8 @@
 package com.pocketcode
 
+import com.pocketcode.assist.AnswerDepth
 import com.pocketcode.assist.AnswerKind
+import com.pocketcode.assist.AssistPrompt
 import com.pocketcode.assist.AssistAppMatch
 import com.pocketcode.assist.AssistFlow
 import com.pocketcode.assist.AssistHints
@@ -47,7 +49,7 @@ class AssistLogicTest {
 
     @Test
     fun longOpenPhraseIsAQuestion() {
-        val r = AssistIntentParser.parse("открой рецепт борща пошагово")
+        val r = AssistIntentParser.parse("открой рецепт борща с мясом пошагово")
         assertTrue(r is AssistIntent.Ask)
         assertFalse((r as AssistIntent.Ask).forceSearch)
     }
@@ -137,6 +139,26 @@ class AssistLogicTest {
     fun unknownPrefValuesFallBackToDefaults() {
         val store = AssistPrefsStore({ "мусор" }, { _, _ -> })
         assertEquals(AssistPrefs(), store.load().copy(profileId = ""))
+    }
+
+    @Test
+    fun depthIsStoredAndLimitsSteps() {
+        val mem = HashMap<String, String>()
+        val store = AssistPrefsStore({ mem[it] }, { k, v -> mem[k] = v })
+        store.save(AssistPrefs(depth = AnswerDepth.DEEP))
+        assertEquals(AnswerDepth.DEEP, store.load().depth)
+        assertEquals(AnswerDepth.NORMAL, AnswerDepth.parse("что-то"))
+        assertTrue(AnswerDepth.FAST.maxSteps < AnswerDepth.NORMAL.maxSteps)
+        assertTrue(AnswerDepth.NORMAL.maxSteps < AnswerDepth.DEEP.maxSteps)
+    }
+
+    @Test
+    fun promptMentionsDepthOnlyWhenNotNormal() {
+        val normal = AssistPrompt.system("сегодня", "UTC", "ru")
+        assertEquals(normal, AssistPrompt.system("сегодня", "UTC", "ru", AnswerDepth.NORMAL))
+        assertTrue(AssistPrompt.system("сегодня", "UTC", "ru", AnswerDepth.FAST).contains("быстрого ответа"))
+        assertTrue(AssistPrompt.system("сегодня", "UTC", "ru", AnswerDepth.DEEP).contains("подробного ответа"))
+        assertFalse(normal.contains("Режим"))
     }
 
     // ===== прогресс =====
