@@ -89,7 +89,8 @@ jobs:
           if-no-files-found: error
 
       - name: Publish release with APK
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        # коммит с пометкой [без релиза] в тексте собирается и проверяется, но релиз не публикует
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && !contains(github.event.head_commit.message, '[без релиза]')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

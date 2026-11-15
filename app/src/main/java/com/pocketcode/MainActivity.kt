@@ -74,7 +74,7 @@ import com.pocketcode.ui.ProjectsScreen
 import com.pocketcode.ui.SessionsScreen
 import com.pocketcode.ui.SettingsScreen
 
-private enum class Screen { CHAT, SETTINGS, SESSIONS, PROJECTS, FILES, DEVICES, PLUGINS, DIAG, COMPARE, CONTEXT, TERMINAL, GIT, OCSESSIONS, REMOTE, DIFF, SEARCH, HUB_PROJECT, HUB_AGENT, HUB_MORE, FIND, ROOT, PHONE, OCSETTINGS, MODELS, LINUX, UPDATE, BACKUP, VIDEO, LANGUAGE, SMART, LEARN }
+private enum class Screen { CHAT, SETTINGS, SESSIONS, PROJECTS, FILES, DEVICES, PLUGINS, DIAG, COMPARE, CONTEXT, TERMINAL, GIT, OCSESSIONS, REMOTE, DIFF, SEARCH, HUB_PROJECT, HUB_AGENT, HUB_MORE, FIND, ROOT, PHONE, OCSETTINGS, MODELS, LINUX, UPDATE, BACKUP, VIDEO, LANGUAGE, SMART, LEARN, ASSISTANT }
 
 class MainActivity : ComponentActivity() {
     private val controller: ChatController
@@ -202,6 +202,11 @@ class MainActivity : ComponentActivity() {
                 var backTo by remember { mutableStateOf(Screen.CHAT) }
                 var focusKey by remember { mutableStateOf<String?>(null) }
                 fun openFrom(hub: Screen, target: Screen) { focusKey = null; backTo = hub; screen = target }
+                // Из окна ассистента просят открыть его настройки
+                val wanted = pendingScreen.value
+                androidx.compose.runtime.LaunchedEffect(wanted) {
+                    if (wanted == "ASSISTANT") { openFrom(Screen.HUB_MORE, Screen.ASSISTANT); pendingScreen.value = null }
+                }
                 val pv = vm.previewUrl
                 val wide = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp.let { com.pocketcode.ui.isWideScreen(it) }
                 val noMotion = com.pocketcode.ui.LocalReduceMotion.current
@@ -312,6 +317,7 @@ class MainActivity : ComponentActivity() {
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Terminal, "Среда Linux", "Установка мини-Linux, python, git, node", if (!pocketApp.controller.linuxInstalled && pocketApp.controller.linuxSupported) "не установлен" else null) { openFrom(Screen.HUB_MORE, Screen.LINUX) },
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Sparkles, "Умные функции", "Авто-режим, предохранитель, корзина, автовыбор модели, карта проекта", if (pocketApp.controller.rootAuto) "авто вкл" else null) { openFrom(Screen.HUB_MORE, Screen.SMART) },
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Shield, "Root и Android", "Как дать агенту данные с телефона: четыре способа", if (pocketApp.controller.rootAuto) "авто-режим вкл" else if (pocketApp.controller.hostMode == "ask") "мост вкл" else null) { openFrom(Screen.HUB_MORE, Screen.ROOT) },
+                                com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Sparkles, "Ассистент", "Вызов вместо Google, поиск в интернете, показ ответа и прогресса", if (com.pocketcode.assist.PocketAssistService.isDefault(this@MainActivity)) "вкл" else null) { openFrom(Screen.HUB_MORE, Screen.ASSISTANT) },
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Phone, "Управление телефоном", "Агент смотрит на экран и нажимает: служба доступности, помощник, фон", if (pocketApp.controller.phoneMode.enabled) "вкл" else null) { openFrom(Screen.HUB_MORE, Screen.PHONE) },
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Phone, "Устройства", "ADB, root, подключённые устройства") { openFrom(Screen.HUB_MORE, Screen.DEVICES) },
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Refresh, "Синхронизация и пульт", "Файлы между телефонами и задачи на другой телефон") { openFrom(Screen.HUB_MORE, Screen.REMOTE) },
@@ -471,6 +477,10 @@ class MainActivity : ComponentActivity() {
                         BackHandler { screen = backTo }
                         SessionsScreen(vm, onBack = { screen = backTo })
                     }
+                    Screen.ASSISTANT -> {
+                        BackHandler { screen = backTo }
+                        com.pocketcode.ui.AssistScreen(onBack = { screen = backTo })
+                    }
                     Screen.PHONE -> {
                         BackHandler { screen = backTo }
                         com.pocketcode.ui.PhoneScreen(vm, onBack = { screen = backTo }, onToChat = { screen = Screen.CHAT })
@@ -540,6 +550,8 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private val pendingScreen = androidx.compose.runtime.mutableStateOf<String?>(null)
+
     private fun handleIntent(intent: Intent?) {
         intent ?: return
         when (intent.action) {
@@ -551,6 +563,7 @@ class MainActivity : ComponentActivity() {
                 }
                 intent.getStringExtra(Intent.EXTRA_TEXT)?.let { controller.incomingText = it }
             }
+            "com.pocketcode.OPEN_SCREEN" -> pendingScreen.value = intent.getStringExtra("screen")
             "com.pocketcode.NEW_TASK" -> if (!controller.running) {
                 controller.newChat()
             }

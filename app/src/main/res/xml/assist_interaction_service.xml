@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<voice-interaction-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:sessionService="com.pocketcode.assist.PocketAssistSessionService"
+    android:recognitionService="com.pocketcode.assist.PocketRecognitionService"
+    android:settingsActivity="com.pocketcode.assist.AssistSettingsActivity"
+    android:supportsAssist="true"
+    android:supportsLaunchVoiceAssistFromKeyguard="true" />
