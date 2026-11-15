@@ -11,6 +11,7 @@ import android.os.ParcelFileDescriptor
 import android.os.RemoteException
 import android.view.KeyEvent
 import com.pocketcode.phone.AppInfo
+import com.pocketcode.phone.LaunchCode
 import com.pocketcode.phone.MainScreenSpill
 import com.pocketcode.phone.PhoneInput
 import com.pocketcode.phone.ShellResult
