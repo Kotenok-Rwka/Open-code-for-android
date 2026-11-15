@@ -24,6 +24,8 @@ class PhoneController(
     private val clock: () -> Long = ::uptimeMs,
     /** Распознавание текста на картинке экрана (JPEG); null вместо функции — не поддерживается, null в ответе — не получилось. */
     private val ocr: (suspend (ByteArray) -> List<OcrLine>?)? = null,
+    /** Открывать приложения на фоновом экране, когда это не указано явно (выбор пользователя в настройках). */
+    private val backgroundByDefault: () -> Boolean = { true },
 ) {
     /** Экран, которым управляет агент: 0 — основной, иначе фоновый. */
     @Volatile var displayId: Int = 0
@@ -199,8 +201,16 @@ class PhoneController(
         val pkg = app?.pkg ?: query.trim().takeIf { it.contains('.') && !it.contains(' ') } ?: return "Приложение «$query» не найдено."
         // фоновый экран мог быть включён только что, уже после того, как инструмент вызвал beginAction: включаем слежение здесь
         if (spillWatch == null) beginAction()
-        val ok = if (input.connected) input.launchApp(displayId, pkg) else displayId == 0 && localLaunch(pkg)
-        return if (ok) null else "Не удалось запустить $pkg."
+        if (!input.connected) return if (displayId == 0 && localLaunch(pkg)) null else "Не удалось запустить $pkg."
+        return when (val code = input.launchAppCode(displayId, pkg)) {
+            LaunchCode.OK -> null
+            LaunchCode.NOT_FOUND -> "Не удалось запустить $pkg: у приложения нет значка запуска."
+            LaunchCode.IN_USE_ON_MAIN ->
+                "Не удалось запустить $pkg на фоновом экране: оно уже открыто на основном экране. " +
+                    "Не обходи это командами shell/root. Либо работай с ним на основном экране (phone_app background_off, затем phone_app launch с background=false), " +
+                    "либо попроси пользователя закрыть его на основном экране и повтори."
+            else -> "Не удалось запустить $pkg на экране $displayId (код $code). Скажи пользователю об ошибке, не обходи её командами shell/root."
+        }
     }
 
     /**
@@ -208,7 +218,7 @@ class PhoneController(
      * чтобы приложение не открывалось перед глазами у пользователя. Фоновый экран не создался (или помощника нет) — открывает на основном.
      */
     suspend fun launchAuto(query: String): String? {
-        if (displayId == 0 && input.connected) openBackground(1080, 1920, 420)
+        if (displayId == 0 && input.connected && backgroundByDefault()) openBackground(1080, 1920, 420)
         return launch(query, false)
     }
 

@@ -4,6 +4,7 @@ package com.pocketcode.phone
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /** Запуск приложения по умолчанию идёт на фоновый экран, если помощник есть. */
@@ -21,14 +22,18 @@ class PhoneControllerLaunchTest {
         override suspend fun gestureSwipe(x1: Int, y1: Int, x2: Int, y2: Int, durationMs: Long) = true
     }
 
-    private class Input(override val connected: Boolean, val display: Int) : PhoneInput {
+    private class Input(override val connected: Boolean, val display: Int, val code: Int = LaunchCode.OK) : PhoneInput {
         val launches = ArrayList<String>()
         override suspend fun tap(displayId: Int, x: Int, y: Int) = true
         override suspend fun swipe(displayId: Int, x1: Int, y1: Int, x2: Int, y2: Int, durationMs: Long) = true
         override suspend fun key(displayId: Int, keyCode: Int) = true
         override suspend fun typeAscii(displayId: Int, text: String) = true
         override suspend fun pasteText(displayId: Int, text: String) = true
-        override suspend fun launchApp(displayId: Int, pkg: String) = true.also { launches += "$displayId:$pkg" }
+        override suspend fun launchApp(displayId: Int, pkg: String) = launchAppCode(displayId, pkg) == LaunchCode.OK
+        override suspend fun launchAppCode(displayId: Int, pkg: String): Int {
+            launches += "$displayId:$pkg"
+            return code
+        }
         override suspend fun openUrl(displayId: Int, url: String) = true
         override suspend fun listApps(): List<AppInfo> = emptyList()
         override suspend fun createHiddenDisplay(width: Int, height: Int, dpi: Int) = display
@@ -76,5 +81,37 @@ class PhoneControllerLaunchTest {
         assertNull(c.launchAuto("com.a.b"))
         assertEquals(0, c.displayId)
         assertEquals(emptyList<String>(), inp.launches)
+    }
+
+    @Test fun appOpenOnMainGetsAClearReasonAndNoWorkaround() = runBlocking {
+        val c = PhoneController(Reader(), Input(true, 5, LaunchCode.IN_USE_ON_MAIN))
+        val e = c.launchAuto("com.a.b")!!
+        assertTrue(e, e.contains("уже открыто на основном экране") && e.contains("background=false") && e.contains("shell/root"))
+    }
+
+    @Test fun unknownFailureShowsTheCode() = runBlocking {
+        val e = PhoneController(Reader(), Input(true, 5, LaunchCode.FAILED)).launchAuto("com.a.b")!!
+        assertTrue(e, e.contains("экране 5") && e.contains("код 1"))
+    }
+
+    @Test fun appWithoutLauncherEntryIsReported() = runBlocking {
+        val e = PhoneController(Reader(), Input(true, 5, LaunchCode.NOT_FOUND)).launchAuto("com.a.b")!!
+        assertTrue(e, e.contains("нет значка запуска"))
+    }
+
+    @Test fun mainScreenChoiceKeepsTheAppOnTheMainScreen() = runBlocking {
+        val inp = Input(true, 5)
+        val c = PhoneController(Reader(), inp, backgroundByDefault = { false })
+        assertNull(c.launchAuto("com.a.b"))
+        assertEquals(0, c.displayId)
+        assertEquals(listOf("0:com.a.b"), inp.launches)
+    }
+
+    @Test fun promptFollowsTheChoice() {
+        val bg = PhonePrompt.section("x", PhoneConfirm.RISKY, true, true)
+        val main = PhonePrompt.section("x", PhoneConfirm.RISKY, true, false)
+        assertTrue(bg.contains("Background screen is the DEFAULT"))
+        assertTrue(main.contains("MAIN screen") && !main.contains("Background screen is the DEFAULT"))
+        assertTrue(bg.contains("never work around it") && main.contains("never work around it"))
     }
 }

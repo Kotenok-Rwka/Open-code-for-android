@@ -134,6 +134,9 @@ interface PhoneInput {
 
     /** Запустить приложение на экране [displayId]; true — запущено. */
     suspend fun launchApp(displayId: Int, pkg: String): Boolean
+
+    /** То же, но с причиной отказа: код из [LaunchCode]. */
+    suspend fun launchAppCode(displayId: Int, pkg: String): Int = if (launchApp(displayId, pkg)) LaunchCode.OK else LaunchCode.FAILED
     suspend fun openUrl(displayId: Int, url: String): Boolean
     suspend fun listApps(): List<AppInfo>
 
@@ -160,6 +163,16 @@ interface PhoneInput {
 
     /** Перенести задачу [taskId] на фоновый экран [displayId]; true — перенесена. */
     suspend fun moveTaskToHidden(taskId: Int, displayId: Int): Boolean = false
+}
+
+/** Итог запуска приложения (числа те же, что у помощника). */
+object LaunchCode {
+    const val OK = 0
+    const val FAILED = 1
+    /** У приложения нет точки входа для запуска. */
+    const val NOT_FOUND = 2
+    /** Приложение уже открыто на основном экране: на фоновый экран его не запускаем, чтобы не мешать пользователю. */
+    const val IN_USE_ON_MAIN = 3
 }
 
 /** Откуда запущен помощник; нужно только для показа состояния. */

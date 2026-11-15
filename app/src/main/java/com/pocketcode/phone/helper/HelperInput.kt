@@ -99,10 +99,21 @@ internal class HelperInput(
         }
     }
 
-    override suspend fun launchApp(displayId: Int, pkg: String): Boolean = io(false) { s ->
-        if (!PACKAGE_NAME.matches(pkg)) return@io false
-        if (hiddenId() == displayId) s.startApp(displayId, pkg) == ShellService.START_OK
-        else s.runCommand("monkey -p $pkg -c android.intent.category.LAUNCHER 1").getInt("exitCode", -1) == 0
+    override suspend fun launchApp(displayId: Int, pkg: String): Boolean = launchAppCode(displayId, pkg) == LaunchCode.OK
+
+    override suspend fun launchAppCode(displayId: Int, pkg: String): Int = io(LaunchCode.FAILED) { s ->
+        if (!PACKAGE_NAME.matches(pkg)) return@io LaunchCode.FAILED
+        if (hiddenId() == displayId) {
+            when (s.startApp(displayId, pkg)) {
+                ShellService.START_OK -> LaunchCode.OK
+                ShellService.START_NOT_FOUND -> LaunchCode.NOT_FOUND
+                ShellService.START_IN_USE_ON_MAIN -> LaunchCode.IN_USE_ON_MAIN
+                else -> LaunchCode.FAILED
+            }
+        } else {
+            val exit = s.runCommand("monkey -p $pkg -c android.intent.category.LAUNCHER 1").getInt("exitCode", -1)
+            if (exit == 0) LaunchCode.OK else LaunchCode.FAILED
+        }
     }
 
     override suspend fun openUrl(displayId: Int, url: String): Boolean = io(false) { s ->

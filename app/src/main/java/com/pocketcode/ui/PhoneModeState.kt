@@ -53,6 +53,9 @@ class PhoneModeState(
     /** Итог последнего автозапуска после перезагрузки (по-русски) или null. */
     var restoreResult by mutableStateOf(restoreText(store.loadPhoneRestoreResult()))
         private set
+    /** Где агент открывает приложения по умолчанию: на фоновом экране (нужен помощник) или на основном. */
+    var background by mutableStateOf(store.loadPhoneBackground())
+        private set
     var status by mutableStateOf<String?>(null)
         private set
     var busy by mutableStateOf(false)
@@ -75,6 +78,7 @@ class PhoneModeState(
             spillExcluded = { homePackages() + app.packageName },
             homePackages = ::homePackages,
             ocr = { jpeg -> PhoneOcr.readJpeg(jpeg) },
+            backgroundByDefault = { background },
         )
     }
 
@@ -95,6 +99,11 @@ class PhoneModeState(
         onChanged()
     }
 
+    fun chooseBackground(v: Boolean) {
+        background = v
+        store.savePhoneBackground(v)
+    }
+
     fun chooseScreenshots(v: Boolean) {
         screenshots = v
         store.savePhoneShots(v)
@@ -112,7 +121,7 @@ class PhoneModeState(
     fun tools(): List<Tool> = if (enabled) phoneTools(controller, { confirm }, { screenshots }) else emptyList()
 
     fun promptSection(): String? =
-        if (enabled) PhonePrompt.section(controller.capabilities(), confirm, screenshots) else null
+        if (enabled) PhonePrompt.section(controller.capabilities(), confirm, screenshots, background) else null
 
     fun openAccessibilitySettings() {
         runCatching { app.startActivity(PocketAccessibilityService.openSettingsIntent()) }

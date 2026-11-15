@@ -89,6 +89,16 @@ fun PhoneScreen(vm: ChatController, onBack: () -> Unit, onToChat: () -> Unit) {
             )
             pm.restoreResult?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
 
+            Text("Где работает агент", style = MaterialTheme.typography.titleMedium)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(selected = pm.background, onClick = { pm.chooseBackground(true) }, label = { Text("Фоновый экран") })
+                FilterChip(selected = !pm.background, onClick = { pm.chooseBackground(false) }, label = { Text("Основной экран") })
+            }
+            Text(
+                "Фоновый экран не мешает: приложения открываются на отдельном экране, пока ты пользуешься телефоном (нужен помощник). На основном экране ты видишь всё, что делает агент.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+
             Text("Шаг 3. Подтверждения", style = MaterialTheme.typography.titleMedium)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilterChip(selected = pm.confirm == PhoneConfirm.EVERY, onClick = { pm.chooseConfirm(PhoneConfirm.EVERY) }, label = { Text("Каждое действие") })

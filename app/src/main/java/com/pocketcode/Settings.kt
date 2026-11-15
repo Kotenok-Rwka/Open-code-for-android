@@ -218,6 +218,13 @@ class SettingsStore(context: Context) {
         prefs.edit().putString("phoneRestoreResult", v).apply()
     }
 
+    /** Где работает агент по умолчанию: true — на фоновом экране (если есть помощник), false — на основном. */
+    fun loadPhoneBackground(): Boolean = prefs.getBoolean("phoneBackground", true)
+
+    fun savePhoneBackground(v: Boolean) {
+        prefs.edit().putBoolean("phoneBackground", v).apply()
+    }
+
     /** Когда спрашивать подтверждение действий на телефоне: EVERY или RISKY. */
     fun loadPhoneConfirm(): String? = prefs.getString("phoneConfirm", null)
 
