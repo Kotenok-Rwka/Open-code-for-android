@@ -203,6 +203,15 @@ class PhoneController(
         return if (ok) null else "Не удалось запустить $pkg."
     }
 
+    /**
+     * Запуск приложения по умолчанию: если помощник подключён и управление ещё на основном экране, сначала включает фоновый экран,
+     * чтобы приложение не открывалось перед глазами у пользователя. Фоновый экран не создался (или помощника нет) — открывает на основном.
+     */
+    suspend fun launchAuto(query: String): String? {
+        if (displayId == 0 && input.connected) openBackground(1080, 1920, 420)
+        return launch(query, false)
+    }
+
     suspend fun openUrl(url: String): String? =
         if (input.connected) { if (input.openUrl(displayId, url)) null else "Не удалось открыть ссылку." }
         else if (displayId == 0 && localLaunch(url)) null else "Не удалось открыть ссылку."

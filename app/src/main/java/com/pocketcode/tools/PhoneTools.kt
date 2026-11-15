@@ -215,7 +215,7 @@ class PhoneAppTool(phone: PhoneController, confirm: () -> PhoneConfirm) : PhoneT
     override val schema = objSchema(
         Prop("action", "string", "launch | open_url | list | background_on | background_off"),
         Prop("value", "string", "Название, пакет, адрес или фильтр", required = false),
-        Prop("background", "boolean", "Для launch: открыть на фоновом экране (включит его сам)", required = false),
+        Prop("background", "boolean", "Для launch: true — на фоновом экране, false — на основном экране пользователя. По умолчанию, если помощник подключён, приложение открывается на фоновом экране (включится само)", required = false),
     )
     override fun risky(input: JsonObject) =
         input.str("action") == "open_url" && PhoneSafety.riskyUrl(input.str("value").orEmpty())
@@ -238,7 +238,7 @@ class PhoneAppTool(phone: PhoneController, confirm: () -> PhoneConfirm) : PhoneT
     override suspend fun run(input: JsonObject): String {
         val value = input.str("value").orEmpty()
         return when (input.need("action")) {
-            "launch" -> { require(value.isNotBlank()) { "Не указано приложение" }; act { phone.launch(value, input.bool("background") == true) } }
+            "launch" -> { require(value.isNotBlank()) { "Не указано приложение" }; act { input.bool("background").let { bg -> if (bg == null) phone.launchAuto(value) else phone.launch(value, bg) } } }
             "open_url" -> {
                 require(value.startsWith("http://") || value.startsWith("https://") || PhoneSafety.riskyUrl(value)) { "Нужен адрес http/https" }
                 act { phone.openUrl(value) }
