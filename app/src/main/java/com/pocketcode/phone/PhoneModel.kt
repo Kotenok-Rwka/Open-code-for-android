@@ -161,6 +161,9 @@ interface PhoneInput {
     /** Задачи, всплывшие на основном экране после [sinceUptimeMs] (SystemClock.uptimeMillis), по порядку. */
     suspend fun mainArrivals(sinceUptimeMs: Long): List<MainScreenSpill.Arrival> = emptyList()
 
+    /** Перенести открытое на основном экране приложение [pkg] на фоновый экран [displayId]; true — перенесено. */
+    suspend fun moveAppToHidden(pkg: String, displayId: Int): Boolean = false
+
     /** Перенести задачу [taskId] на фоновый экран [displayId]; true — перенесена. */
     suspend fun moveTaskToHidden(taskId: Int, displayId: Int): Boolean = false
 }

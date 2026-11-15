@@ -24,6 +24,8 @@ interface IPocketShell {
     int watchMainScreen(int windowMs) = 31;
     /** Задачи, всплывшие на основном экране после sinceUptimeMs (SystemClock.uptimeMillis), по порядку; поля — в MainScreenWatch.toBundle. Ошибка — null. */
     Bundle mainArrivals(long sinceUptimeMs) = 32;
+    /** Номер задачи приложения packageName на основном экране; нет такой или ошибка — -1. */
+    int mainTaskOf(String packageName) = 33;
     boolean injectKey(int displayId, int keyCode) = 6;
     boolean injectTap(int displayId, int x, int y) = 7;
     int startView(int displayId, String action, String uri, String packageName) = 17;

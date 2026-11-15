@@ -284,6 +284,14 @@ class ShellService(
         -1
     }
 
+    override fun mainTaskOf(packageName: String): Int = try {
+        tasksOn(Display.DEFAULT_DISPLAY).firstOrNull { packageName in packagesOf(it) }
+            ?.let { TASK_INFO.getField("taskId").getInt(it) } ?: -1
+    } catch (t: Throwable) {
+        Log.e(TAG, "mainTaskOf failed", t)
+        -1
+    }
+
     override fun packageOfTask(taskId: Int): String? = try {
         task(taskId)?.let { t ->
             listOf("topActivity", "baseActivity").firstNotNullOfOrNull { (TASK_INFO.getField(it).get(t) as? ComponentName)?.packageName }

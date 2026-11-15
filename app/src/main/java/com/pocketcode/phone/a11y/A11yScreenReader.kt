@@ -122,17 +122,13 @@ object A11yScreenReader : PhoneScreenReader {
             cur = cur.parent
             depth++
         }
-        val r = Rect()
-        n.getBoundsInScreen(r)
-        gestureTap(r.centerX(), r.centerY(), 50)
+        // жест по координатам здесь не делаем: он идёт только на основной экран, а элемент мог быть на фоновом (запасной путь — в PhoneController)
+        false
     }
 
     override suspend fun longClickNode(id: Int): Boolean = withContext(Dispatchers.Default) {
         val n = fresh(id) ?: return@withContext false
-        if (n.performAction(AccessibilityNodeInfo.ACTION_LONG_CLICK)) return@withContext true
-        val r = Rect()
-        n.getBoundsInScreen(r)
-        gestureTap(r.centerX(), r.centerY(), 600)
+        n.performAction(AccessibilityNodeInfo.ACTION_LONG_CLICK)
     }
 
     override suspend fun setNodeText(id: Int, text: String): Boolean = withContext(Dispatchers.Default) {

@@ -244,6 +244,12 @@ internal class HelperInput(
         hiddenId() == displayId && s.moveTask(taskId, displayId)
     }
 
+    override suspend fun moveAppToHidden(pkg: String, displayId: Int): Boolean = io(false) { s ->
+        if (!PACKAGE_NAME.matches(pkg) || hiddenId() != displayId) return@io false
+        val task = s.mainTaskOf(pkg)
+        task >= 0 && s.moveTask(task, displayId)
+    }
+
     private companion object {
         const val PASTE_SETTLE_MS = 250L
         val PACKAGE_NAME = Regex("^[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z0-9_]+)+$")

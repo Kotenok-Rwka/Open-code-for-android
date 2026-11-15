@@ -211,14 +211,17 @@ class PhoneAppTool(phone: PhoneController, confirm: () -> PhoneConfirm) : PhoneT
     override val name = "phone_app"
     override val description =
         "Приложения и экран: action=launch (value — название или пакет), open_url (value — адрес http/https), list (список установленных; " +
-            "value — фильтр по названию), background_on / background_off (отдельный фоновый экран, не мешающий пользователю; нужен помощник)."
+            "value — фильтр по названию), move_to_background (value — приложение, уже открытое на основном экране: переносит его на фоновый экран), " +
+            "background_on / background_off (отдельный фоновый экран, не мешающий пользователю; нужен помощник)."
     override val schema = objSchema(
-        Prop("action", "string", "launch | open_url | list | background_on | background_off"),
+        Prop("action", "string", "launch | open_url | list | move_to_background | background_on | background_off"),
         Prop("value", "string", "Название, пакет, адрес или фильтр", required = false),
         Prop("background", "boolean", "Для launch: true — на фоновом экране, false — на основном экране пользователя. По умолчанию, если помощник подключён, приложение открывается на фоновом экране (включится само)", required = false),
     )
+    // перенос забирает приложение с экрана пользователя: только с его согласия
     override fun risky(input: JsonObject) =
-        input.str("action") == "open_url" && PhoneSafety.riskyUrl(input.str("value").orEmpty())
+        input.str("action") == "move_to_background" ||
+            (input.str("action") == "open_url" && PhoneSafety.riskyUrl(input.str("value").orEmpty()))
 
     // список приложений ничего не меняет
     override fun readOnly(input: JsonObject) = input.str("action") == "list"
@@ -229,6 +232,7 @@ class PhoneAppTool(phone: PhoneController, confirm: () -> PhoneConfirm) : PhoneT
             "launch" -> "Открыть приложение «${input.str("value").orEmpty()}»"
             "open_url" -> "Открыть ${input.str("value").orEmpty().take(100)}"
             "list" -> "Список приложений"
+            "move_to_background" -> "Перенести «${input.str("value").orEmpty()}» с основного экрана на фоновый"
             "background_on" -> "Включить фоновый экран"
             "background_off" -> "Выключить фоновый экран"
             else -> "phone_app"
@@ -239,6 +243,10 @@ class PhoneAppTool(phone: PhoneController, confirm: () -> PhoneConfirm) : PhoneT
         val value = input.str("value").orEmpty()
         return when (input.need("action")) {
             "launch" -> { require(value.isNotBlank()) { "Не указано приложение" }; act { input.bool("background").let { bg -> if (bg == null) phone.launchAuto(value) else phone.launch(value, bg) } } }
+            "move_to_background" -> {
+                require(value.isNotBlank()) { "Не указано приложение" }
+                act { phone.moveToBackground(value) }
+            }
             "open_url" -> {
                 require(value.startsWith("http://") || value.startsWith("https://") || PhoneSafety.riskyUrl(value)) { "Нужен адрес http/https" }
                 act { phone.openUrl(value) }

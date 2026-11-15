@@ -145,12 +145,21 @@ class PhoneController(
     suspend fun tap(x: Int, y: Int): Boolean =
         if (input.connected) input.tap(displayId, x, y) else displayId == 0 && reader.gestureTap(x, y)
 
-    suspend fun tapNode(id: Int): Boolean = reader.clickNode(id)
+    /** Действие «нажать» службы доступности, иначе касание в центр элемента на том же экране (помощником или жестом на основном). */
+    suspend fun tapNode(id: Int): Boolean {
+        if (reader.clickNode(id)) return true
+        val n = nodeById(id) ?: return false
+        return tap(n.bounds.centerX, n.bounds.centerY)
+    }
 
     suspend fun longPress(x: Int, y: Int): Boolean =
         if (input.connected) input.swipe(displayId, x, y, x, y, 700) else displayId == 0 && reader.gestureSwipe(x, y, x, y, 700)
 
-    suspend fun longPressNode(id: Int): Boolean = reader.longClickNode(id)
+    suspend fun longPressNode(id: Int): Boolean {
+        if (reader.longClickNode(id)) return true
+        val n = nodeById(id) ?: return false
+        return longPress(n.bounds.centerX, n.bounds.centerY)
+    }
 
     suspend fun swipe(x1: Int, y1: Int, x2: Int, y2: Int, durationMs: Long = 300): Boolean {
         val d = durationMs.coerceIn(50, 3000)
@@ -207,8 +216,9 @@ class PhoneController(
             LaunchCode.NOT_FOUND -> "Не удалось запустить $pkg: у приложения нет значка запуска."
             LaunchCode.IN_USE_ON_MAIN ->
                 "Не удалось запустить $pkg на фоновом экране: оно уже открыто на основном экране. " +
-                    "Не обходи это командами shell/root. Либо работай с ним на основном экране (phone_app background_off, затем phone_app launch с background=false), " +
-                    "либо попроси пользователя закрыть его на основном экране и повтори."
+                    "Не обходи это командами shell/root. Спроси пользователя, что сделать: перенести открытое приложение на фоновый экран " +
+                    "(phone_app move_to_background), закрыть его на основном экране и открыть заново на фоновом, или работать с ним на основном экране " +
+                    "(phone_app background_off, затем phone_app launch с background=false)."
             else -> "Не удалось запустить $pkg на экране $displayId (код $code). Скажи пользователю об ошибке, не обходи её командами shell/root."
         }
     }
@@ -228,6 +238,15 @@ class PhoneController(
 
     suspend fun listApps(): List<AppInfo> =
         (if (input.connected) input.listApps() else emptyList()).ifEmpty { localApps() }
+
+    /** Переносит приложение, открытое на основном экране, на фоновый экран (включая его, если он ещё не включён). null — перенесено, иначе причина. */
+    suspend fun moveToBackground(query: String): String? {
+        if (!input.connected) return "Перенос на фоновый экран недоступен: нужен помощник (root или беспроводная отладка)."
+        val pkg = resolveApp(query)?.pkg ?: query.trim().takeIf { it.contains('.') && !it.contains(' ') } ?: return "Приложение «$query» не найдено."
+        if (displayId == 0 && openBackground(1080, 1920, 420) <= 0) return "Фоновый экран недоступен."
+        return if (input.moveAppToHidden(pkg, displayId)) null
+        else "Не удалось перенести $pkg на фоновый экран: его нет на основном экране или система не разрешила перенос."
+    }
 
     /** Включает фоновый экран и переключает на него управление. Возвращает номер экрана или -1. */
     suspend fun openBackground(width: Int, height: Int, dpi: Int): Int {
