@@ -54,6 +54,29 @@ object AssistRunner {
     private val stateFlow = MutableStateFlow(State())
     val state: StateFlow<State> = stateFlow.asStateFlow()
 
+    /** Последний вопрос задан голосом: от этого зависит, озвучивать ли ответ сразу. */
+    @Volatile var askedByVoice: Boolean = false
+
+    @Volatile private var appCtx: Context? = null
+    @Volatile private var indicatorPrefs = AssistPrefs()
+
+    init {
+        // индикатор работы, пока окно закрыто: плашка поверх приложений или уведомление
+        scope.launch {
+            stateFlow.collect { s ->
+                val c = appCtx
+                if (c != null) AssistIndicator.update(c, s, sessionVisible, indicatorPrefs)
+            }
+        }
+    }
+
+    /** Окно показали или скрыли, или изменились настройки: пересчитать, нужен ли индикатор. */
+    fun refreshIndicator(app: Context, prefs: AssistPrefs) {
+        appCtx = app.applicationContext
+        indicatorPrefs = prefs
+        AssistIndicator.update(app, stateFlow.value, sessionVisible, prefs)
+    }
+
     /** Окно ассистента сейчас на экране. */
     @Volatile var sessionVisible: Boolean = false
 
@@ -98,6 +121,8 @@ object AssistRunner {
         val q = query.trim()
         if (q.isEmpty()) return
         val app = context.applicationContext
+        appCtx = app
+        indicatorPrefs = prefs
         job?.cancel()
         val id = ++counter
         stateFlow.value = State(status = Status.RUNNING, runId = id, query = q, startedAt = System.currentTimeMillis())
@@ -219,6 +244,13 @@ object AssistRunner {
         if (s.runId != id || s.status != Status.DONE) return
         val notify = AssistFlow.shouldNotify(sessionVisible, prefs)
         val popup = AssistFlow.shouldPopup(sessionVisible, prefs)
+        if (prefs.saveHistory) {
+            val st = settingsStore(app)
+            runCatching {
+                AssistHistoryStore({ st.rawGet(it) }, { k, v -> st.rawPut(k, v) })
+                    .add(AssistHistory.entryOf(System.currentTimeMillis(), q, s.answer, s.linksOnly, s.sources))
+            }
+        }
         if (!notify && !popup) return
         revealPending = true
         // уведомление остаётся запасным путём: если окно всплыло, оно само его уберёт

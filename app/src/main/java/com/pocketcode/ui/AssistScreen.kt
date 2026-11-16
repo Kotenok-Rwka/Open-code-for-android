@@ -3,6 +3,7 @@ package com.pocketcode.ui
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -40,6 +41,8 @@ import com.pocketcode.SettingsStore
 import com.pocketcode.assist.AnswerDepth
 import com.pocketcode.assist.AnswerKind
 import com.pocketcode.assist.AssistHints
+import com.pocketcode.assist.AssistHistoryStore
+import com.pocketcode.assist.AssistNotesStore
 import com.pocketcode.assist.AssistPrefs
 import com.pocketcode.assist.AssistPrefsStore
 import com.pocketcode.assist.AssistProfile
@@ -47,6 +50,7 @@ import com.pocketcode.assist.AssistProfileStore
 import com.pocketcode.assist.PocketAssistService
 import com.pocketcode.assist.ProgressMode
 import com.pocketcode.assist.ResultMode
+import com.pocketcode.assist.SpeakMode
 import kotlinx.coroutines.delay
 
 /** Настройки ассистента: вызов вместо Google, как показывать ответ и ход поиска. */
@@ -67,6 +71,11 @@ fun AssistScreen(onBack: () -> Unit) {
         me = p
         meStore.save(p)
     }
+    val historyStore = remember { AssistHistoryStore({ settingsStore.rawGet(it) }, { k, v -> settingsStore.rawPut(k, v) }) }
+    var historyCount by remember { mutableStateOf(historyStore.list().size) }
+    val notesStore = remember { AssistNotesStore({ settingsStore.rawGet(it) }, { k, v -> settingsStore.rawPut(k, v) }) }
+    var notesCount by remember { mutableStateOf(notesStore.list().size) }
+    var overlayOk by remember { mutableStateOf(Settings.canDrawOverlays(ctx)) }
     var isDefault by remember { mutableStateOf(PocketAssistService.isDefault(ctx)) }
     var mic by remember { mutableStateOf(ctx.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) }
     var note by remember { mutableStateOf("") }
@@ -75,6 +84,7 @@ fun AssistScreen(onBack: () -> Unit) {
         while (true) {
             isDefault = PocketAssistService.isDefault(ctx)
             mic = ctx.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+            overlayOk = Settings.canDrawOverlays(ctx)
             delay(1000)
         }
     }
@@ -168,11 +178,39 @@ fun AssistScreen(onBack: () -> Unit) {
                 style = MaterialTheme.typography.bodySmall,
             )
 
+            Text("Озвучка ответа", style = MaterialTheme.typography.titleMedium)
+            Chips {
+                Choice("Выкл", prefs.speakMode == SpeakMode.OFF) { change(prefs.copy(speakMode = SpeakMode.OFF)) }
+                Choice("Если спросил голосом", prefs.speakMode == SpeakMode.VOICE) { change(prefs.copy(speakMode = SpeakMode.VOICE)) }
+                Choice("Всегда", prefs.speakMode == SpeakMode.ALWAYS) { change(prefs.copy(speakMode = SpeakMode.ALWAYS)) }
+            }
+            Text("Ответ читает вслух системный синтезатор речи. Остановить или запустить озвучку можно кнопкой с динамиком под ответом.", style = MaterialTheme.typography.bodySmall)
+
+            Text("Простые команды", style = MaterialTheme.typography.titleMedium)
+            SwitchRow("Выполнять простые команды без нейросети", prefs.localCommands) { change(prefs.copy(localCommands = it)) }
+            Text("Калькулятор («сколько будет 15% от 200», «2+2*3»), время и дата, заметки: «запомни, что ключи в ящике», «запиши в заметку купить молоко», «покажи заметки». Считается и записывается на самом телефоне, без интернета и без расхода на нейросеть. Заметки хранятся только в PocketCode.", style = MaterialTheme.typography.bodySmall)
+            OutlinedButton(
+                onClick = { notesStore.clear(); notesCount = 0 },
+                enabled = notesCount > 0,
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text(if (notesCount > 0) "Удалить заметки ($notesCount)" else "Заметок нет") }
+
             Text("Вызов", style = MaterialTheme.typography.titleMedium)
             SwitchRow("Сразу слушать при вызове", prefs.autoListen) { change(prefs.copy(autoListen = it)) }
             Text("Окно открывается с включённым микрофоном; чтобы напечатать, коснись поля ввода.", style = MaterialTheme.typography.bodySmall)
             SwitchRow("Показывать окно снова, когда ответ готов", prefs.popupWhenReady) { change(prefs.copy(popupWhenReady = it)) }
             SwitchRow("Спрашивать подтверждение перед закрытием ответа", prefs.confirmClose) { change(prefs.copy(confirmClose = it)) }
+            SwitchRow("Плашка с ходом поиска поверх других приложений", prefs.overlayIndicator) { change(prefs.copy(overlayIndicator = it)) }
+            Text("Пока идёт поиск, а окно закрыто, вверху экрана висит маленькая плашка с ходом поиска; касание открывает окно. Без разрешения вместо неё показывается уведомление.", style = MaterialTheme.typography.bodySmall)
+            if (prefs.overlayIndicator) {
+                Text(if (overlayOk) "✓ Разрешено показывать поверх других приложений" else "✗ Нет разрешения показывать поверх других приложений", style = MaterialTheme.typography.bodyMedium)
+                if (!overlayOk) {
+                    OutlinedButton(
+                        onClick = { runCatching { ctx.startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + ctx.packageName)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("Разрешить поверх других приложений") }
+                }
+            }
             Text("Команды для телефона: в окне ассистента нажми «Управлять телефоном» и скажи, что сделать. Они выполняются режимом «Управление телефоном», его нужно включить в приложении.", style = MaterialTheme.typography.bodySmall)
 
             Text("Дополнительно", style = MaterialTheme.typography.titleMedium)
@@ -191,6 +229,15 @@ fun AssistScreen(onBack: () -> Unit) {
                 }
                 Text("Для быстрых ответов подойдёт лёгкая и дешёвая модель.", style = MaterialTheme.typography.bodySmall)
             }
+
+            Text("История запросов", style = MaterialTheme.typography.titleMedium)
+            SwitchRow("Сохранять историю запросов", prefs.saveHistory) { change(prefs.copy(saveHistory = it)) }
+            Text("Запросы и ответы хранятся только на телефоне (последние 40); открыть их можно кнопкой «История» в окне ассистента.", style = MaterialTheme.typography.bodySmall)
+            OutlinedButton(
+                onClick = { historyStore.clear(); historyCount = 0 },
+                enabled = historyCount > 0,
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text(if (historyCount > 0) "Очистить историю ($historyCount)" else "История пуста") }
 
             Text("О себе", style = MaterialTheme.typography.titleMedium)
             Text("По желанию расскажи о себе, и ассистенту не придётся каждый раз спрашивать основу, например город для погоды. Заполни только то, что хочешь.", style = MaterialTheme.typography.bodySmall)

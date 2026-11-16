@@ -7,9 +7,20 @@ import com.pocketcode.assist.AssistProfileStore
 import com.pocketcode.assist.AssistPrompt
 import com.pocketcode.assist.AssistAppMatch
 import com.pocketcode.assist.AssistFlow
+import com.pocketcode.assist.AssistHistory
+import com.pocketcode.assist.AssistHistoryStore
+import com.pocketcode.assist.AssistRunner
 import com.pocketcode.assist.AssistHints
 import com.pocketcode.assist.AssistIntent
 import com.pocketcode.assist.AssistIntentParser
+import com.pocketcode.assist.AssistLocal
+import com.pocketcode.assist.AssistNotes
+import com.pocketcode.assist.AssistNotesStore
+import com.pocketcode.assist.AssistSpeak
+import com.pocketcode.assist.CalcResult
+import com.pocketcode.assist.LocalCommand
+import com.pocketcode.assist.Note
+import com.pocketcode.assist.SpeakMode
 import com.pocketcode.assist.AssistMarkdown
 import com.pocketcode.assist.AssistPrefs
 import com.pocketcode.assist.AssistPrefsStore
@@ -229,6 +240,217 @@ class AssistLogicTest {
         assertFalse(AssistPrompt.system("сегодня", "UTC", "ru").contains("О пользователе"))
     }
 
+    // ===== история =====
+
+    private fun entry(t: Long, q: String) = AssistHistory.entryOf(t, q, "ответ " + q, false, listOf(SearchHit("T", "https://a.com", "s")))
+
+    @Test
+    fun historyNewestFirstAndDeduped() {
+        var l = emptyList<com.pocketcode.assist.HistoryEntry>()
+        l = AssistHistory.add(l, entry(1, "погода"))
+        l = AssistHistory.add(l, entry(2, "курс"))
+        l = AssistHistory.add(l, entry(3, "  Погода "))
+        assertEquals(listOf("Погода", "курс"), l.map { it.query })
+        assertEquals(3L, l.first().time)
+    }
+
+    @Test
+    fun historyIsLimitedAndIgnoresBlank() {
+        var l = emptyList<com.pocketcode.assist.HistoryEntry>()
+        for (i in 1..50) l = AssistHistory.add(l, entry(i.toLong(), "запрос $i"))
+        assertEquals(AssistHistory.MAX_ENTRIES, l.size)
+        assertEquals("запрос 50", l.first().query)
+        assertEquals(l, AssistHistory.add(l, entry(99, "   ")))
+        assertEquals(AssistHistory.MAX_ANSWER, AssistHistory.entryOf(1, "q", "я".repeat(9000), false, emptyList()).answer.length)
+    }
+
+    @Test
+    fun historyRoundTripAndBrokenData() {
+        val mem = HashMap<String, String>()
+        val st = AssistHistoryStore({ mem[it] }, { k, v -> mem[k] = v })
+        assertTrue(st.list().isEmpty())
+        st.add(entry(1, "один"))
+        st.add(entry(2, "два"))
+        assertEquals(listOf("два", "один"), st.list().map { it.query })
+        assertEquals("https://a.com", st.list().first().sources.single().url)
+        st.remove(2)
+        assertEquals(listOf("один"), st.list().map { it.query })
+        st.clear()
+        assertTrue(st.list().isEmpty())
+        mem[AssistHistoryStore.KEY] = "{не json"
+        assertTrue(st.list().isEmpty())
+    }
+
+    @Test
+    fun savedEntryOpensAsFinishedResult() {
+        val s = AssistHistory.toState(entry(5, "вопрос"))
+        assertEquals(AssistRunner.Status.DONE, s.status)
+        assertEquals("вопрос", s.query)
+        assertEquals("ответ вопрос", s.answer)
+        assertEquals(1, s.sources.size)
+    }
+
+    // ===== индикатор работы =====
+
+    @Test
+    fun indicatorOnlyWhileRunningAndWindowClosed() {
+        assertTrue(AssistFlow.indicatorActive(AssistRunner.Status.RUNNING, false))
+        assertFalse(AssistFlow.indicatorActive(AssistRunner.Status.RUNNING, true))
+        assertFalse(AssistFlow.indicatorActive(AssistRunner.Status.DONE, false))
+        assertFalse(AssistFlow.indicatorActive(AssistRunner.Status.IDLE, false))
+    }
+
+    @Test
+    fun historyAndOverlayPrefsRoundTrip() {
+        assertTrue(AssistPrefs().saveHistory && AssistPrefs().overlayIndicator)
+        val mem = HashMap<String, String>()
+        val store = AssistPrefsStore({ mem[it] }, { k, v -> mem[k] = v })
+        store.save(AssistPrefs(saveHistory = false, overlayIndicator = false))
+        val b = store.load()
+        assertFalse(b.saveHistory || b.overlayIndicator)
+    }
+
+    // ===== простые команды без нейросети =====
+
+    private fun calc(q: String, comma: Boolean = false): String? {
+        val cmd = AssistLocal.parse(q) as? LocalCommand.Calc ?: return null
+        return (AssistLocal.calc(cmd.expr, comma) as? CalcResult.Ok)?.text
+    }
+
+    @Test
+    fun calculatorBasics() {
+        assertEquals("8", calc("2+2*3"))
+        assertEquals("20", calc("(2+3)*4"))
+        assertEquals("0.3", calc("0.1+0.2"))
+        assertEquals("0,3", calc("0,1 + 0,2", comma = true))
+        assertEquals("512", calc("2^3^2"))
+        assertEquals("-4", calc("-2^2"))
+        assertEquals("0.5", calc("2^-1"))
+        assertEquals("4", calc("sqrt(16)"))
+    }
+
+    @Test
+    fun calculatorUnderstandsWords() {
+        assertEquals("30", calc("сколько будет 15% от 200"))
+        assertEquals("30", calc("сколько будет 15 процентов от 200"))
+        assertEquals("12", calc("посчитай 3 умножить на 4"))
+        assertEquals("7", calc("вычисли 10 минус 3"))
+        assertEquals("5", calc("сколько будет 20 разделить на 4"))
+        assertEquals("25", calc("посчитай 5 в квадрате"))
+        assertEquals("9", calc("сколько будет корень из 81"))
+        assertEquals("6", calc("2 x 3"))
+        assertEquals("6", calc("2 × 3"))
+        assertEquals("3.5", calc("what is 7/2"))
+    }
+
+    @Test
+    fun percentAddsToTheLeftOperand() {
+        assertEquals("220", calc("200+10%"))
+        assertEquals("180", calc("200-10%"))
+        assertEquals("0.1", calc("10%"))
+    }
+
+    @Test
+    fun divisionByZeroIsReportedNotCrashed() {
+        val cmd = AssistLocal.parse("5/0") as LocalCommand.Calc
+        assertEquals(CalcResult.DivZero, AssistLocal.calc(cmd.expr))
+        assertEquals(CalcResult.Bad, AssistLocal.calc("sqrt(-4)"))
+        assertEquals(CalcResult.Bad, AssistLocal.calc("2++"))
+        assertEquals(CalcResult.Bad, AssistLocal.calc("1.2.3+1"))
+    }
+
+    @Test
+    fun ordinaryTextIsNotCalculator() {
+        for (q in listOf("2024", "погода в москве", "сколько стоит айфон", "8-900-123-45-67", "+7 900 123 45 67", "16.11.2026", "16/11/2026", "3:2", "-5", "3.5", "привет")) {
+            assertNull("«$q» не пример", AssistLocal.parse(q).takeIf { it is LocalCommand.Calc })
+        }
+    }
+
+    @Test
+    fun timeAndDateQuestions() {
+        assertEquals(LocalCommand.Time, AssistLocal.parse("Который час?"))
+        assertEquals(LocalCommand.Time, AssistLocal.parse("сколько сейчас времени"))
+        assertEquals(LocalCommand.Date, AssistLocal.parse("какое сегодня число?"))
+        assertEquals(LocalCommand.Date, AssistLocal.parse("Какой сегодня день"))
+        assertNull(AssistLocal.parse("который час в токио"))
+    }
+
+    @Test
+    fun noteCommands() {
+        assertEquals(LocalCommand.SaveNote("Ключи в ящике"), AssistLocal.parse("запомни, что ключи в ящике"))
+        assertEquals(LocalCommand.SaveNote("Купить молоко"), AssistLocal.parse("Запиши в заметку купить молоко"))
+        assertEquals(LocalCommand.SaveNote("Позвонить маме"), AssistLocal.parse("пожалуйста, добавь заметку позвонить маме"))
+        assertEquals(LocalCommand.SaveNote("Buy milk"), AssistLocal.parse("remember that buy milk"))
+        assertEquals(LocalCommand.ShowNotes, AssistLocal.parse("покажи заметки"))
+        assertEquals(LocalCommand.ShowNotes, AssistLocal.parse("Мои заметки"))
+        assertNull(AssistLocal.parse("запомни"))
+        assertNull(AssistLocal.parse("запиши видео экрана"))
+    }
+
+    @Test
+    fun notesStoreKeepsNewestFirst() {
+        val mem = HashMap<String, String>()
+        val st = AssistNotesStore({ mem[it] }, { k, v -> mem[k] = v })
+        assertTrue(st.list().isEmpty())
+        st.add(Note(1, "первая"))
+        st.add(Note(2, "вторая"))
+        st.add(Note(3, "   "))
+        assertEquals(listOf("вторая", "первая"), st.list().map { it.text })
+        assertEquals("- t2 — вторая\n- t1 — первая", AssistNotes.listText(st.list()) { "t$it" })
+        var l = emptyList<Note>()
+        for (i in 1..120) l = AssistNotes.add(l, Note(i.toLong(), "n$i"))
+        assertEquals(AssistNotes.MAX_NOTES, l.size)
+        st.clear()
+        assertTrue(st.list().isEmpty())
+        mem[AssistNotesStore.KEY] = "ой"
+        assertTrue(st.list().isEmpty())
+    }
+
+    // ===== озвучка =====
+
+    @Test
+    fun speechTextHasNoMarkupLinksOrSources() {
+        val chunks = AssistSpeak.prepare("**Москва** — столица. Смотри https://a.com/x тут.\n- пункт один\n\nИсточники:\n[Сайт](https://a.com)")
+        val all = chunks.joinToString(" ")
+        assertTrue(all.contains("Москва — столица."))
+        assertTrue(all.contains("пункт один"))
+        assertFalse(all.contains("http"))
+        assertFalse(all.contains("*"))
+        assertFalse(all.contains("Источники"))
+        assertFalse(all.contains("Сайт"))
+    }
+
+    @Test
+    fun speechChunksAreShortAndLimited() {
+        val long = (1..400).joinToString(" ") { "Предложение номер $it." }
+        val chunks = AssistSpeak.prepare(long)
+        assertTrue(chunks.all { it.length <= AssistSpeak.MAX_CHUNK })
+        assertTrue(chunks.sumOf { it.length } <= AssistSpeak.MAX_TOTAL + chunks.size)
+        assertTrue(AssistSpeak.prepare("я".repeat(2000)).all { it.length <= AssistSpeak.MAX_CHUNK })
+        assertTrue(AssistSpeak.prepare("   ").isEmpty())
+    }
+
+    @Test
+    fun speakModeDecidesWhenToRead() {
+        assertFalse(AssistFlow.shouldSpeak(SpeakMode.OFF, true))
+        assertTrue(AssistFlow.shouldSpeak(SpeakMode.VOICE, true))
+        assertFalse(AssistFlow.shouldSpeak(SpeakMode.VOICE, false))
+        assertTrue(AssistFlow.shouldSpeak(SpeakMode.ALWAYS, false))
+        assertEquals(SpeakMode.VOICE, SpeakMode.parse("что-то"))
+        assertEquals(SpeakMode.VOICE, AssistPrefs().speakMode)
+        assertTrue(AssistPrefs().localCommands)
+    }
+
+    @Test
+    fun speakAndLocalPrefsRoundTrip() {
+        val mem = HashMap<String, String>()
+        val store = AssistPrefsStore({ mem[it] }, { k, v -> mem[k] = v })
+        store.save(AssistPrefs(speakMode = SpeakMode.ALWAYS, localCommands = false))
+        val b = store.load()
+        assertEquals(SpeakMode.ALWAYS, b.speakMode)
+        assertFalse(b.localCommands)
+    }
+
     // ===== прогресс =====
 
     @Test
@@ -393,7 +615,7 @@ class AssistLogicTest {
         val root = File("src/main/java/com/pocketcode")
         val files = File(root, "assist").listFiles { f -> f.name.endsWith(".kt") }.orEmpty().toList() + File(root, "ui/AssistScreen.kt")
         // эти файлы содержат слова для разбора речи и текст для нейросети, а не строки интерфейса
-        val notUi = setOf("AssistAppMatch.kt", "AssistIntent.kt", "AssistPrompt.kt", "AssistProfile.kt")
+        val notUi = setOf("AssistAppMatch.kt", "AssistIntent.kt", "AssistPrompt.kt", "AssistProfile.kt", "AssistLocal.kt", "AssistSpeak.kt", "AssistNotes.kt")
         val cyr = Regex("[А-Яа-яЁё]")
         val lit = Regex("\"((?:[^\"\\\\\\n]|\\\\.)*)\"")
         val dir = File("src/main/assets/i18n")

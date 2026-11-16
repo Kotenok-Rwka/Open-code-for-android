@@ -64,7 +64,7 @@ private class MaxHeightScrollView(ctx: Context) : ScrollView(ctx) {
 }
 
 /** Свой индикатор загрузки: бледное кольцо и бегущая по нему дуга, хорошо видно на любом фоне. */
-private class SpinnerView(ctx: Context, private val color: Int, private val track: Int) : View(ctx) {
+internal class SpinnerView(ctx: Context, private val color: Int, private val track: Int) : View(ctx) {
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeCap = Paint.Cap.ROUND
@@ -125,6 +125,15 @@ class AssistUi(private val ctx: Context, private val host: Host, private val c: 
 
         /** Команда для режима «Управление телефоном»: выполняется в чате приложения. */
         fun runPhoneTask(text: String)
+
+        /** Сохранённые запросы, новые первыми. */
+        fun history(): List<HistoryEntry>
+        fun deleteHistory(time: Long)
+        fun clearHistory()
+
+        /** Озвучить ответ (текст с разметкой) и остановить озвучку. */
+        fun speak(markdown: String)
+        fun stopSpeaking()
     }
 
     private val density = ctx.resources.displayMetrics.density
@@ -147,6 +156,11 @@ class AssistUi(private val ctx: Context, private val host: Host, private val c: 
     private var shownSteps: List<Step>? = null
     private var phoneMode = false
     private lateinit var confirmLayer: View
+    private val historyList = LinearLayout(ctx)
+    private val historyEmpty = label("Пока пусто: запросы появятся здесь", 14f, c.textDim)
+    private val historyScroll = MaxHeightScrollView(ctx)
+    private lateinit var historyView: View
+    private var restored = false
 
     // ----- общие части -----
     val root = FrameLayout(ctx)
@@ -177,6 +191,8 @@ class AssistUi(private val ctx: Context, private val host: Host, private val c: 
 
     // ----- ответ -----
     private val ansTitle = label("", 13f, c.textDim)
+    private val speakBtn = iconButton(R.drawable.ic_assist_speaker, "Озвучить", c.textDim) { toggleSpeak() }
+    private var speaking = false
     private val expandBtn = iconButton(R.drawable.ic_assist_expand, "На весь экран", c.textDim) { toggleFullscreen() }
     private val scroll = MaxHeightScrollView(ctx)
     private val answerText = label("", 16f, c.text)
@@ -243,7 +259,8 @@ class AssistUi(private val ctx: Context, private val host: Host, private val c: 
         offerView = buildOffer()
         answerView = buildAnswer()
         errorView = buildError()
-        for (v in listOf(inputView, workView, offerView, answerView, errorView)) {
+        historyView = buildHistory()
+        for (v in listOf(inputView, workView, offerView, answerView, errorView, historyView)) {
             v.visibility = View.GONE
             content.addView(v, FrameLayout.LayoutParams(MATCH, WRAP))
         }
@@ -260,6 +277,7 @@ class AssistUi(private val ctx: Context, private val host: Host, private val c: 
         lastState = null
         shownSteps = null
         phoneMode = false
+        restored = false
         hideConfirm()
         edit.hint = I18n.t("Спроси что угодно")
         edit.setText("")
@@ -343,7 +361,7 @@ class AssistUi(private val ctx: Context, private val host: Host, private val c: 
         target.setText(text)
         target.setSelection(target.text.length)
         if (final) {
-            if (target === followEdit) submitFollow() else submitMain()
+            if (target === followEdit) submitFollow(byVoice = true) else submitMain(byVoice = true)
         }
     }
 
@@ -367,6 +385,10 @@ class AssistUi(private val ctx: Context, private val host: Host, private val c: 
         }
         if (phase == Phase.FULLSCREEN) {
             show(answerView, Phase.POPUP)
+            return true
+        }
+        if (phase == Phase.HISTORY) {
+            show(inputView, Phase.INPUT, ime = false)
             return true
         }
         if (AssistFlow.needsCloseConfirm(phase, prefs)) {
@@ -556,6 +578,7 @@ class AssistUi(private val ctx: Context, private val host: Host, private val c: 
             setPaddingRelative(dp(10), 0, dp(14), 0)
             addView(iconButton(R.drawable.ic_assist_copy, "Копировать", c.textDim) { lastState?.let { host.copy(plain(it)) } })
             addView(iconButton(R.drawable.ic_assist_share, "Поделиться", c.textDim) { lastState?.let { host.share(plain(it)) } })
+            addView(speakBtn)
             addView(chatBtn)
             flashText.gravity = Gravity.END
             addView(flashText, LinearLayout.LayoutParams(0, WRAP, 1f))
@@ -657,7 +680,30 @@ class AssistUi(private val ctx: Context, private val host: Host, private val c: 
         lastState?.let { showAnswer(it, full) }
     }
 
-    private fun showAnswer(s: AssistRunner.State, full: Boolean) {
+    private fun spokenText(s: AssistRunner.State): String =
+        if (s.linksOnly) s.sources.take(5).joinToString(". ") { it.title } else s.answer
+
+    private fun toggleSpeak() {
+        if (speaking) host.stopSpeaking() else lastState?.let { host.speak(spokenText(it)) }
+    }
+
+    /** Озвучка началась или закончилась: кнопка динамика подсвечивается, пока идёт речь. */
+    fun setSpeaking(on: Boolean) {
+        speaking = on
+        speakBtn.setColorFilter(if (on) c.accent else c.textDim)
+        speakBtn.contentDescription = I18n.t(if (on) "Остановить озвучку" else "Озвучить")
+    }
+
+    /** Быстрый ответ телефона без нейросети: калькулятор, время, заметки. Показывается сразу в окне. */
+    fun showQuick(query: String, answer: String) {
+        restored = true
+        val now = System.currentTimeMillis()
+        showAnswer(AssistRunner.State(status = AssistRunner.Status.DONE, query = query, answer = answer, startedAt = now, finishedAt = now), false)
+    }
+
+    private fun showAnswer(s: AssistRunner.State, full: Boolean, autoSpeak: Boolean = true) {
+        host.stopSpeaking()
+        lastState = s
         ansTitle.text = s.query
         if (s.linksOnly) {
             answerText.visibility = if (s.sources.isEmpty()) View.VISIBLE else View.GONE
@@ -676,6 +722,7 @@ class AssistUi(private val ctx: Context, private val host: Host, private val c: 
         flashText.text = ""
         show(answerView, if (full) Phase.FULLSCREEN else Phase.POPUP)
         scroll.scrollTo(0, 0)
+        if (autoSpeak && AssistFlow.shouldSpeak(prefs.speakMode, AssistRunner.askedByVoice)) host.speak(spokenText(s))
     }
 
     private fun showError(s: AssistRunner.State) {
@@ -691,6 +738,73 @@ class AssistUi(private val ctx: Context, private val host: Host, private val c: 
             for (h in s.sources) sb.append("\n").append(h.url)
         }
         return sb.toString()
+    }
+
+    // ===== история =====
+
+    private fun openHistory() {
+        refreshHistory()
+        show(historyView, Phase.HISTORY)
+    }
+
+    private fun buildHistory(): View = column().apply {
+        addView(handleBar())
+        val head = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            addView(label("История", 17f, c.text, bold = true), LinearLayout.LayoutParams(0, WRAP, 1f))
+            addView(pillButton("Очистить", false) { host.clearHistory(); refreshHistory() }.apply { minHeight = dp(36) }, LinearLayout.LayoutParams(WRAP, WRAP))
+            addView(iconButton(R.drawable.ic_assist_close, "Закрыть", c.textDim) { show(inputView, Phase.INPUT, ime = false) })
+        }
+        addView(head, LinearLayout.LayoutParams(MATCH, WRAP))
+        historyList.orientation = LinearLayout.VERTICAL
+        historyScroll.isVerticalScrollBarEnabled = false
+        historyScroll.overScrollMode = View.OVER_SCROLL_NEVER
+        historyScroll.maxHeightPx = (screenH * 0.55f).toInt()
+        historyScroll.addView(historyList, FrameLayout.LayoutParams(MATCH, WRAP))
+        addView(historyScroll, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(8) })
+        addView(historyEmpty, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(12) })
+    }
+
+    private fun refreshHistory() {
+        historyList.removeAllViews()
+        val items = host.history()
+        historyEmpty.visibility = if (items.isEmpty()) View.VISIBLE else View.GONE
+        val fmt = java.text.SimpleDateFormat("d MMM, HH:mm", java.util.Locale.getDefault())
+        for (e in items) historyList.addView(historyRow(e, fmt.format(java.util.Date(e.time))))
+    }
+
+    private fun historyRow(e: HistoryEntry, whenText: String): View = LinearLayout(ctx).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        background = ripple(rounded(c.surfaceHigh, 14), 14)
+        setPaddingRelative(dp(14), dp(8), dp(4), dp(8))
+        val texts = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            val q = label(e.query, 15f, c.text, bold = true)
+            q.maxLines = 2
+            q.ellipsize = TextUtils.TruncateAt.END
+            addView(q)
+            val sub = if (e.linksOnly) I18n.t("Найдено страниц: ${e.sources.size}") else AssistText.firstSentence(e.answer, 120)
+            val meta = label(if (sub.isEmpty()) whenText else "$whenText · $sub", 12f, c.textDim)
+            meta.maxLines = 2
+            meta.ellipsize = TextUtils.TruncateAt.END
+            addView(meta, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(2) })
+        }
+        addView(texts, LinearLayout.LayoutParams(0, WRAP, 1f))
+        addView(iconButton(R.drawable.ic_assist_close, "Удалить из истории", c.textDim) {
+            host.deleteHistory(e.time)
+            refreshHistory()
+        })
+        layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(8) }
+        setOnClickListener { openSaved(e) }
+    }
+
+    /** Открывает сохранённый ответ; уточнение к нему начнёт новый разговор. */
+    private fun openSaved(e: HistoryEntry) {
+        restored = true
+        val s = AssistHistory.toState(e)
+        showAnswer(s, false, autoSpeak = false)
     }
 
     // ===== ход поиска =====
@@ -746,20 +860,24 @@ class AssistUi(private val ctx: Context, private val host: Host, private val c: 
 
     // ===== ввод =====
 
-    private fun submitMain() {
+    private fun submitMain(byVoice: Boolean = false) {
         val t = edit.text.toString().trim()
         if (t.isEmpty()) return
+        AssistRunner.askedByVoice = byVoice
         followFrom = null
         micTarget = null
         if (phoneMode) host.runPhoneTask(t) else host.submit(t, false, false)
     }
 
-    private fun submitFollow() {
+    private fun submitFollow(byVoice: Boolean = false) {
         val t = followEdit.text.toString().trim()
         if (t.isEmpty()) return
+        AssistRunner.askedByVoice = byVoice
         followFrom = phase
         micTarget = null
-        host.submit(t, true, false)
+        // уточнение к сохранённому ответу начинает новый разговор: прежнего контекста у модели уже нет
+        host.submit(t, !restored, false)
+        restored = false
     }
 
     private fun onMic(target: EditText) {
@@ -772,6 +890,7 @@ class AssistUi(private val ctx: Context, private val host: Host, private val c: 
         if (!locked) {
             chips.addView(chip("Управлять телефоном", phoneMode) { togglePhoneMode() })
         }
+        if (!phoneMode) chips.addView(chip("История", false) { openHistory() })
         if (phoneMode) {
             // примеры команд только подставляем в поле: телефон трогаем по явной отправке
             for (s in listOf("Включи фонарик", "Сделай скриншот", "Поставь будильник на 7 утра")) {

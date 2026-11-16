@@ -1,7 +1,7 @@
 package com.pocketcode.assist
 
 /** Что сейчас видно в окне ассистента. */
-enum class Phase { INPUT, WORKING, OFFER, POPUP, FULLSCREEN, ERROR }
+enum class Phase { INPUT, WORKING, OFFER, POPUP, FULLSCREEN, ERROR, HISTORY }
 
 /** Правила переходов между состояниями окна. */
 object AssistFlow {
@@ -27,6 +27,12 @@ object AssistFlow {
     /** Нужно ли спросить подтверждение перед закрытием: только когда на экране готовый ответ или предложение его показать. */
     fun needsCloseConfirm(phase: Phase, prefs: AssistPrefs): Boolean =
         prefs.confirmClose && (phase == Phase.OFFER || phase == Phase.POPUP || phase == Phase.FULLSCREEN)
+
+    /** Индикатор работы нужен, пока идёт запрос, а окно ассистента закрыто. */
+    fun indicatorActive(status: AssistRunner.Status, sessionVisible: Boolean): Boolean = status == AssistRunner.Status.RUNNING && !sessionVisible
+
+    /** Нужно ли озвучить ответ сразу: [byVoice] — вопрос задан голосом. */
+    fun shouldSpeak(mode: SpeakMode, byVoice: Boolean): Boolean = mode == SpeakMode.ALWAYS || (mode == SpeakMode.VOICE && byVoice)
 
     /** Запоминает выбор «здесь» или «на весь экран», если пользователь отметил «запомнить». */
     fun rememberChoice(prefs: AssistPrefs, fullscreen: Boolean, remember: Boolean): AssistPrefs =

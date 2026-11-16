@@ -28,6 +28,15 @@ enum class AnswerKind(val key: String) {
 }
 
 /** Насколько глубоко искать: быстрый короткий ответ, обычный или подробный разбор с несколькими страницами. */
+/** Когда озвучивать ответ: никогда, только если вопрос задан голосом, или всегда. Кнопка динамика в окне есть всегда. */
+enum class SpeakMode(val key: String) {
+    OFF("off"), VOICE("voice"), ALWAYS("always");
+
+    companion object {
+        fun parse(s: String?): SpeakMode = values().firstOrNull { it.key == s } ?: VOICE
+    }
+}
+
 enum class AnswerDepth(val key: String, val maxSteps: Int) {
     FAST("fast", 3), NORMAL("normal", 6), DEEP("deep", 12);
 
@@ -55,6 +64,13 @@ data class AssistPrefs(
     val confirmClose: Boolean = true,
     /** При вызове сразу включать микрофон; текст можно ввести вручную. */
     val autoListen: Boolean = true,
+    /** Пока идёт поиск, а окно закрыто, показывать плашку поверх других приложений (нужно разрешение); без неё будет уведомление. */
+    val overlayIndicator: Boolean = true,
+    /** Сохранять историю запросов на телефоне. */
+    val saveHistory: Boolean = true,
+    val speakMode: SpeakMode = SpeakMode.VOICE,
+    /** Калькулятор, время, дата и заметки выполняются на телефоне без нейросети. */
+    val localCommands: Boolean = true,
 )
 
 /** Хранит настройки ассистента в тех же настройках приложения; чтение и запись передаются функциями, чтобы это можно было проверить тестом. */
@@ -73,6 +89,10 @@ class AssistPrefsStore(private val get: (String) -> String?, private val put: (S
             popupWhenReady = flag(K_POPUP, d.popupWhenReady),
             confirmClose = flag(K_CONFIRM, d.confirmClose),
             autoListen = flag(K_LISTEN, d.autoListen),
+            overlayIndicator = flag(K_OVERLAY, d.overlayIndicator),
+            saveHistory = flag(K_HISTORY, d.saveHistory),
+            speakMode = SpeakMode.parse(get(K_SPEAK)),
+            localCommands = flag(K_LOCAL, d.localCommands),
         )
     }
 
@@ -88,6 +108,10 @@ class AssistPrefsStore(private val get: (String) -> String?, private val put: (S
         put(K_POPUP, if (p.popupWhenReady) "1" else "0")
         put(K_CONFIRM, if (p.confirmClose) "1" else "0")
         put(K_LISTEN, if (p.autoListen) "1" else "0")
+        put(K_OVERLAY, if (p.overlayIndicator) "1" else "0")
+        put(K_HISTORY, if (p.saveHistory) "1" else "0")
+        put(K_SPEAK, p.speakMode.key)
+        put(K_LOCAL, if (p.localCommands) "1" else "0")
     }
 
     private fun flag(key: String, default: Boolean): Boolean = when (get(key)) {
@@ -108,5 +132,9 @@ class AssistPrefsStore(private val get: (String) -> String?, private val put: (S
         const val K_POPUP = "assistPopup"
         const val K_CONFIRM = "assistConfirm"
         const val K_LISTEN = "assistListen"
+        const val K_OVERLAY = "assistOverlay"
+        const val K_HISTORY = "assistHistoryOn"
+        const val K_SPEAK = "assistSpeak"
+        const val K_LOCAL = "assistLocal"
     }
 }

@@ -57,6 +57,9 @@ class AssistSession(private val svc: Context) : VoiceInteractionSession(svc) {
     private var speech: AssistSpeech? = null
     private var settings: SettingsStore? = null
     private var prefStore: AssistPrefsStore? = null
+    private var historyStore: AssistHistoryStore? = null
+    private var notesStore: AssistNotesStore? = null
+    private var tts: AssistTts? = null
     private var prefs = AssistPrefs()
     private var collector: Job? = null
     private var locked = false
@@ -72,6 +75,9 @@ class AssistSession(private val svc: Context) : VoiceInteractionSession(svc) {
         I18n.init(app())
         val st = store()
         prefStore = AssistPrefsStore({ st.rawGet(it) }, { k, v -> st.rawPut(k, v) })
+        historyStore = AssistHistoryStore({ st.rawGet(it) }, { k, v -> st.rawPut(k, v) })
+        notesStore = AssistNotesStore({ st.rawGet(it) }, { k, v -> st.rawPut(k, v) })
+        tts = AssistTts(app()) { on -> ui?.setSpeaking(on) }
     }
 
     override fun onCreateContentView(): View {
@@ -89,6 +95,7 @@ class AssistSession(private val svc: Context) : VoiceInteractionSession(svc) {
         screenText = null
         pageUrl = null
         AssistRunner.sessionVisible = true
+        AssistRunner.refreshIndicator(app(), prefs)
         AssistNotifier.cancel(app())
         u.reset(locked, prefs)
         val st = AssistRunner.state.value
@@ -109,9 +116,11 @@ class AssistSession(private val svc: Context) : VoiceInteractionSession(svc) {
     override fun onHide() {
         super.onHide()
         AssistRunner.sessionVisible = false
+        AssistRunner.refreshIndicator(app(), prefs)
         collector?.cancel()
         collector = null
         speech?.stop()
+        tts?.stop()
         ui?.release()
     }
 
@@ -119,6 +128,7 @@ class AssistSession(private val svc: Context) : VoiceInteractionSession(svc) {
         AssistRunner.sessionVisible = false
         scope.cancel()
         speech?.stop()
+        tts?.shutdown()
         ui?.release()
         super.onDestroy()
     }
@@ -199,6 +209,25 @@ class AssistSession(private val svc: Context) : VoiceInteractionSession(svc) {
             if (startOutside(i)) hide()
         }
 
+        override fun speak(markdown: String) {
+            val lang = AssistVoice.languageTag(I18n.code, java.util.Locale.getDefault().toLanguageTag())
+            tts?.speak(AssistSpeak.prepare(markdown), lang)
+        }
+
+        override fun stopSpeaking() {
+            tts?.stop()
+        }
+
+        override fun history(): List<HistoryEntry> = historyStore?.list().orEmpty()
+
+        override fun deleteHistory(time: Long) {
+            historyStore?.remove(time)
+        }
+
+        override fun clearHistory() {
+            historyStore?.clear()
+        }
+
         override fun runPhoneTask(text: String) {
             if (!AssistFlow.canOpenOutside(locked)) {
                 ui?.flash(I18n.t("Разблокируй телефон, чтобы открыть это"))
@@ -245,6 +274,14 @@ class AssistSession(private val svc: Context) : VoiceInteractionSession(svc) {
     private fun onSubmit(text: String, followUp: Boolean, withScreen: Boolean) {
         val u = ui ?: return
         speech?.stop()
+        tts?.stop()
+        if (prefs.localCommands) {
+            val local = AssistLocal.parse(text)?.let { localAnswer(it) }
+            if (local != null) {
+                u.showQuick(text, local)
+                return
+            }
+        }
         when (val intent = AssistIntentParser.parse(text)) {
             AssistIntent.Empty -> u.flash(I18n.t("Напиши или скажи, что найти"))
             is AssistIntent.OpenUrl -> hostImpl.openUrl(intent.url)
@@ -263,6 +300,34 @@ class AssistSession(private val svc: Context) : VoiceInteractionSession(svc) {
                 }
             }
             is AssistIntent.Ask -> startRun(intent.text, intent.forceSearch, withScreen, followUp)
+        }
+    }
+
+    /** Выполняет простую команду на телефоне; null — не получилось, пусть отвечает обычный путь. */
+    private fun localAnswer(cmd: LocalCommand): String? {
+        val locale = java.util.Locale.forLanguageTag(AssistVoice.languageTag(I18n.code, java.util.Locale.getDefault().toLanguageTag()))
+        return when (cmd) {
+            is LocalCommand.Calc -> when (val r = AssistLocal.calc(cmd.expr, AssistLocal.usesDecimalComma(I18n.code))) {
+                is CalcResult.Ok -> "**" + r.text + "**"
+                CalcResult.DivZero -> I18n.t("Делить на ноль нельзя")
+                CalcResult.Bad -> null
+            }
+            LocalCommand.Time -> java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT, locale).format(java.util.Date())
+            LocalCommand.Date -> java.text.SimpleDateFormat("EEEE, d MMMM yyyy", locale).format(java.util.Date()).replaceFirstChar { it.uppercase() }
+            is LocalCommand.SaveNote -> {
+                val store = notesStore ?: return null
+                store.add(Note(System.currentTimeMillis(), cmd.text))
+                I18n.t("Записал в заметки") + ": " + cmd.text
+            }
+            LocalCommand.ShowNotes -> {
+                val notes = notesStore?.list().orEmpty()
+                if (notes.isEmpty()) {
+                    I18n.t("Заметок пока нет. Скажи: «Запомни, что …»")
+                } else {
+                    val fmt = java.text.SimpleDateFormat("d MMM, HH:mm", locale)
+                    AssistNotes.listText(notes) { fmt.format(java.util.Date(it)) }
+                }
+            }
         }
     }
 
@@ -286,6 +351,7 @@ class AssistSession(private val svc: Context) : VoiceInteractionSession(svc) {
     /** [auto] — микрофон включается сам при вызове: без доступа не уводим человека на экран разрешений, а подсказываем нажать на микрофон. */
     private fun onToggleMic(auto: Boolean) {
         val sp = speech ?: return
+        tts?.stop()
         if (sp.listening) {
             if (!auto) sp.finishSpeaking()
             return
