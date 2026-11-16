@@ -49,6 +49,12 @@ data class AssistPrefs(
     /** Профиль API для ассистента; пусто — тот же, что активен в чате. */
     val profileId: String = "",
     val depth: AnswerDepth = AnswerDepth.NORMAL,
+    /** Когда ответ готов, а окно закрыто, окно с предложением «Здесь / На весь экран» всплывает снова. */
+    val popupWhenReady: Boolean = true,
+    /** Спрашивать подтверждение, прежде чем закрыть готовый ответ. */
+    val confirmClose: Boolean = true,
+    /** При вызове сразу включать микрофон; текст можно ввести вручную. */
+    val autoListen: Boolean = true,
 )
 
 /** Хранит настройки ассистента в тех же настройках приложения; чтение и запись передаются функциями, чтобы это можно было проверить тестом. */
@@ -64,6 +70,9 @@ class AssistPrefsStore(private val get: (String) -> String?, private val put: (S
             notifyWhenHidden = flag(K_NOTIFY, d.notifyWhenHidden),
             profileId = get(K_PROFILE).orEmpty(),
             depth = AnswerDepth.parse(get(K_DEPTH)),
+            popupWhenReady = flag(K_POPUP, d.popupWhenReady),
+            confirmClose = flag(K_CONFIRM, d.confirmClose),
+            autoListen = flag(K_LISTEN, d.autoListen),
         )
     }
 
@@ -76,6 +85,9 @@ class AssistPrefsStore(private val get: (String) -> String?, private val put: (S
         put(K_NOTIFY, if (p.notifyWhenHidden) "1" else "0")
         put(K_PROFILE, p.profileId)
         put(K_DEPTH, p.depth.key)
+        put(K_POPUP, if (p.popupWhenReady) "1" else "0")
+        put(K_CONFIRM, if (p.confirmClose) "1" else "0")
+        put(K_LISTEN, if (p.autoListen) "1" else "0")
     }
 
     private fun flag(key: String, default: Boolean): Boolean = when (get(key)) {
@@ -93,5 +105,8 @@ class AssistPrefsStore(private val get: (String) -> String?, private val put: (S
         const val K_NOTIFY = "assistNotify"
         const val K_PROFILE = "assistProfile"
         const val K_DEPTH = "assistDepth"
+        const val K_POPUP = "assistPopup"
+        const val K_CONFIRM = "assistConfirm"
+        const val K_LISTEN = "assistListen"
     }
 }

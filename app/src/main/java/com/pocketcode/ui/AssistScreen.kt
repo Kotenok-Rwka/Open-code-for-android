@@ -23,6 +23,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.runtime.Composable
@@ -41,6 +42,8 @@ import com.pocketcode.assist.AnswerKind
 import com.pocketcode.assist.AssistHints
 import com.pocketcode.assist.AssistPrefs
 import com.pocketcode.assist.AssistPrefsStore
+import com.pocketcode.assist.AssistProfile
+import com.pocketcode.assist.AssistProfileStore
 import com.pocketcode.assist.PocketAssistService
 import com.pocketcode.assist.ProgressMode
 import com.pocketcode.assist.ResultMode
@@ -57,6 +60,12 @@ fun AssistScreen(onBack: () -> Unit) {
     fun change(p: AssistPrefs) {
         prefs = p
         store.save(p)
+    }
+    val meStore = remember { AssistProfileStore({ settingsStore.rawGet(it) }, { k, v -> settingsStore.rawPut(k, v) }) }
+    var me by remember { mutableStateOf(meStore.load()) }
+    fun changeMe(p: AssistProfile) {
+        me = p
+        meStore.save(p)
     }
     var isDefault by remember { mutableStateOf(PocketAssistService.isDefault(ctx)) }
     var mic by remember { mutableStateOf(ctx.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) }
@@ -159,6 +168,13 @@ fun AssistScreen(onBack: () -> Unit) {
                 style = MaterialTheme.typography.bodySmall,
             )
 
+            Text("Вызов", style = MaterialTheme.typography.titleMedium)
+            SwitchRow("Сразу слушать при вызове", prefs.autoListen) { change(prefs.copy(autoListen = it)) }
+            Text("Окно открывается с включённым микрофоном; чтобы напечатать, коснись поля ввода.", style = MaterialTheme.typography.bodySmall)
+            SwitchRow("Показывать окно снова, когда ответ готов", prefs.popupWhenReady) { change(prefs.copy(popupWhenReady = it)) }
+            SwitchRow("Спрашивать подтверждение перед закрытием ответа", prefs.confirmClose) { change(prefs.copy(confirmClose = it)) }
+            Text("Команды для телефона: в окне ассистента нажми «Управлять телефоном» и скажи, что сделать. Они выполняются режимом «Управление телефоном», его нужно включить в приложении.", style = MaterialTheme.typography.bodySmall)
+
             Text("Дополнительно", style = MaterialTheme.typography.titleMedium)
             SwitchRow("Показывать источники под ответом", prefs.showSources) { change(prefs.copy(showSources = it)) }
             SwitchRow("Кнопка «Что на экране?»", prefs.useScreenText) { change(prefs.copy(useScreenText = it)) }
@@ -176,6 +192,17 @@ fun AssistScreen(onBack: () -> Unit) {
                 Text("Для быстрых ответов подойдёт лёгкая и дешёвая модель.", style = MaterialTheme.typography.bodySmall)
             }
 
+            Text("О себе", style = MaterialTheme.typography.titleMedium)
+            Text("По желанию расскажи о себе, и ассистенту не придётся каждый раз спрашивать основу, например город для погоды. Заполни только то, что хочешь.", style = MaterialTheme.typography.bodySmall)
+            SwitchRow("Учитывать то, что я о себе рассказал", me.enabled) { changeMe(me.copy(enabled = it)) }
+            MeField("Как к тебе обращаться", me.name, 1) { changeMe(me.copy(name = it)) }
+            MeField("Город", me.city, 1) { changeMe(me.copy(city = it)) }
+            MeField("Чем занимаешься", me.occupation, 2) { changeMe(me.copy(occupation = it)) }
+            MeField("Интересы", me.interests, 2) { changeMe(me.copy(interests = it)) }
+            MeField("Как отвечать (например: коротко, с юмором, без лишних слов)", me.style, 2) { changeMe(me.copy(style = it)) }
+            MeField("Ещё что стоит знать", me.extra, 4) { changeMe(me.copy(extra = it)) }
+            Text("Эти данные уходят выбранной модели с каждым запросом в режиме «Ответ с источниками». Не пиши сюда пароли, номера карт и другие секреты.", style = MaterialTheme.typography.bodySmall)
+
             Text("Голосовой ввод", style = MaterialTheme.typography.titleMedium)
             Text(if (mic) "✓ Доступ к микрофону есть" else "✗ Нет доступа к микрофону", style = MaterialTheme.typography.bodyMedium)
             if (!mic) {
@@ -190,6 +217,18 @@ fun AssistScreen(onBack: () -> Unit) {
 @Composable
 private fun Chips(content: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit) {
     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp), content = content)
+}
+
+@Composable
+private fun MeField(title: String, value: String, lines: Int, onChange: (String) -> Unit) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = { onChange(it.take(if (lines >= 4) AssistProfile.MAX_EXTRA else AssistProfile.MAX_FIELD)) },
+        label = { Text(title) },
+        minLines = 1,
+        maxLines = lines,
+        modifier = Modifier.fillMaxWidth(),
+    )
 }
 
 @Composable

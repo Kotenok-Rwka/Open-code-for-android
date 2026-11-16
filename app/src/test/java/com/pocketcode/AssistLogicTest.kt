@@ -2,6 +2,8 @@ package com.pocketcode
 
 import com.pocketcode.assist.AnswerDepth
 import com.pocketcode.assist.AnswerKind
+import com.pocketcode.assist.AssistProfile
+import com.pocketcode.assist.AssistProfileStore
 import com.pocketcode.assist.AssistPrompt
 import com.pocketcode.assist.AssistAppMatch
 import com.pocketcode.assist.AssistFlow
@@ -159,6 +161,72 @@ class AssistLogicTest {
         assertTrue(AssistPrompt.system("сегодня", "UTC", "ru", AnswerDepth.FAST).contains("быстрого ответа"))
         assertTrue(AssistPrompt.system("сегодня", "UTC", "ru", AnswerDepth.DEEP).contains("подробного ответа"))
         assertFalse(normal.contains("Режим"))
+    }
+
+    @Test
+    fun newSwitchesDefaultOnAndRoundTrip() {
+        val d = AssistPrefs()
+        assertTrue(d.autoListen && d.popupWhenReady && d.confirmClose)
+        val mem = HashMap<String, String>()
+        val store = AssistPrefsStore({ mem[it] }, { k, v -> mem[k] = v })
+        store.save(d.copy(autoListen = false, popupWhenReady = false, confirmClose = false))
+        val back = store.load()
+        assertFalse(back.autoListen || back.popupWhenReady || back.confirmClose)
+    }
+
+    @Test
+    fun popupOnlyWhenWindowIsClosed() {
+        assertTrue(AssistFlow.shouldPopup(false, AssistPrefs()))
+        assertFalse(AssistFlow.shouldPopup(true, AssistPrefs()))
+        assertFalse(AssistFlow.shouldPopup(false, AssistPrefs(popupWhenReady = false)))
+    }
+
+    @Test
+    fun closeConfirmOnlyForReadyAnswer() {
+        val p = AssistPrefs()
+        for (ph in listOf(Phase.OFFER, Phase.POPUP, Phase.FULLSCREEN)) assertTrue(AssistFlow.needsCloseConfirm(ph, p))
+        for (ph in listOf(Phase.INPUT, Phase.WORKING, Phase.ERROR)) assertFalse(AssistFlow.needsCloseConfirm(ph, p))
+        assertFalse(AssistFlow.needsCloseConfirm(Phase.POPUP, p.copy(confirmClose = false)))
+    }
+
+    // ===== «О себе» =====
+
+    @Test
+    fun profileIsEmptyUntilEnabledAndFilled() {
+        assertEquals("", AssistProfile().toPrompt())
+        assertEquals("", AssistProfile(enabled = true).toPrompt())
+        assertEquals("", AssistProfile(enabled = false, city = "Казань").toPrompt())
+    }
+
+    @Test
+    fun profilePromptListsOnlyFilledFields() {
+        val t = AssistProfile(enabled = true, name = "Аня", city = "  Казань\n", style = "коротко").toPrompt()
+        assertTrue(t.contains("- Как обращаться: Аня"))
+        assertTrue(t.contains("- Город: Казань"))
+        assertTrue(t.contains("- Как отвечать: коротко"))
+        assertFalse(t.contains("Интересы"))
+        assertFalse(t.contains("Чем занимается"))
+    }
+
+    @Test
+    fun profileFieldsAreCleanedAndLimited() {
+        val t = AssistProfile(enabled = true, interests = "а\n\nб   в", extra = "я".repeat(5000)).toPrompt()
+        assertTrue(t.contains("- Интересы: а б в"))
+        val extraLine = t.lines().first { it.startsWith("- Ещё: ") }
+        assertEquals(AssistProfile.MAX_EXTRA, extraLine.removePrefix("- Ещё: ").length)
+    }
+
+    @Test
+    fun profileRoundTripAndPromptSection() {
+        val mem = HashMap<String, String>()
+        val store = AssistProfileStore({ mem[it] }, { k, v -> mem[k] = v })
+        assertEquals(AssistProfile(), store.load())
+        val p = AssistProfile(true, "Аня", "Казань", "дизайнер", "кино", "коротко", "люблю чай")
+        store.save(p)
+        assertEquals(p, store.load())
+        val sys = AssistPrompt.system("сегодня", "UTC", "ru", AnswerDepth.NORMAL, p.toPrompt())
+        assertTrue(sys.contains("О пользователе"))
+        assertFalse(AssistPrompt.system("сегодня", "UTC", "ru").contains("О пользователе"))
     }
 
     // ===== прогресс =====
@@ -325,7 +393,7 @@ class AssistLogicTest {
         val root = File("src/main/java/com/pocketcode")
         val files = File(root, "assist").listFiles { f -> f.name.endsWith(".kt") }.orEmpty().toList() + File(root, "ui/AssistScreen.kt")
         // эти файлы содержат слова для разбора речи и текст для нейросети, а не строки интерфейса
-        val notUi = setOf("AssistAppMatch.kt", "AssistIntent.kt", "AssistPrompt.kt")
+        val notUi = setOf("AssistAppMatch.kt", "AssistIntent.kt", "AssistPrompt.kt", "AssistProfile.kt")
         val cyr = Regex("[А-Яа-яЁё]")
         val lit = Regex("\"((?:[^\"\\\\\\n]|\\\\.)*)\"")
         val dir = File("src/main/assets/i18n")

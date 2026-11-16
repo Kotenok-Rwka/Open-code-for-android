@@ -92,14 +92,18 @@ class AssistSession(private val svc: Context) : VoiceInteractionSession(svc) {
         AssistNotifier.cancel(app())
         u.reset(locked, prefs)
         val st = AssistRunner.state.value
+        var listenNow = false
         if (AssistRunner.consumeReveal() && st.status == AssistRunner.Status.DONE) {
             u.reveal(st, prefs)
         } else if (st.status != AssistRunner.Status.RUNNING) {
             AssistRunner.reset()
             AssistRunner.newConversation()
+            listenNow = prefs.autoListen
         }
         collector?.cancel()
         collector = scope.launch { AssistRunner.state.collect { u.render(it, prefs) } }
+        // сразу слушаем: говорить быстрее, чем печатать; текст можно ввести, коснувшись поля
+        if (listenNow) u.root.post { if (AssistRunner.sessionVisible) { u.targetMainInput(); onToggleMic(auto = true) } }
     }
 
     override fun onHide() {
@@ -170,7 +174,7 @@ class AssistSession(private val svc: Context) : VoiceInteractionSession(svc) {
         }
 
         override fun toggleMic() {
-            onToggleMic()
+            onToggleMic(auto = false)
         }
 
         override fun openUrl(url: String) {
@@ -192,6 +196,19 @@ class AssistSession(private val svc: Context) : VoiceInteractionSession(svc) {
 
         override fun openSettings(screen: String) {
             val i = Intent(app(), MainActivity::class.java).setAction("com.pocketcode.OPEN_SCREEN").putExtra("screen", screen)
+            if (startOutside(i)) hide()
+        }
+
+        override fun runPhoneTask(text: String) {
+            if (!AssistFlow.canOpenOutside(locked)) {
+                ui?.flash(I18n.t("Разблокируй телефон, чтобы открыть это"))
+                return
+            }
+            if (!store().loadPhoneEnabled()) {
+                ui?.flash(I18n.t("Режим «Управление телефоном» выключен: включи его в приложении"))
+                return
+            }
+            val i = Intent(app(), MainActivity::class.java).setAction("com.pocketcode.RUN_TASK").putExtra("text", text)
             if (startOutside(i)) hide()
         }
 
@@ -266,15 +283,20 @@ class AssistSession(private val svc: Context) : VoiceInteractionSession(svc) {
 
     // ===== голос =====
 
-    private fun onToggleMic() {
+    /** [auto] — микрофон включается сам при вызове: без доступа не уводим человека на экран разрешений, а подсказываем нажать на микрофон. */
+    private fun onToggleMic(auto: Boolean) {
         val sp = speech ?: return
         if (sp.listening) {
-            sp.finishSpeaking()
+            if (!auto) sp.finishSpeaking()
             return
         }
         when (sp.start()) {
             AssistSpeech.Start.OK -> {}
             AssistSpeech.Start.NO_PERMISSION -> {
+                if (auto) {
+                    ui?.flash(I18n.t("Нажми на микрофон, чтобы разрешить доступ"))
+                    return
+                }
                 ui?.flash(I18n.t("Нужен доступ к микрофону"))
                 val i = Intent(app(), AssistPermissionActivity::class.java)
                 if (startOutside(i)) hide()

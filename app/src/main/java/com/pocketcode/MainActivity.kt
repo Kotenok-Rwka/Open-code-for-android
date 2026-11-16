@@ -207,6 +207,14 @@ class MainActivity : ComponentActivity() {
                 androidx.compose.runtime.LaunchedEffect(wanted) {
                     if (wanted == "ASSISTANT") { openFrom(Screen.HUB_MORE, Screen.ASSISTANT); pendingScreen.value = null }
                 }
+                val task = pendingTask.value
+                androidx.compose.runtime.LaunchedEffect(task) {
+                    if (task != null) {
+                        pendingTask.value = null
+                        screen = Screen.CHAT
+                        if (vm.running) vm.incomingText = task else vm.send(task)
+                    }
+                }
                 val pv = vm.previewUrl
                 val wide = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp.let { com.pocketcode.ui.isWideScreen(it) }
                 val noMotion = com.pocketcode.ui.LocalReduceMotion.current
@@ -551,6 +559,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private val pendingScreen = androidx.compose.runtime.mutableStateOf<String?>(null)
+    private val pendingTask = androidx.compose.runtime.mutableStateOf<String?>(null)
 
     private fun handleIntent(intent: Intent?) {
         intent ?: return
@@ -564,6 +573,8 @@ class MainActivity : ComponentActivity() {
                 intent.getStringExtra(Intent.EXTRA_TEXT)?.let { controller.incomingText = it }
             }
             "com.pocketcode.OPEN_SCREEN" -> pendingScreen.value = intent.getStringExtra("screen")
+            // Команда из окна ассистента: выполняется в чате (с инструментами «Управления телефоном», если режим включён)
+            "com.pocketcode.RUN_TASK" -> intent.getStringExtra("text")?.takeIf { it.isNotBlank() }?.let { pendingTask.value = it }
             "com.pocketcode.NEW_TASK" -> if (!controller.running) {
                 controller.newChat()
             }

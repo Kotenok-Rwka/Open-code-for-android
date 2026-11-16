@@ -1,8 +1,12 @@
 package com.pocketcode.assist
 
+import android.animation.ValueAnimator
 import android.content.Context
 import android.content.res.ColorStateList
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.RectF
 import android.graphics.Typeface
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
@@ -27,6 +31,7 @@ import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.animation.DecelerateInterpolator
+import android.view.animation.LinearInterpolator
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.widget.CheckBox
@@ -35,7 +40,6 @@ import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
 import android.widget.ImageView
 import android.widget.LinearLayout
-import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.TextView
 import com.pocketcode.R
@@ -59,6 +63,45 @@ private class MaxHeightScrollView(ctx: Context) : ScrollView(ctx) {
     }
 }
 
+/** Свой индикатор загрузки: бледное кольцо и бегущая по нему дуга, хорошо видно на любом фоне. */
+private class SpinnerView(ctx: Context, private val color: Int, private val track: Int) : View(ctx) {
+    private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeCap = Paint.Cap.ROUND
+    }
+    private val rect = RectF()
+    private var angle = 0f
+    private val anim = ValueAnimator.ofFloat(0f, 360f).apply {
+        duration = 900
+        repeatCount = ValueAnimator.INFINITE
+        interpolator = LinearInterpolator()
+        addUpdateListener {
+            angle = it.animatedValue as Float
+            invalidate()
+        }
+    }
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        anim.start()
+    }
+
+    override fun onDetachedFromWindow() {
+        anim.cancel()
+        super.onDetachedFromWindow()
+    }
+
+    override fun onDraw(canvas: Canvas) {
+        val stroke = minOf(width, height) * 0.13f
+        paint.strokeWidth = stroke
+        rect.set(stroke / 2, stroke / 2, width - stroke / 2, height - stroke / 2)
+        paint.color = track
+        canvas.drawOval(rect, paint)
+        paint.color = color
+        canvas.drawArc(rect, angle, 110f, false, paint)
+    }
+}
+
 /**
  * Внешний вид окна ассистента, собранный кодом (в окне голосового помощника Compose использовать неудобно).
  * Окно показывает по очереди: ввод вопроса, ход поиска (маленькое окно), предложение «как показать», ответ (окном или на весь экран), ошибку.
@@ -79,6 +122,9 @@ class AssistUi(private val ctx: Context, private val host: Host, private val c: 
 
         /** Пользователь отметил «запомнить выбор» в предложении как показать ответ. */
         fun rememberResult(fullscreen: Boolean)
+
+        /** Команда для режима «Управление телефоном»: выполняется в чате приложения. */
+        fun runPhoneTask(text: String)
     }
 
     private val density = ctx.resources.displayMetrics.density
@@ -99,6 +145,8 @@ class AssistUi(private val ctx: Context, private val host: Host, private val c: 
     private var baseHint = ""
     private var micTarget: EditText? = null
     private var shownSteps: List<Step>? = null
+    private var phoneMode = false
+    private lateinit var confirmLayer: View
 
     // ----- общие части -----
     val root = FrameLayout(ctx)
@@ -114,7 +162,7 @@ class AssistUi(private val ctx: Context, private val host: Host, private val c: 
     private val chips = LinearLayout(ctx)
 
     // ----- ход поиска -----
-    private val ring = ProgressBar(ctx, null, android.R.attr.progressBarStyleSmall)
+    private val ring = SpinnerView(ctx, c.accent, AssistColors.withAlpha(c.accent, 0x33))
     private val workHead = label("", 16f, c.text, bold = true)
     private val workSub = label("", 13f, c.textDim)
     private val detailBox = LinearLayout(ctx)
@@ -162,13 +210,15 @@ class AssistUi(private val ctx: Context, private val host: Host, private val c: 
     init {
         root.layoutDirection = if (I18n.isRtl) View.LAYOUT_DIRECTION_RTL else View.LAYOUT_DIRECTION_LTR
         scrim.setBackgroundColor(c.scrim)
-        scrim.setOnClickListener { host.close() }
+        scrim.setOnClickListener { requestClose() }
         root.addView(scrim, FrameLayout.LayoutParams(MATCH, MATCH))
         card.orientation = LinearLayout.VERTICAL
         card.elevation = dpf(12)
         card.isClickable = true
         card.addView(content, LinearLayout.LayoutParams(MATCH, WRAP))
         root.addView(card, FrameLayout.LayoutParams(MATCH, WRAP, Gravity.BOTTOM))
+        confirmLayer = buildConfirm()
+        root.addView(confirmLayer, FrameLayout.LayoutParams(MATCH, MATCH))
         root.setOnApplyWindowInsetsListener { _, ins ->
             topInset = ins.systemWindowInsetTop
             bottomInset = ins.systemWindowInsetBottom
@@ -183,7 +233,6 @@ class AssistUi(private val ctx: Context, private val host: Host, private val c: 
         setEnabled(sendBtn, false)
         setEnabled(followSend, false)
 
-        ring.indeterminateTintList = ColorStateList.valueOf(c.accent)
         rememberBox.text = I18n.t("Запомнить мой выбор")
         rememberBox.setTextColor(c.textDim)
         rememberBox.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
@@ -210,6 +259,9 @@ class AssistUi(private val ctx: Context, private val host: Host, private val c: 
         followFrom = null
         lastState = null
         shownSteps = null
+        phoneMode = false
+        hideConfirm()
+        edit.hint = I18n.t("Спроси что угодно")
         edit.setText("")
         followEdit.setText("")
         setListening(false)
@@ -217,7 +269,8 @@ class AssistUi(private val ctx: Context, private val host: Host, private val c: 
         applyHint(baseHint)
         chatBtn.visibility = if (locked) View.GONE else View.VISIBLE
         refreshChips()
-        show(inputView, Phase.INPUT)
+        // при автоматическом микрофоне клавиатуру не показываем: текст можно ввести, коснувшись поля
+        show(inputView, Phase.INPUT, ime = !prefs.autoListen)
         scrim.alpha = 0f
         scrim.animate().alpha(1f).setDuration(180).start()
         card.translationY = dpf(48)
@@ -308,15 +361,70 @@ class AssistUi(private val ctx: Context, private val host: Host, private val c: 
 
     /** Кнопка «Назад»: сначала сворачиваем полноэкранный ответ в окно. true — нажатие обработано. */
     fun handleBack(): Boolean {
+        if (confirmLayer.visibility == View.VISIBLE) {
+            hideConfirm()
+            return true
+        }
         if (phase == Phase.FULLSCREEN) {
             show(answerView, Phase.POPUP)
+            return true
+        }
+        if (AssistFlow.needsCloseConfirm(phase, prefs)) {
+            showConfirm()
             return true
         }
         return false
     }
 
+    /** Подготовка к голосовому вводу при вызове: речь пойдёт в основное поле. */
+    fun targetMainInput() {
+        micTarget = edit
+    }
+
+    /** Закрыть окно; если на экране готовый ответ и включено подтверждение, сначала спросить. */
+    private fun requestClose() {
+        if (confirmLayer.visibility == View.VISIBLE) return
+        if (AssistFlow.needsCloseConfirm(phase, prefs)) showConfirm() else host.close()
+    }
+
+    private fun showConfirm() {
+        hideIme()
+        confirmLayer.visibility = View.VISIBLE
+        confirmLayer.alpha = 0f
+        confirmLayer.animate().alpha(1f).setDuration(120).start()
+    }
+
+    private fun hideConfirm() {
+        confirmLayer.visibility = View.GONE
+    }
+
+    /** Окно «Закрыть ответ?» поверх всего, чтобы случайное касание не стирало результат. */
+    private fun buildConfirm(): View = FrameLayout(ctx).apply {
+        visibility = View.GONE
+        isClickable = true
+        setBackgroundColor(AssistColors.withAlpha(Color.BLACK, 0x99))
+        setOnClickListener { hideConfirm() }
+        val box = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            background = rounded(c.surface, 24, c.outline, 1)
+            elevation = dpf(16)
+            isClickable = true
+            setPaddingRelative(dp(20), dp(20), dp(20), dp(16))
+            addView(label("Закрыть ответ?", 18f, c.text, bold = true))
+            addView(label("Он пропадёт. Чтобы увидеть его снова, придётся повторить запрос.", 14f, c.textDim), LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(6) })
+            val row = LinearLayout(ctx).apply {
+                orientation = LinearLayout.HORIZONTAL
+                addView(pillButton("Не закрывать", true) { hideConfirm() }, LinearLayout.LayoutParams(0, WRAP, 1f).apply { marginEnd = dp(8) })
+                addView(pillButton("Закрыть", false) { hideConfirm(); host.close() }, LinearLayout.LayoutParams(0, WRAP, 1f))
+            }
+            addView(row, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(18) })
+        }
+        addView(box, FrameLayout.LayoutParams(MATCH, WRAP, Gravity.CENTER).apply { setMargins(dp(24), dp(24), dp(24), dp(24)) })
+    }
+
     fun release() {
         handler.removeCallbacksAndMessages(null)
+        hideConfirm()
         hideIme()
     }
 
@@ -335,7 +443,7 @@ class AssistUi(private val ctx: Context, private val host: Host, private val c: 
             addView(label("Что найти или спросить?", 15f, c.textDim, bold = true).apply {
                 layoutParams = LinearLayout.LayoutParams(0, WRAP, 1f).apply { marginStart = dp(8) }
             })
-            addView(iconButton(R.drawable.ic_assist_close, "Закрыть", c.textDim) { host.close() })
+            addView(iconButton(R.drawable.ic_assist_close, "Закрыть", c.textDim) { requestClose() })
         }
         addView(title, LinearLayout.LayoutParams(MATCH, WRAP))
         addView(inputRow(edit, micBtn, sendBtn), LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(4) })
@@ -423,7 +531,7 @@ class AssistUi(private val ctx: Context, private val host: Host, private val c: 
             ansTitle.ellipsize = TextUtils.TruncateAt.END
             addView(ansTitle, LinearLayout.LayoutParams(0, WRAP, 1f))
             addView(expandBtn)
-            addView(iconButton(R.drawable.ic_assist_close, "Закрыть", c.textDim) { host.close() })
+            addView(iconButton(R.drawable.ic_assist_close, "Закрыть", c.textDim) { requestClose() })
         }
         addView(header, LinearLayout.LayoutParams(MATCH, WRAP))
         val body = LinearLayout(ctx).apply {
@@ -473,7 +581,7 @@ class AssistUi(private val ctx: Context, private val host: Host, private val c: 
 
     // ===== переходы =====
 
-    private fun show(v: View, p: Phase) {
+    private fun show(v: View, p: Phase, ime: Boolean = true) {
         phase = p
         fullscreen = p == Phase.FULLSCREEN
         for (i in 0 until content.childCount) {
@@ -485,7 +593,7 @@ class AssistUi(private val ctx: Context, private val host: Host, private val c: 
         expandBtn.setImageResource(if (fullscreen) R.drawable.ic_assist_collapse else R.drawable.ic_assist_expand)
         expandBtn.contentDescription = I18n.t(if (fullscreen) "Свернуть" else "На весь экран")
         applyCardLayout()
-        if (p == Phase.INPUT) showIme() else hideIme()
+        if (p == Phase.INPUT && ime) showIme() else hideIme()
     }
 
     private fun applyCardLayout() {
@@ -594,6 +702,7 @@ class AssistUi(private val ctx: Context, private val host: Host, private val c: 
         workHead.text = I18n.t(AssistProgress.headline(s.steps, s.writing))
         workSub.setTextColor(if (AssistFlow.showHeadline(p)) c.textDim else c.text)
         closeHint.visibility = if (p == ProgressMode.MINIMAL) View.GONE else View.VISIBLE
+        closeHint.text = I18n.t(if (prefs.popupWhenReady) "Можно закрыть окно: оно появится снова, когда ответ будет готов" else "Можно закрыть окно: ответ придёт уведомлением")
         val det = AssistFlow.showDetails(p)
         detailBox.visibility = if (det) View.VISIBLE else View.GONE
         if (!det) return
@@ -625,7 +734,7 @@ class AssistUi(private val ctx: Context, private val host: Host, private val c: 
                 setColorFilter(if (st.failed) c.danger else c.accent)
             }
         } else {
-            ProgressBar(ctx, null, android.R.attr.progressBarStyleSmall).apply { indeterminateTintList = ColorStateList.valueOf(c.accent) }
+            SpinnerView(ctx, c.accent, AssistColors.withAlpha(c.accent, 0x33))
         }
         addView(mark, LinearLayout.LayoutParams(dp(16), dp(16)))
         val t = label(I18n.t(st.label), 13f, if (st.done) c.textDim else c.text)
@@ -642,7 +751,7 @@ class AssistUi(private val ctx: Context, private val host: Host, private val c: 
         if (t.isEmpty()) return
         followFrom = null
         micTarget = null
-        host.submit(t, false, false)
+        if (phoneMode) host.runPhoneTask(t) else host.submit(t, false, false)
     }
 
     private fun submitFollow() {
@@ -660,6 +769,19 @@ class AssistUi(private val ctx: Context, private val host: Host, private val c: 
 
     private fun refreshChips() {
         chips.removeAllViews()
+        if (!locked) {
+            chips.addView(chip("Управлять телефоном", phoneMode) { togglePhoneMode() })
+        }
+        if (phoneMode) {
+            // примеры команд только подставляем в поле: телефон трогаем по явной отправке
+            for (s in listOf("Включи фонарик", "Сделай скриншот", "Поставь будильник на 7 утра")) {
+                chips.addView(chip(s, false) {
+                    edit.setText(I18n.t(s))
+                    edit.setSelection(edit.text.length)
+                })
+            }
+            return
+        }
         if (screenAvailable && prefs.useScreenText && !locked) {
             chips.addView(chip("Что на экране?", true) { host.submit(I18n.t("Что на экране?"), false, true) })
         }
@@ -669,6 +791,12 @@ class AssistUi(private val ctx: Context, private val host: Host, private val c: 
                 submitMain()
             })
         }
+    }
+
+    private fun togglePhoneMode() {
+        phoneMode = !phoneMode
+        edit.hint = I18n.t(if (phoneMode) "Что сделать на телефоне?" else "Спроси что угодно")
+        refreshChips()
     }
 
     private fun applyHint(msg: String) {

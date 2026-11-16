@@ -21,6 +21,13 @@ object AssistFlow {
     /** Присылать ли уведомление: ответ готов, а окно уже закрыто. */
     fun shouldNotify(sessionVisible: Boolean, prefs: AssistPrefs): Boolean = !sessionVisible && prefs.notifyWhenHidden
 
+    /** Всплывать ли окном снова: ответ готов, а окно уже закрыто. */
+    fun shouldPopup(sessionVisible: Boolean, prefs: AssistPrefs): Boolean = !sessionVisible && prefs.popupWhenReady
+
+    /** Нужно ли спросить подтверждение перед закрытием: только когда на экране готовый ответ или предложение его показать. */
+    fun needsCloseConfirm(phase: Phase, prefs: AssistPrefs): Boolean =
+        prefs.confirmClose && (phase == Phase.OFFER || phase == Phase.POPUP || phase == Phase.FULLSCREEN)
+
     /** Запоминает выбор «здесь» или «на весь экран», если пользователь отметил «запомнить». */
     fun rememberChoice(prefs: AssistPrefs, fullscreen: Boolean, remember: Boolean): AssistPrefs =
         if (!remember) prefs else prefs.copy(resultMode = if (fullscreen) ResultMode.FULLSCREEN else ResultMode.POPUP)

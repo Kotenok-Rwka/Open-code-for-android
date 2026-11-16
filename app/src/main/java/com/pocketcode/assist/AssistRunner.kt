@@ -103,11 +103,13 @@ object AssistRunner {
         stateFlow.value = State(status = Status.RUNNING, runId = id, query = q, startedAt = System.currentTimeMillis())
         job = scope.launch {
             try {
-                val ready = if (prefs.answerKind == AnswerKind.AI) AssistBackend.prepare(settingsStore(app), prefs.profileId) else null
+                val st = settingsStore(app)
+                val about = AssistProfileStore({ st.rawGet(it) }, { k, v -> st.rawPut(k, v) }).load().toPrompt()
+                val ready = if (prefs.answerKind == AnswerKind.AI) AssistBackend.prepare(st, prefs.profileId) else null
                 if (ready == null) {
                     runLinks(id, q, noKey = prefs.answerKind == AnswerKind.AI)
                 } else {
-                    runAgent(id, ready, q, forceSearch, screenText, pageUrl, prefs.depth)
+                    runAgent(id, ready, q, forceSearch, screenText, pageUrl, prefs.depth, about)
                 }
                 finished(app, id, q, prefs)
             } catch (e: CancellationException) {
@@ -137,15 +139,15 @@ object AssistRunner {
         }
     }
 
-    private suspend fun runAgent(id: Int, ready: AssistBackend.Ready, q: String, forceSearch: Boolean, screenText: String?, pageUrl: String?, depth: AnswerDepth) {
+    private suspend fun runAgent(id: Int, ready: AssistBackend.Ready, q: String, forceSearch: Boolean, screenText: String?, pageUrl: String?, depth: AnswerDepth, about: String) {
         val current = agent
-        val key = ready.key + "|" + depth.key
+        val key = ready.key + "|" + depth.key + "|" + about.hashCode()
         val ag = if (current != null && agentKey == key) current else {
             val now = java.text.SimpleDateFormat("EEEE, d MMMM yyyy, HH:mm", java.util.Locale.getDefault()).format(java.util.Date())
             Agent(
                 llm = ready.llm,
                 tools = listOf(WebSearchTool(), WebFetchTool()),
-                system = AssistPrompt.system(now, java.util.TimeZone.getDefault().id, com.pocketcode.ui.I18n.code, depth),
+                system = AssistPrompt.system(now, java.util.TimeZone.getDefault().id, com.pocketcode.ui.I18n.code, depth, about),
                 autoApprove = true,
                 contextLimit = ready.contextLimit,
                 approve = { _, _ -> true },
@@ -215,10 +217,15 @@ object AssistRunner {
     private fun finished(app: Context, id: Int, q: String, prefs: AssistPrefs) {
         val s = stateFlow.value
         if (s.runId != id || s.status != Status.DONE) return
-        if (AssistFlow.shouldNotify(sessionVisible, prefs)) {
-            revealPending = true
+        val notify = AssistFlow.shouldNotify(sessionVisible, prefs)
+        val popup = AssistFlow.shouldPopup(sessionVisible, prefs)
+        if (!notify && !popup) return
+        revealPending = true
+        // уведомление остаётся запасным путём: если окно всплыло, оно само его уберёт
+        if (notify) {
             val body = if (s.linksOnly) s.sources.joinToString("\n") { it.title } else s.answer
             AssistNotifier.result(app, q, body)
         }
+        if (popup) PocketAssistService.show()
     }
 }
