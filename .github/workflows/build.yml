@@ -56,6 +56,21 @@ jobs:
           sudo apt-get install -y -qq ffmpeg fonts-dejavu-core
           ffmpeg -version | head -1
 
+      - name: Встроить Alpine Linux в APK
+        # Linux ставится из самого приложения, без скачивания при установке. Архив проверяется по контрольной сумме с сайта Alpine.
+        run: |
+          set -e
+          V=3.20.3
+          mkdir -p app/src/main/assets/linux
+          for A in aarch64 armv7; do
+            U="https://dl-cdn.alpinelinux.org/alpine/v3.20/releases/$A/alpine-minirootfs-$V-$A.tar.gz"
+            F="app/src/main/assets/linux/alpine-$A.tar.gz"
+            curl -fsSL --retry 3 -o "$F" "$U"
+            SUM=$(curl -fsSL --retry 3 "$U.sha256" | awk '{print $1}')
+            echo "$SUM  $F" | sha256sum -c -
+          done
+          ls -l app/src/main/assets/linux
+
       - name: Unit-тесты
         env:
           # В CI тесты с настоящим ffmpeg обязаны запускаться, а не молча пропускаться
@@ -106,7 +121,7 @@ jobs:
           [ -z "$NOTES" ] && NOTES="• $(git log -1 --pretty=%s)"
           printf 'Что нового %s:\n%s\n' "$FROM" "$NOTES" > notes.txt
           gh release create "build-${{ github.run_number }}" PocketCode.apk \
-            --title "Сборка ${{ github.run_number }}" \
+            --title "PocketCode 0.6 · сборка ${{ github.run_number }}" \
             --notes-file notes.txt \
             --target "${{ github.sha }}"
           # оставляем только 10 последних релизов

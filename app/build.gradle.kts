@@ -17,7 +17,7 @@ android {
         // CI передаёт номер сборки: по нему приложение понимает, что вышло обновление
         val buildNumber = System.getenv("BUILD_NUMBER")?.toIntOrNull() ?: 1
         versionCode = buildNumber
-        versionName = "0.5.$buildNumber"
+        versionName = "0.6.$buildNumber"
 
         ndk {
             // 64-битные и 32-битные ARM-телефоны; x86 нужен только эмуляторам

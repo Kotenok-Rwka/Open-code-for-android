@@ -80,6 +80,11 @@ class LinuxEnv(private val context: Context) {
     // /bin/sh в Alpine — абсолютный симлинк, с хоста он «не существует», поэтому проверяем busybox
     fun isInstalled(): Boolean = marker.exists() && File(rootfs, "bin/busybox").exists()
 
+    companion object {
+        /** Имя вшитого в APK архива Alpine для архитектуры [arch] (aarch64 или armv7). */
+        fun bundledAssetName(arch: String): String = "linux/alpine-$arch.tar.gz"
+    }
+
     private fun alpineArch(): String? = Build.SUPPORTED_ABIS.firstNotNullOfOrNull {
         when (it) {
             "arm64-v8a" -> "aarch64"
@@ -141,7 +146,19 @@ class LinuxEnv(private val context: Context) {
             .build()
         var lastError: String? = null
         var ok = false
+        // Alpine вшит в APK: интернет для установки не нужен. Если файла нет (сборка без него), скачиваем, как раньше.
+        val bundled = runCatching { context.assets.open(bundledAssetName(arch)) }.getOrNull()
+        if (bundled != null) {
+            onProgress("Беру Alpine Linux из приложения…")
+            try {
+                bundled.use { input -> FileOutputStream(archive).use { out -> input.copyTo(out) } }
+                ok = archive.length() > 0
+            } catch (e: Exception) {
+                lastError = e.message ?: e.javaClass.simpleName
+            }
+        }
         for (url in urls(arch)) {
+            if (ok) break
             onProgress("Скачиваю Alpine Linux…")
             try {
                 client.newCall(Request.Builder().url(url).build()).execute().use { resp ->
