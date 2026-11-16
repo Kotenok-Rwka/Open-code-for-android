@@ -13,7 +13,7 @@ object AssistSpeak {
     const val MAX_TOTAL = 2500
     const val MAX_CHUNK = 350
 
-    private val SOURCES_RX = Regex("(?im)^\\s*(?:источники|sources|quellen|fuentes|来源|المصادر)\\s*:")
+    private val SOURCES_RX = Regex("(?imu)^\\s*(?:источники|sources|quellen|fuentes|来源|المصادر)\\s*:")
     private val URL_RX = Regex("https?://\\S+")
     private val SPLIT_RX = Regex("(?<=[.!?…])\\s+|\\n+")
 
