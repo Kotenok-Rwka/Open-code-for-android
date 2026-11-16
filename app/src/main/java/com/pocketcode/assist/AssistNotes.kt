@@ -30,7 +30,7 @@ object AssistNotes {
     }
 
     /** Список для ответа: последние заметки, по строке на каждую. [fmt] превращает время в подпись. */
-    fun listText(list: List<Note>, fmt: (Long) -> String, limit: Int = 15): String =
+    fun listText(list: List<Note>, limit: Int = 15, fmt: (Long) -> String): String =
         list.take(limit).joinToString("\n") { "- " + fmt(it.time) + " — " + AssistLocal.noteLine(it.text) } +
             if (list.size > limit) "\n…" else ""
 }
