@@ -620,6 +620,10 @@ fun SettingsScreen(
                 visualTransformation = PasswordVisualTransformation(),
                 modifier = Modifier.fillMaxWidth(),
             )
+            Text(
+                "Чтобы ассистент сам менял файлы на GitHub, создай токен с правами Contents и Pull requests (Read and write) и выдай ему нужные репозитории.",
+                style = MaterialTheme.typography.bodySmall,
+            )
             OutlinedTextField(
                 value = gitName,
                 onValueChange = { gitName = it },
