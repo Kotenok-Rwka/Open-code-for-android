@@ -36,7 +36,7 @@ import androidx.compose.ui.unit.sp
 /** Ручной терминал: команды выполняются в папке проекта, без участия модели. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun TerminalScreen(vm: ChatController, onBack: () -> Unit) {
+fun TerminalScreen(vm: ChatController, onBack: () -> Unit, onOpenHost: () -> Unit = {}, onOpenChat: () -> Unit = onBack) {
     var cmd by remember { mutableStateOf("") }
     var tty by remember { mutableStateOf(false) }
     val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
@@ -46,7 +46,10 @@ fun TerminalScreen(vm: ChatController, onBack: () -> Unit) {
         AppTopBar(
             title = { Text("Терминал", maxLines = 1) },
             navigationIcon = { androidx.compose.material3.IconButton(onClick = onBack) { androidx.compose.material3.Icon(com.pocketcode.ui.backIcon(), contentDescription = "Назад") } },
-            actions = { TextButton(onClick = { vm.term.clear() }) { Text("Очистить") } },
+            actions = {
+                TextButton(onClick = onOpenHost) { Text("Хостинг") }
+                TextButton(onClick = { vm.term.clear() }) { Text("Очистить") }
+            },
         )
     }) { pad ->
         Column(Modifier.padding(pad).fillMaxSize().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -84,6 +87,13 @@ fun TerminalScreen(vm: ChatController, onBack: () -> Unit) {
                                 modifier = Modifier.horizontalScroll(rememberScrollState()),
                             )
                         }
+                        if (e === vm.term.lastOrNull() && e.done && (e.code ?: 0) != 0 && !vm.termBusy && !e.cmd.startsWith("cd")) {
+                            val fixes = remember(e.out) { TermHints.fixes(e.cmd, e.out, vm.termInLinux) }
+                            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                AssistChip(onClick = { vm.termAskAssistant(e); onOpenChat() }, label = { Text("Спросить ассистента") })
+                                fixes.forEach { f -> AssistChip(onClick = { vm.termRun(f, 600, false) }, label = { Text("▶ " + f.take(34)) }) }
+                            }
+                        }
                     }
                 }
             }
@@ -93,10 +103,28 @@ fun TerminalScreen(vm: ChatController, onBack: () -> Unit) {
                     Text("Запуск проекта:", style = MaterialTheme.typography.labelSmall)
                     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         runs.forEach { (label, command) -> AssistChip(onClick = { vm.termRun(command, 900, false) }, label = { Text("▶ $label") }) }
+                        AssistChip(onClick = { vm.hostDraftFromCurrent(); onOpenHost() }, label = { Text("Хостить проект…") })
                     }
                 }
             }
             if (vm.termBusy) {
+                val prompt = TermHints.detectPrompt(vm.term.lastOrNull()?.out.orEmpty())
+                if (prompt != null) {
+                    val key = if (tty) "\r" else "\n"
+                    Text(
+                        when (prompt) {
+                            TermHints.Prompt.YES_NO -> "Программа ждёт ответа: да или нет?"
+                            TermHints.Prompt.ENTER -> "Программа просит нажать Enter."
+                            TermHints.Prompt.PASSWORD -> "Программа просит пароль: введи его в поле ниже и нажми ↵. Он не показывается на экране."
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    if (prompt == TermHints.Prompt.YES_NO) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = { vm.termSend("y$key") }) { Text("Да") }
+                        OutlinedButton(onClick = { vm.termSend("n$key") }) { Text("Нет") }
+                    }
+                    if (prompt == TermHints.Prompt.ENTER) Button(onClick = { vm.termSend(key) }) { Text("Enter") }
+                }
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     val enter = if (tty) "\r" else "\n"
                     AssistChip(onClick = { vm.termSend(enter) }, label = { Text("Enter") })
@@ -110,7 +138,7 @@ fun TerminalScreen(vm: ChatController, onBack: () -> Unit) {
                     AssistChip(onClick = { vm.termSend("n$enter") }, label = { Text("n") })
                 }
             } else {
-                val recent = vm.term.map { it.cmd }.distinct().takeLast(6).reversed()
+                val recent = vm.termHistory.takeLast(6).reversed()
                 if (recent.isNotEmpty()) Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     androidx.compose.material3.FilterChip(selected = tty, onClick = { tty = !tty }, label = { Text("TTY") })
                     recent.forEach { AssistChip(onClick = { cmd = it }, label = { Text(it.take(28)) }) }
@@ -118,6 +146,7 @@ fun TerminalScreen(vm: ChatController, onBack: () -> Unit) {
                     androidx.compose.material3.FilterChip(selected = tty, onClick = { tty = !tty }, label = { Text("TTY (для интерактивных программ)") })
                 }
             }
+            Text("~/" + vm.termRel, fontFamily = FontFamily.Monospace, fontSize = 11.sp, color = MaterialTheme.colorScheme.primary)
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(
                     value = cmd, onValueChange = { cmd = it }, modifier = Modifier.weight(1f),

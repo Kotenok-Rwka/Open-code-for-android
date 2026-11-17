@@ -1998,12 +1998,62 @@ class ChatController(
     class TermEntry(val cmd: String) {
         var out by mutableStateOf("")
         var done by mutableStateOf(false)
+        /** Код выхода; null — ещё идёт, остановлена или прервана по времени. */
+        var code by mutableStateOf<Int?>(null)
     }
 
     val term = mutableStateListOf<TermEntry>()
     var termJob: kotlinx.coroutines.Job? = null
     val termBusy: Boolean get() = termJob?.isActive == true
     private var termProc: Process? = null
+
+    /** Папка терминала относительно корня проекта («cd» запоминается между командами); пусто — корень. */
+    var termRel by mutableStateOf("")
+        private set
+    private var termRoot = ""
+
+    /** Текущая папка терминала; при смене проекта возвращается в его корень. */
+    private fun termDir(): File {
+        if (termRoot != workspace.root.path) { termRoot = workspace.root.path; termRel = "" }
+        val d = if (termRel.isEmpty()) workspace.root else File(workspace.root, termRel)
+        return if (d.isDirectory) d else workspace.root.also { termRel = "" }
+    }
+
+    /** Идёт ли терминал в Linux (там pip и apk ведут себя иначе). */
+    val termInLinux: Boolean get() = linuxActive
+
+    /** Последние команды терминала; хранятся между запусками приложения. */
+    var termHistory by mutableStateOf(
+        (settingsStore.rawGet("termHist") ?: "").split('\u001f').filter { it.isNotBlank() }.takeLast(40),
+    )
+        private set
+
+    private fun rememberCommand(c: String) {
+        termHistory = (termHistory.filter { it != c } + c).takeLast(40)
+        settingsStore.rawPut("termHist", termHistory.joinToString("\u001f"))
+    }
+
+    /** Отправляет ассистенту вывод упавшей команды с просьбой разобраться. */
+    fun termAskAssistant(e: TermEntry) {
+        send(TermHints.explainPrompt(e.cmd, e.out, e.code))
+    }
+
+    /** Для хостинга: процесс в той же среде, что и терминал (Linux или Android sh), в папке указанного проекта. */
+    fun hostProcessBuilder(command: String, dir: File): ProcessBuilder =
+        if (linuxActive) linuxEnv.processBuilder(proxyEnv() + command, dir, dir) else androidShell.builder(command, dir)
+
+    fun hostProjectDir(name: String): File = projectDir(name)
+
+    val hostManager: com.pocketcode.host.HostManager get() = (app as com.pocketcode.PocketCodeApp).host
+
+    /** Кладёт в окно хостинга заготовку из текущего проекта: имя, папка и подобранная команда запуска. */
+    fun hostDraftFromCurrent() {
+        val files = workspace.root.list()?.toSet() ?: emptySet()
+        val pkg = File(workspace.root, "package.json").takeIf { it.isFile }?.let { runCatching { it.readText() }.getOrDefault("") }.orEmpty()
+        val cmd = com.pocketcode.host.HostLogic.guessCommand(files, com.pocketcode.host.HostLogic.hasNpmStart(pkg), linuxActive).orEmpty()
+        val h = hostManager
+        h.draft = com.pocketcode.host.HostApp(id = h.newId(), name = currentProject, project = currentProject, command = cmd)
+    }
 
     /** Мини-эмулятор экрана: понимает \r, \n и основные управляющие последовательности (курсор вверх, очистка строки). */
     private class Screen {
@@ -2072,6 +2122,24 @@ class ChatController(
         val e = TermEntry(c)
         term += e
         while (term.size > 60) term.removeAt(0)
+        rememberCommand(c)
+        // «cd» выполняем сами, чтобы папка запоминалась между командами
+        when (val cd = TermHints.parseCd(workspace.root, termDir(), c)) {
+            is TermHints.Cd.Ok -> {
+                termRel = TermHints.relPath(workspace.root, cd.dir)
+                e.code = 0
+                e.done = true
+                return
+            }
+            is TermHints.Cd.Fail -> {
+                e.out = cd.msg
+                e.code = 1
+                e.done = true
+                return
+            }
+            else -> {}
+        }
+        val runDir = termDir()
         val q = c.replace("'", "'\\''")
         val real = if (tty && linuxActive) {
             // В Alpine нет утилиты script, поэтому псевдотерминал создаём через Python (модуль pty)
@@ -2082,7 +2150,7 @@ class ChatController(
             var proc: Process? = null
             val screen = Screen()
             try {
-                proc = shell.builder(real2, workspace.root).redirectErrorStream(true).start()
+                proc = shell.builder(real2, runDir).redirectErrorStream(true).start()
                 termProc = proc
                 val p = proc
                 if (!tty) p.outputStream.close()
@@ -2101,6 +2169,7 @@ class ChatController(
                 }
                 val code = withContext(Dispatchers.IO) { p.waitFor() }
                 e.out = Secrets.mask(screen.text()) + "\n[код выхода: $code]"
+                e.code = code
             } catch (x: kotlinx.coroutines.TimeoutCancellationException) {
                 e.out = Secrets.mask(screen.text()) + "\n[таймаут ${timeoutSec} с, процесс остановлен]"
             } catch (x: kotlinx.coroutines.CancellationException) {

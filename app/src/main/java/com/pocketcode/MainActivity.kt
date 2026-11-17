@@ -74,7 +74,7 @@ import com.pocketcode.ui.ProjectsScreen
 import com.pocketcode.ui.SessionsScreen
 import com.pocketcode.ui.SettingsScreen
 
-private enum class Screen { CHAT, SETTINGS, SESSIONS, PROJECTS, FILES, DEVICES, PLUGINS, DIAG, COMPARE, CONTEXT, TERMINAL, GIT, OCSESSIONS, REMOTE, DIFF, SEARCH, HUB_PROJECT, HUB_AGENT, HUB_MORE, FIND, ROOT, PHONE, OCSETTINGS, MODELS, LINUX, UPDATE, BACKUP, VIDEO, LANGUAGE, SMART, LEARN, ASSISTANT }
+private enum class Screen { CHAT, SETTINGS, SESSIONS, PROJECTS, FILES, DEVICES, PLUGINS, DIAG, COMPARE, CONTEXT, TERMINAL, GIT, OCSESSIONS, REMOTE, DIFF, SEARCH, HUB_PROJECT, HUB_AGENT, HUB_MORE, FIND, ROOT, PHONE, OCSETTINGS, MODELS, LINUX, UPDATE, BACKUP, VIDEO, LANGUAGE, SMART, LEARN, ASSISTANT, HOST }
 
 class MainActivity : ComponentActivity() {
     private val controller: ChatController
@@ -228,7 +228,7 @@ class MainActivity : ComponentActivity() {
                 }
                 val section = when (screen) {
                     Screen.CHAT -> 0
-                    Screen.HUB_PROJECT, Screen.PROJECTS, Screen.FILES, Screen.SEARCH, Screen.DIFF, Screen.GIT, Screen.TERMINAL, Screen.VIDEO -> 1
+                    Screen.HUB_PROJECT, Screen.PROJECTS, Screen.FILES, Screen.SEARCH, Screen.DIFF, Screen.GIT, Screen.TERMINAL, Screen.VIDEO, Screen.HOST -> 1
                     Screen.HUB_AGENT, Screen.FIND, Screen.MODELS, Screen.OCSESSIONS, Screen.OCSETTINGS, Screen.PLUGINS, Screen.CONTEXT, Screen.COMPARE, Screen.SESSIONS -> 2
                     else -> 3
                 }
@@ -288,6 +288,7 @@ class MainActivity : ComponentActivity() {
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Search, "Поиск по проекту", "Найти текст или TODO во всех файлах") { openFrom(Screen.HUB_PROJECT, Screen.SEARCH) },
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Pencil, "Правки агента", "Что изменил агент, откат по блокам, сравнение со снимком", if (vm.changes.isNotEmpty()) "${vm.changes.size}" else null) { openFrom(Screen.HUB_PROJECT, Screen.DIFF) },
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Terminal, "Терминал и запуск", "Команды в Linux, кнопки запуска проекта") { openFrom(Screen.HUB_PROJECT, Screen.TERMINAL) },
+                                com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Terminal, "Хостинг проектов", "Боты и серверы на телефоне: фоном или пока открыто, по расписанию") { openFrom(Screen.HUB_PROJECT, Screen.HOST) },
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Branch, "Git и GitHub", "Коммиты, ветки, PR, проверки сборки") { openFrom(Screen.HUB_PROJECT, Screen.GIT) },
                                 com.pocketcode.ui.hubHeader("Медиа"),
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Play, "Видео", "Монтаж: вырезать паузы одной кнопкой, без ПК", if (vm.video.busy) "идёт" else null) { openFrom(Screen.HUB_PROJECT, Screen.VIDEO) },
@@ -441,7 +442,18 @@ class MainActivity : ComponentActivity() {
                     }
                     Screen.TERMINAL -> {
                         BackHandler { screen = backTo }
-                        com.pocketcode.ui.TerminalScreen(vm, onBack = { screen = backTo })
+                        com.pocketcode.ui.TerminalScreen(
+                            vm,
+                            onBack = { screen = backTo },
+                            onOpenHost = { openFrom(Screen.TERMINAL, Screen.HOST) },
+                            onOpenChat = { screen = Screen.CHAT },
+                        )
+                    }
+                    Screen.HOST -> {
+                        // Из терминала возвращаемся в терминал, а его «назад» ведёт в раздел проекта
+                        val leaveHost = { val back = backTo; if (back == Screen.TERMINAL) backTo = Screen.HUB_PROJECT; screen = back }
+                        BackHandler { leaveHost() }
+                        com.pocketcode.ui.HostScreen(vm, onBack = { leaveHost() })
                     }
                     Screen.GIT -> {
                         BackHandler { screen = backTo }
