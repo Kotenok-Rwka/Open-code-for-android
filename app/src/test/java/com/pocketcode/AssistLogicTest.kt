@@ -152,7 +152,7 @@ class AssistLogicTest {
     @Test
     fun unknownPrefValuesFallBackToDefaults() {
         val store = AssistPrefsStore({ "мусор" }, { _, _ -> })
-        assertEquals(AssistPrefs(), store.load().copy(profileId = ""))
+        assertEquals(AssistPrefs(), store.load().copy(profileId = "", ttsEngine = ""))
     }
 
     @Test
