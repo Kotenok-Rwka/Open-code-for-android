@@ -31,6 +31,9 @@ class OpenAiClient(
         var id: String = ""
         var name: String = ""
         val args = StringBuilder()
+        /** Неизвестные поля вызова и объекта function (подпись мысли Gemini и т.п.), см. [ToolCallExtras]. */
+        var extra: JsonObject? = null
+        var functionExtra: JsonObject? = null
     }
 
     override suspend fun complete(
@@ -69,11 +72,14 @@ class OpenAiClient(
                             if (text.isBlank()) put("content", JsonNull) else put("content", text)
                             if (calls.isNotEmpty()) {
                                 putJsonArray("tool_calls") {
-                                    for (c in calls) {
+                                    val extras = ToolCallExtras.forSending(calls, model)
+                                    for ((i, c) in calls.withIndex()) {
                                         addJsonObject {
+                                            extras[i]?.forEach { (k, v) -> put(k, v) }
                                             put("id", c.id)
                                             put("type", "function")
                                             putJsonObject("function") {
+                                                c.functionExtra?.forEach { (k, v) -> put(k, v) }
                                                 put("name", c.name)
                                                 put("arguments", c.input.toString())
                                             }
@@ -168,6 +174,8 @@ class OpenAiClient(
                 val acc = calls.getOrPut(index) { CallAcc() }
                 (tc["id"] as? JsonPrimitive)?.contentOrNull?.let { if (it.isNotEmpty()) acc.id = it }
                 val fn = tc["function"] as? JsonObject
+                acc.extra = ToolCallExtras.merge(acc.extra, ToolCallExtras.callExtra(tc))
+                acc.functionExtra = ToolCallExtras.merge(acc.functionExtra, ToolCallExtras.functionExtra(fn))
                 (fn?.get("name") as? JsonPrimitive)?.contentOrNull?.let { if (it.isNotEmpty()) acc.name = it }
                 (fn?.get("arguments") as? JsonPrimitive)?.contentOrNull?.let { acc.args.append(it) }
             }
@@ -183,7 +191,7 @@ class OpenAiClient(
             } catch (e: Exception) {
                 JsonObject(emptyMap())
             }
-            blocks += Block.ToolUse(c.id.ifEmpty { "call_$index" }, c.name, input)
+            blocks += Block.ToolUse(c.id.ifEmpty { "call_$index" }, c.name, input, c.extra, c.functionExtra)
         }
         return LlmResponse(blocks, finishReason, inTok, outTok, cacheTok, served)
     }

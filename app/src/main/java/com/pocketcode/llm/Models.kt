@@ -12,7 +12,18 @@ sealed class Block {
 
     @Serializable
     @SerialName("tool_use")
-    data class ToolUse(val id: String, val name: String, val input: JsonObject) : Block()
+    data class ToolUse(
+        val id: String,
+        val name: String,
+        val input: JsonObject,
+        /**
+         * Поля вызова инструмента, которых мы не знаем, но провайдер требует вернуть в истории как есть (OpenAI-совместимый шлюз к Gemini
+         * кладёт сюда extra_content.google.thought_signature). Без них Gemini отвечает 400 «missing a thought_signature».
+         */
+        val extra: JsonObject? = null,
+        /** То же для объекта function внутри вызова. */
+        val functionExtra: JsonObject? = null,
+    ) : Block()
 
     @Serializable
     @SerialName("tool_result")
