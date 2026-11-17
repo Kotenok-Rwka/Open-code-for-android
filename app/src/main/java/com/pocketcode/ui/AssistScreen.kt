@@ -28,9 +28,11 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -47,11 +49,16 @@ import com.pocketcode.assist.AssistPrefs
 import com.pocketcode.assist.AssistPrefsStore
 import com.pocketcode.assist.AssistProfile
 import com.pocketcode.assist.AssistProfileStore
+import com.pocketcode.assist.AssistSpeak
+import com.pocketcode.assist.AssistTts
+import com.pocketcode.assist.AssistVoice
+import com.pocketcode.assist.AssistVoices
 import com.pocketcode.assist.PocketAssistService
 import com.pocketcode.assist.ProgressMode
 import com.pocketcode.assist.ResultMode
 import com.pocketcode.assist.SpeakMode
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /** Настройки ассистента: вызов вместо Google, как показывать ответ и ход поиска. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -79,12 +86,28 @@ fun AssistScreen(onBack: () -> Unit) {
     var isDefault by remember { mutableStateOf(PocketAssistService.isDefault(ctx)) }
     var mic by remember { mutableStateOf(ctx.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) }
     var note by remember { mutableStateOf("") }
+    var engines by remember { mutableStateOf(AssistVoices.installedEngines(ctx)) }
+    var voiceId by remember { mutableStateOf(AssistVoices.ALL.first().id) }
+    var voiceBusy by remember { mutableStateOf(false) }
+    var voiceNote by remember { mutableStateOf("") }
+    var waitSherpa by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val tester = remember { AssistTts(ctx.applicationContext, { prefs.ttsEngine }) { } }
+    DisposableEffect(Unit) { onDispose { tester.shutdown() } }
     // пользователь уходит в системные настройки и возвращается: состояние проверяем раз в секунду, пока экран открыт
     LaunchedEffect(Unit) {
         while (true) {
             isDefault = PocketAssistService.isDefault(ctx)
             mic = ctx.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
             overlayOk = Settings.canDrawOverlays(ctx)
+            engines = AssistVoices.installedEngines(ctx)
+            // после установки нейроголоса сразу выбираем его движком озвучки
+            if (waitSherpa) {
+                engines.firstOrNull { AssistVoices.isSherpa(it.pkg) }?.let {
+                    waitSherpa = false
+                    change(prefs.copy(ttsEngine = it.pkg))
+                }
+            }
             delay(1000)
         }
     }
@@ -184,7 +207,83 @@ fun AssistScreen(onBack: () -> Unit) {
                 Choice("Если спросил голосом", prefs.speakMode == SpeakMode.VOICE) { change(prefs.copy(speakMode = SpeakMode.VOICE)) }
                 Choice("Всегда", prefs.speakMode == SpeakMode.ALWAYS) { change(prefs.copy(speakMode = SpeakMode.ALWAYS)) }
             }
-            Text("Ответ читает вслух системный синтезатор речи. Остановить или запустить озвучку можно кнопкой с динамиком под ответом.", style = MaterialTheme.typography.bodySmall)
+            Text("Ответ читает вслух синтезатор речи. Остановить или запустить озвучку можно кнопкой с динамиком под ответом.", style = MaterialTheme.typography.bodySmall)
+
+            val engineNow = AssistVoices.pickEngine(prefs.ttsEngine, engines.map { it.pkg })
+            Text("Голос озвучки", style = MaterialTheme.typography.titleSmall)
+            Chips {
+                Choice("Системный по умолчанию", engineNow.isEmpty()) { change(prefs.copy(ttsEngine = "")) }
+                for (e in engines) {
+                    FilterChip(selected = engineNow == e.pkg, onClick = { change(prefs.copy(ttsEngine = e.pkg)) }, label = { Text(e.label) })
+                }
+            }
+            OutlinedButton(
+                onClick = { tester.speak(AssistSpeak.prepare(I18n.t("Привет! Так я буду читать ответы вслух.")), AssistVoice.languageTag(I18n.code, java.util.Locale.getDefault().toLanguageTag())) },
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text("Проверить голос") }
+            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Как сделать голос живее", style = MaterialTheme.typography.titleSmall)
+                    Text("1. Установи другой движок озвучки: «Синтез речи» от Google, Samsung, RHVoice или нейроголос ниже. Он появится в списке выше.", style = MaterialTheme.typography.bodySmall)
+                    Text("2. В настройках Android (Язык и ввод → Синтез речи) у многих движков можно выбрать голос и скачать улучшенные голоса для русского языка.", style = MaterialTheme.typography.bodySmall)
+                    Text("3. Вернись сюда, выбери движок в списке и нажми «Проверить голос». Если не понравится, вернись к системному.", style = MaterialTheme.typography.bodySmall)
+                    OutlinedButton(onClick = { openTtsSettings(ctx) }, modifier = Modifier.fillMaxWidth()) { Text("Открыть настройки озвучки Android") }
+                }
+            }
+
+            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Нейроголос (по желанию)", style = MaterialTheme.typography.titleSmall)
+                    Text("Русские голоса Piper на движке sherpa-onnx: работают без интернета и звучат заметно живее стандартных. Это отдельное приложение: оно скачивается с HuggingFace (проект sherpa-onnx), ставится системным установщиком и появляется в списке движков выше. Нужно около 85 МБ места, а свободное место и Wi-Fi лучше проверить заранее.", style = MaterialTheme.typography.bodySmall)
+                    val abi = AssistVoices.pickAbi(Build.SUPPORTED_ABIS)
+                    val sherpa = engines.firstOrNull { AssistVoices.isSherpa(it.pkg) }
+                    Text(if (sherpa != null) "✓ Нейроголос установлен" else "✗ Нейроголос не установлен", style = MaterialTheme.typography.bodyMedium)
+                    if (abi == null) {
+                        Text("Нейроголос есть только для телефонов на процессоре ARM.", style = MaterialTheme.typography.bodySmall)
+                    } else {
+                        val names = mapOf(
+                            "irina" to "Ирина, женский голос",
+                            "dmitri" to "Дмитрий, мужской голос",
+                            "denis" to "Денис, мужской голос",
+                            "ruslan" to "Руслан, мужской голос",
+                        )
+                        Chips {
+                            for (v in AssistVoices.ALL) {
+                                Choice(names[v.id] ?: v.id, voiceId == v.id) { voiceId = v.id }
+                            }
+                        }
+                        val voice = AssistVoices.voice(voiceId)
+                        val mb = AssistVoices.sizeMb(voice, abi)
+                        Button(
+                            onClick = {
+                                scope.launch {
+                                    voiceBusy = true
+                                    voiceNote = ""
+                                    try {
+                                        val apk = AssistVoices.download(ctx, voice, abi) { done, total ->
+                                            voiceNote = "Скачано ${if (total > 0) done * 100 / total else 0}%"
+                                        }
+                                        voiceNote = AssistVoices.install(ctx, apk)
+                                        waitSherpa = true
+                                    } catch (e: kotlinx.coroutines.CancellationException) {
+                                        throw e
+                                    } catch (e: Exception) {
+                                        voiceNote = e.message ?: "Не удалось скачать"
+                                    }
+                                    voiceBusy = false
+                                }
+                            },
+                            enabled = !voiceBusy,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text(if (voiceBusy) "Скачиваю…" else "Скачать и установить ($mb МБ)") }
+                        if (voiceNote.isNotEmpty()) Text(voiceNote, style = MaterialTheme.typography.bodySmall)
+                    }
+                    if (sherpa != null && engineNow != sherpa.pkg) {
+                        OutlinedButton(onClick = { change(prefs.copy(ttsEngine = sherpa.pkg)) }, modifier = Modifier.fillMaxWidth()) { Text("Использовать нейроголос для ассистента") }
+                    }
+                    Text("Голос зашит в приложение: чтобы сменить его, скачай другой, он заменит установленный. Удалить нейроголос можно как обычное приложение; тогда ассистент вернётся к системному голосу. При первой установке Android попросит включить для PocketCode пункт «Установка неизвестных приложений».", style = MaterialTheme.typography.bodySmall)
+                }
+            }
 
             Text("Простые команды", style = MaterialTheme.typography.titleMedium)
             SwitchRow("Выполнять простые команды без нейросети", prefs.localCommands) { change(prefs.copy(localCommands = it)) }
@@ -288,6 +387,15 @@ private fun SwitchRow(title: String, checked: Boolean, onChange: (Boolean) -> Un
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
         Text(title, modifier = Modifier.weight(1f).padding(end = 12.dp))
         Switch(checked = checked, onCheckedChange = onChange)
+    }
+}
+
+/** Настройки синтеза речи Android; на прошивках без такого экрана открываем общие настройки. */
+private fun openTtsSettings(ctx: android.content.Context) {
+    val tries = listOf("com.android.settings.TTS_SETTINGS", Settings.ACTION_SETTINGS)
+    for (action in tries) {
+        val ok = runCatching { ctx.startActivity(Intent(action).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }.isSuccess
+        if (ok) return
     }
 }
 

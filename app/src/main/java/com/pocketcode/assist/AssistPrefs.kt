@@ -71,6 +71,8 @@ data class AssistPrefs(
     val speakMode: SpeakMode = SpeakMode.VOICE,
     /** Калькулятор, время, дата и заметки выполняются на телефоне без нейросети. */
     val localCommands: Boolean = true,
+    /** Пакет движка озвучки; пусто — системный по умолчанию. */
+    val ttsEngine: String = "",
 )
 
 /** Хранит настройки ассистента в тех же настройках приложения; чтение и запись передаются функциями, чтобы это можно было проверить тестом. */
@@ -93,6 +95,7 @@ class AssistPrefsStore(private val get: (String) -> String?, private val put: (S
             saveHistory = flag(K_HISTORY, d.saveHistory),
             speakMode = SpeakMode.parse(get(K_SPEAK)),
             localCommands = flag(K_LOCAL, d.localCommands),
+            ttsEngine = get(K_TTS_ENGINE).orEmpty(),
         )
     }
 
@@ -112,6 +115,7 @@ class AssistPrefsStore(private val get: (String) -> String?, private val put: (S
         put(K_HISTORY, if (p.saveHistory) "1" else "0")
         put(K_SPEAK, p.speakMode.key)
         put(K_LOCAL, if (p.localCommands) "1" else "0")
+        put(K_TTS_ENGINE, p.ttsEngine)
     }
 
     private fun flag(key: String, default: Boolean): Boolean = when (get(key)) {
@@ -136,5 +140,6 @@ class AssistPrefsStore(private val get: (String) -> String?, private val put: (S
         const val K_HISTORY = "assistHistoryOn"
         const val K_SPEAK = "assistSpeak"
         const val K_LOCAL = "assistLocal"
+        const val K_TTS_ENGINE = "assistTtsEngine"
     }
 }

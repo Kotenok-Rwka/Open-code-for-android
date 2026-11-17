@@ -77,7 +77,7 @@ class AssistSession(private val svc: Context) : VoiceInteractionSession(svc) {
         prefStore = AssistPrefsStore({ st.rawGet(it) }, { k, v -> st.rawPut(k, v) })
         historyStore = AssistHistoryStore({ st.rawGet(it) }, { k, v -> st.rawPut(k, v) })
         notesStore = AssistNotesStore({ st.rawGet(it) }, { k, v -> st.rawPut(k, v) })
-        tts = AssistTts(app()) { on -> ui?.setSpeaking(on) }
+        tts = AssistTts(app(), { prefs.ttsEngine }) { on -> ui?.setSpeaking(on) }
     }
 
     override fun onCreateContentView(): View {

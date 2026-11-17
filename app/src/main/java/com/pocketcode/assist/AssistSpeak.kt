@@ -44,7 +44,7 @@ object AssistSpeak {
 }
 
 /** Озвучка системным движком синтеза речи (Google или другой, установленный на телефоне). Колбэк [onSpeaking] приходит в главном потоке. */
-class AssistTts(private val app: Context, private val onSpeaking: (Boolean) -> Unit) {
+class AssistTts(private val app: Context, private val engine: () -> String = { "" }, private val onSpeaking: (Boolean) -> Unit) {
     private val main = Handler(Looper.getMainLooper())
     private var tts: TextToSpeech? = null
     private var ready = false
@@ -52,14 +52,23 @@ class AssistTts(private val app: Context, private val onSpeaking: (Boolean) -> U
     private var tag = "en-US"
     private var lastId = ""
     private var speaking = false
+    private var usedEngine = ""
+    private var failedEngine: String? = null
 
     fun speak(chunks: List<String>, langTag: String) {
         if (chunks.isEmpty()) return
         tag = langTag
+        // выбранный движок мог смениться в настройках; движок, который не запустился, больше не пробуем
+        val want = engine().let { if (it == failedEngine) "" else it }
+        if (tts != null && usedEngine != want) {
+            runCatching { tts?.shutdown() }
+            tts = null
+            ready = false
+        }
         val t = tts
         if (t == null) {
             queued = chunks
-            tts = TextToSpeech(app) { status -> main.post { onInit(status) } }
+            create(want)
             return
         }
         if (!ready) {
@@ -69,12 +78,26 @@ class AssistTts(private val app: Context, private val onSpeaking: (Boolean) -> U
         play(chunks)
     }
 
+    private fun create(want: String) {
+        usedEngine = want
+        tts = TextToSpeech(app, TextToSpeech.OnInitListener { status -> main.post { onInit(status) } }, want.ifEmpty { null })
+    }
+
     private fun onInit(status: Int) {
         val t = tts ?: return
         if (status != TextToSpeech.SUCCESS) {
+            val q = queued
+            val bad = usedEngine
             runCatching { t.shutdown() }
             tts = null
             ready = false
+            if (bad.isNotEmpty()) {
+                // выбранный движок не запустился: читаем системным
+                failedEngine = bad
+                queued = q
+                create("")
+                return
+            }
             queued = null
             setSpeaking(false)
             return

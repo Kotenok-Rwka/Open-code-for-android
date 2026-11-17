@@ -27,6 +27,7 @@ import com.pocketcode.assist.AssistPrefsStore
 import com.pocketcode.assist.AssistProgress
 import com.pocketcode.assist.AssistText
 import com.pocketcode.assist.AssistVoice
+import com.pocketcode.assist.AssistVoices
 import com.pocketcode.assist.MdStyle
 import com.pocketcode.assist.Phase
 import com.pocketcode.assist.ProgressMode
@@ -606,6 +607,51 @@ class AssistLogicTest {
         assertEquals("org.telegram.messenger", AssistAppMatch.find(apps, "телеграм")?.pkg)
         assertNull(AssistAppMatch.find(apps, "несуществующее приложение"))
         assertNotNull(AssistAppMatch.find(apps, "Telegram"))
+    }
+
+    // ===== выбор движка озвучки и нейроголос =====
+
+    @Test
+    fun ttsEngineIsSavedAndDefaultsToSystem() {
+        val mem = HashMap<String, String>()
+        val st = AssistPrefsStore({ mem[it] }, { k, v -> mem[k] = v })
+        assertEquals("", st.load().ttsEngine)
+        st.save(st.load().copy(ttsEngine = "com.k2fsa.sherpa.onnx.tts.engine"))
+        assertEquals("com.k2fsa.sherpa.onnx.tts.engine", st.load().ttsEngine)
+    }
+
+    @Test
+    fun missingEngineFallsBackToSystem() {
+        assertEquals("a.b", AssistVoices.pickEngine("a.b", listOf("x.y", "a.b")))
+        assertEquals("", AssistVoices.pickEngine("a.b", listOf("x.y")))
+        assertEquals("", AssistVoices.pickEngine("", listOf("x.y")))
+    }
+
+    @Test
+    fun voiceDownloadUrlAndAbi() {
+        assertEquals("arm64-v8a", AssistVoices.pickAbi(arrayOf("arm64-v8a", "armeabi-v7a")))
+        assertEquals("armeabi-v7a", AssistVoices.pickAbi(arrayOf("armeabi-v7a", "armeabi")))
+        assertNull(AssistVoices.pickAbi(arrayOf("x86_64", "x86")))
+        val v = AssistVoices.voice("irina")
+        assertEquals("sherpa-onnx-1.12.22-arm64-v8a-ru-tts-engine-vits-piper-ru_RU-irina-medium.apk", AssistVoices.fileName(v, "arm64-v8a"))
+        val url = AssistVoices.url(AssistVoices.voice("dmitri"), "armeabi-v7a")
+        assertTrue(url.startsWith("https://huggingface.co/"))
+        assertTrue(url.endsWith("/1.12.22/sherpa-onnx-1.12.22-armeabi-v7a-ru-tts-engine-vits-piper-ru_RU-dmitri-medium.apk"))
+        assertEquals(AssistVoices.ALL.first().id, AssistVoices.voice("нет такого").id)
+        assertEquals(4, AssistVoices.ALL.map { it.id }.toSet().size)
+    }
+
+    @Test
+    fun voiceSizeAndEngineDetection() {
+        val v = AssistVoices.voice("irina")
+        assertEquals(83177789L, AssistVoices.expectedBytes(v, "arm64-v8a"))
+        assertEquals(82596161L, AssistVoices.expectedBytes(v, "armeabi-v7a"))
+        assertEquals(79L, AssistVoices.sizeMb(v, "arm64-v8a"))
+        assertTrue(AssistVoices.sizeMatches(10, 10))
+        assertFalse(AssistVoices.sizeMatches(9, 10))
+        assertTrue(AssistVoices.sizeMatches(9, 0))
+        assertTrue(AssistVoices.isSherpa("com.k2fsa.sherpa.onnx.tts.engine"))
+        assertFalse(AssistVoices.isSherpa("com.google.android.tts"))
     }
 
     // ===== переводы новых строк =====
