@@ -28,6 +28,20 @@ object AssistFlow {
     fun needsCloseConfirm(phase: Phase, prefs: AssistPrefs): Boolean =
         prefs.confirmClose && (phase == Phase.OFFER || phase == Phase.POPUP || phase == Phase.FULLSCREEN)
 
+    /** Что делает жест закрытия (касание вне окна, «Назад», крестик). */
+    enum class CloseStep { ASK, CLOSE }
+
+    /**
+     * Первый жест закрытия показывает подтверждение, повторный (пока подтверждение на экране) закрывает окно:
+     * так большое окно закрывается двумя касаниями вне его или двумя нажатиями «Назад», а случайный жест ничего не стирает.
+     */
+    fun closeStep(phase: Phase, prefs: AssistPrefs, confirmShown: Boolean): CloseStep =
+        if (!confirmShown && needsCloseConfirm(phase, prefs)) CloseStep.ASK else CloseStep.CLOSE
+
+    /** Попала ли точка (x, y) на экране в прямоугольник окна: касание внутри окна не считается касанием вне его. */
+    fun isInside(x: Float, y: Float, left: Int, top: Int, width: Int, height: Int): Boolean =
+        x >= left && x <= left + width && y >= top && y <= top + height
+
     /** Индикатор работы нужен, пока идёт запрос, а окно ассистента закрыто. */
     fun indicatorActive(status: AssistRunner.Status, sessionVisible: Boolean): Boolean = status == AssistRunner.Status.RUNNING && !sessionVisible
 

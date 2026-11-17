@@ -201,6 +201,37 @@ class AssistLogicTest {
         assertFalse(AssistFlow.needsCloseConfirm(Phase.POPUP, p.copy(confirmClose = false)))
     }
 
+    @Test
+    fun firstCloseGestureAsksThenSecondCloses() {
+        val p = AssistPrefs()
+        for (ph in listOf(Phase.OFFER, Phase.POPUP, Phase.FULLSCREEN)) {
+            assertEquals(AssistFlow.CloseStep.ASK, AssistFlow.closeStep(ph, p, confirmShown = false))
+            assertEquals(AssistFlow.CloseStep.CLOSE, AssistFlow.closeStep(ph, p, confirmShown = true))
+        }
+    }
+
+    @Test
+    fun closeGestureClosesAtOnceWhenNothingToConfirm() {
+        val p = AssistPrefs()
+        for (ph in listOf(Phase.INPUT, Phase.WORKING, Phase.ERROR, Phase.HISTORY)) {
+            assertEquals(AssistFlow.CloseStep.CLOSE, AssistFlow.closeStep(ph, p, confirmShown = false))
+        }
+        assertEquals(AssistFlow.CloseStep.CLOSE, AssistFlow.closeStep(Phase.FULLSCREEN, p.copy(confirmClose = false), confirmShown = false))
+    }
+
+    @Test
+    fun tapInsideWindowIsNotOutside() {
+        // окно: левый верхний угол (0, 600), размер 1080 x 900
+        assertTrue(AssistFlow.isInside(500f, 700f, 0, 600, 1080, 900))
+        assertTrue(AssistFlow.isInside(0f, 600f, 0, 600, 1080, 900))
+        assertFalse(AssistFlow.isInside(500f, 300f, 0, 600, 1080, 900))
+        assertFalse(AssistFlow.isInside(500f, 1501f, 0, 600, 1080, 900))
+        // большое окно на весь экран: вне него касаний не бывает
+        assertTrue(AssistFlow.isInside(10f, 10f, 0, 0, 1080, 2400))
+        // касание без координат (специальные возможности) считается касанием вне окна
+        assertFalse(AssistFlow.isInside(-1f, -1f, 0, 600, 1080, 900))
+    }
+
     // ===== «О себе» =====
 
     @Test

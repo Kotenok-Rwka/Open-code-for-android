@@ -38,6 +38,16 @@ sealed class AgentEvent {
 private const val MAX_TOOL_OUTPUT = 30_000
 private val RETRY_DELAYS = intArrayOf(3, 8, 20, 45)
 
+/**
+ * Ошибка самого запроса (в том числе пропавшая подпись мысли Gemini), которая от повтора не пройдёт.
+ * Такие ошибки шлюзы иногда присылают прямо в потоке ответа, и тогда они выглядят как обрыв связи: без этой проверки агент ждал бы
+ * по 3, 8, 20 и 45 секунд и отправлял тот же запрос заново.
+ */
+internal fun isPermanentRequestError(message: String?): Boolean {
+    val m = (message ?: return false).lowercase()
+    return listOf("thought_signature", "invalid_argument", "invalid argument").any { m.contains(it) }
+}
+
 class Agent(
     llm: LlmClient,
     private val tools: List<Tool>,
@@ -73,6 +83,7 @@ class Agent(
         if (attempt >= RETRY_DELAYS.size) return null
         val m = (e.message ?: "").lowercase()
         if (listOf("insufficient", "quota", "billing", "credit", "invalid api key", "incorrect api key", "unauthorized", "context", "too long").any { m.contains(it) }) return null
+        if (isPermanentRequestError(e.message)) return null
         if (e is java.io.IOException && m.startsWith("http ")) {
             val code = m.removePrefix("http ").takeWhile { it.isDigit() }.toIntOrNull() ?: return null
             return if (code in 500..599 || code == 408 || code == 429) RETRY_DELAYS[attempt] else null

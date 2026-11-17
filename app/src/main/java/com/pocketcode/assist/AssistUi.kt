@@ -28,6 +28,7 @@ import android.text.style.TypefaceSpan
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.KeyEvent
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.animation.DecelerateInterpolator
@@ -156,6 +157,8 @@ class AssistUi(private val ctx: Context, private val host: Host, private val c: 
     private var shownSteps: List<Step>? = null
     private var phoneMode = false
     private lateinit var confirmLayer: View
+    private var confirmDownX = -1f
+    private var confirmDownY = -1f
     private val historyList = LinearLayout(ctx)
     private val historyEmpty = label("Пока пусто: запросы появятся здесь", 14f, c.textDim)
     private val historyScroll = MaxHeightScrollView(ctx)
@@ -380,7 +383,8 @@ class AssistUi(private val ctx: Context, private val host: Host, private val c: 
     /** Кнопка «Назад»: сначала сворачиваем полноэкранный ответ в окно. true — нажатие обработано. */
     fun handleBack(): Boolean {
         if (confirmLayer.visibility == View.VISIBLE) {
-            hideConfirm()
+            // подтверждение уже на экране: второй жест «Назад» закрывает окно
+            requestClose()
             return true
         }
         if (phase == Phase.FULLSCREEN) {
@@ -403,10 +407,25 @@ class AssistUi(private val ctx: Context, private val host: Host, private val c: 
         micTarget = edit
     }
 
-    /** Закрыть окно; если на экране готовый ответ и включено подтверждение, сначала спросить. */
+    /**
+     * Закрыть окно; если на экране готовый ответ и включено подтверждение, сначала спросить.
+     * Повторный жест закрытия (касание вне окна, «Назад»), пока подтверждение на экране, закрывает окно.
+     */
     private fun requestClose() {
-        if (confirmLayer.visibility == View.VISIBLE) return
-        if (AssistFlow.needsCloseConfirm(phase, prefs)) showConfirm() else host.close()
+        when (AssistFlow.closeStep(phase, prefs, confirmLayer.visibility == View.VISIBLE)) {
+            AssistFlow.CloseStep.ASK -> showConfirm()
+            AssistFlow.CloseStep.CLOSE -> {
+                hideConfirm()
+                host.close()
+            }
+        }
+    }
+
+    /** Касание затемнённого фона подтверждения: на самом окне это «передумал», вне окна это второй жест закрытия. */
+    private fun onConfirmBackdropTap() {
+        val loc = IntArray(2)
+        card.getLocationOnScreen(loc)
+        if (AssistFlow.isInside(confirmDownX, confirmDownY, loc[0], loc[1], card.width, card.height)) hideConfirm() else requestClose()
     }
 
     private fun showConfirm() {
@@ -424,8 +443,18 @@ class AssistUi(private val ctx: Context, private val host: Host, private val c: 
     private fun buildConfirm(): View = FrameLayout(ctx).apply {
         visibility = View.GONE
         isClickable = true
+        // Выше карточки окна (у неё elevation 12dp): иначе на большом окне подтверждение рисуется под ним и до кнопок не добраться
+        elevation = dpf(24)
+        outlineProvider = null
         setBackgroundColor(AssistColors.withAlpha(Color.BLACK, 0x99))
-        setOnClickListener { hideConfirm() }
+        setOnTouchListener { _, e ->
+            if (e.actionMasked == MotionEvent.ACTION_DOWN) {
+                confirmDownX = e.rawX
+                confirmDownY = e.rawY
+            }
+            false
+        }
+        setOnClickListener { onConfirmBackdropTap() }
         val box = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
             background = rounded(c.surface, 24, c.outline, 1)
