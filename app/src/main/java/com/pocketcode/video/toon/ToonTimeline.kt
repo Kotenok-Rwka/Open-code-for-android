@@ -35,6 +35,7 @@ object ToonTimeline {
         gap: Double = 0.3,
         lead: Double = 0.6,
         choiceHold: Double = 4.0,
+        minTotal: Double = 0.0,
     ): ToonPlan {
         require(pcms.size == script.lines.size && voiceTexts.size == script.lines.size) { "Число озвучек не совпадает с числом реплик" }
         val audios = pcms.map { p -> p?.let { Wav.trim(Wav.resample(it, RATE)) } }
@@ -56,6 +57,8 @@ object ToonTimeline {
         } else {
             choiceStart = -1.0
         }
+        // серия не может быть короче заказанного: последний кадр (или выбор) просто держится дольше
+        if (total < minTotal) total = minTotal
         val mix = ShortArray(ceil(total * RATE).toInt() + RATE / 10)
         for (c in clips) c.audio?.let { place(mix, it, c.start) }
         if (choiceAudio != null) place(mix, choiceAudio, choiceStart + 0.3)

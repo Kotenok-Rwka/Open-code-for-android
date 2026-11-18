@@ -4887,6 +4887,7 @@ class ChatController(
             WebSearchTool(),
             WebFetchTool(),
             if (linuxActive) AdbTool(workspace, linuxShell) { devices } else null,
+            com.pocketcode.video.toon.ToonTool(toon),
             if (linuxActive) VideoTool(video) else null,
             if (linuxActive) VideoTranscribeTool(video) else null,
             if (linuxActive) VideoSubtitlesTool(video) else null,
@@ -5018,6 +5019,16 @@ class ChatController(
             proxy = { netProxy },
             keepAlive = { videoHold = true; startService() },
             release = { videoHold = false; if (!running) stopService() },
+            generate = { system, user ->
+                val p = profiles.firstOrNull { it.id == activeProfileId } ?: throw IllegalStateException("Не выбран профиль API для нейросети.")
+                require(p.apiKey.isNotBlank()) { "У активного профиля API нет ключа: нейросеть не может написать сценарий." }
+                val r = kotlinx.coroutines.withTimeout(180_000) {
+                    makeLlm(profileSettings(p), p.model).complete(system, listOf(Message("user", listOf(Block.Text(user)))), emptyList()) { }
+                }
+                val text = r.blocks.filterIsInstance<Block.Text>().joinToString("\n") { it.text }.trim()
+                if (text.isEmpty()) throw IllegalStateException("Нейросеть вернула пустой ответ.")
+                text
+            },
         )
     }
 

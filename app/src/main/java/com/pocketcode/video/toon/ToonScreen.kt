@@ -116,10 +116,59 @@ fun ToonScreen(
             }
 
             SoftCard {
+                Text("Придумать историю", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "Нейросеть из активного профиля напишет сценарий сама. Можно указать тему или оставить пустым, тогда придумает любую.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                OutlinedTextField(
+                    value = v.topic, onValueChange = { v.topic = it }, enabled = !v.busy,
+                    label = { Text("Тема (необязательно)") }, modifier = Modifier.fillMaxWidth(), minLines = 1, maxLines = 3,
+                )
+                Text("Формат", style = MaterialTheme.typography.labelLarge)
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    for (f in ToonFormat.values()) {
+                        FilterChip(selected = v.format == f, onClick = { v.format = f }, enabled = !v.busy, label = { Text(f.label) })
+                    }
+                }
+                Text("Длина серии не меньше", style = MaterialTheme.typography.labelLarge)
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    for (m in ToonPrompt.MIN_OPTIONS) {
+                        FilterChip(selected = v.minSeconds == m, onClick = { v.minSeconds = m }, enabled = !v.busy, label = { Text("$m с") })
+                    }
+                }
+                Text("Серий за один раз", style = MaterialTheme.typography.labelLarge)
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    for (n in listOf(1, 2, 3, 5)) {
+                        FilterChip(selected = v.episodes == n, onClick = { v.episodes = n }, enabled = !v.busy, label = { Text("$n") })
+                    }
+                }
+                if (v.episodes > 1) {
+                    Text(
+                        "Каждая серия продолжает предыдущую. Выбор зрителей будет только в последней, если выбран формат с выбором.",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                val cont = v.continueFrom
+                if (cont != null) {
+                    Text("Продолжение истории: ${cont.title}, серия ${cont.episode + 1}", style = MaterialTheme.typography.bodyMedium)
+                    val opts = runCatching { ToonScript.parse(cont.script).choice?.options }.getOrNull().orEmpty()
+                    if (opts.isNotEmpty()) {
+                        Text("Что выбрали зрители?", style = MaterialTheme.typography.labelLarge)
+                        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            for (o in opts) FilterChip(selected = v.viewerChoice == o, onClick = { v.viewerChoice = if (v.viewerChoice == o) "" else o }, enabled = !v.busy, label = { Text(o) })
+                        }
+                    }
+                    OutlinedButton(enabled = !v.busy, onClick = { v.continueEntry(null) }) { Text("Начать новую историю") }
+                }
+                Button(enabled = !v.busy, onClick = { note = null; v.write() }, modifier = Modifier.fillMaxWidth()) { Text("Придумать сценарий") }
+            }
+
+            SoftCard {
                 Text("Сценарий", style = MaterialTheme.typography.titleMedium)
                 Text(
                     "По строке на реплику: «Имя: текст». Строки без имени читает рассказчик. После «||» можно записать, как слово должно звучать (ударение ставится плюсом перед гласной: з+амок). " +
-                        "«Сцена:» ночь, море, комната или город. «Выбор: вопрос | вариант | вариант» добавит голосование для зрителей в конце, без него будет просто серия.",
+                        "«Сцена:» ночь, море, комната, город, заправка или лагерь, её можно менять по ходу. «Выбор: вопрос | вариант | вариант» добавит голосование для зрителей в конце, без него будет просто серия.",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 OutlinedTextField(
@@ -177,7 +226,31 @@ fun ToonScreen(
                 }
             }
 
-            Button(enabled = !v.busy, onClick = { note = null; v.start() }, modifier = Modifier.fillMaxWidth()) { Text("Сделать мультик") }
+            Button(enabled = !v.busy, onClick = { note = null; v.start() }, modifier = Modifier.fillMaxWidth()) {
+                Text(if (v.episodes > 1) "Придумать и снять серии: ${v.episodes}" else "Сделать мультик")
+            }
+            if (v.history.isNotEmpty()) {
+                SoftCard {
+                    Text("Мои мультики", style = MaterialTheme.typography.titleMedium)
+                    for (e in v.history) {
+                        Text("${e.title} · серия ${e.episode}", style = MaterialTheme.typography.bodyLarge)
+                        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(onClick = {
+                                scope.launch {
+                                    runCatching {
+                                        val uri = share(e.rel)
+                                        val view = Intent(Intent.ACTION_VIEW).setDataAndType(uri, "video/mp4").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                        ctx.startActivity(Intent.createChooser(view, "Открыть в…").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                                    }.onFailure { note = "Не удалось открыть: ${it.message}" }
+                                }
+                            }) { Text("Смотреть") }
+                            OutlinedButton(enabled = !v.busy, onClick = { v.useEntry(e) }) { Text("Сценарий в редактор") }
+                            OutlinedButton(enabled = !v.busy, onClick = { v.continueEntry(e) }) { Text("Продолжить историю") }
+                            OutlinedButton(enabled = !v.busy, onClick = { v.deleteEntry(e) }) { Text("Удалить из списка") }
+                        }
+                    }
+                }
+            }
             Text(
                 "Герои, фон и субтитры рисуются кодом прямо на телефоне, запись идёт встроенным кодеком, среда Linux не нужна. Ролик вертикальный 720×1280, 24 кадра в секунду.",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,

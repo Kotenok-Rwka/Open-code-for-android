@@ -26,6 +26,8 @@ class ToonFrame(
     /** 0..1 — как давно показан выбор (для плавного появления), −1 — выбора нет. */
     val choiceAnim: Float,
     val cta: String,
+    val looks: List<ToonLook> = emptyList(),
+    val mood: Mood = Mood.CALM,
 )
 
 /** Рисование плоских вырезных героев и фонов в духе вертикальных мультиков. Размер кадра 720×1280 (9:16). */
@@ -40,9 +42,6 @@ class ToonDraw(val w: Int = 720, val h: Int = 1280) {
     private val rect = RectF()
     private val path = Path()
 
-    private val skins = intArrayOf(0xFFF2C6A0.toInt(), 0xFFE0A87C.toInt(), 0xFFFAD7B5.toInt(), 0xFFC68B63.toInt())
-    private val hairs = intArrayOf(0xFF3B2A20.toInt(), 0xFFB5651D.toInt(), 0xFF1E1E24.toInt(), 0xFFE5C07B.toInt())
-    private val shirts = intArrayOf(0xFFE5533D.toInt(), 0xFF3D7BE5.toInt(), 0xFF3DB27A.toInt(), 0xFF9B59D0.toInt())
 
     fun draw(c: Canvas, f: ToonFrame) {
         background(c, f.scene, f.t)
@@ -50,7 +49,9 @@ class ToonDraw(val w: Int = 720, val h: Int = 1280) {
         for (i in 0 until n) {
             val cx = w * (i + 1f) / (n + 1f)
             val talking = f.heroes[i] == f.speaker
-            hero(c, i, cx, h * 0.58f, if (n >= 3) 0.8f else 1f, f.t + i * 0.7, talking, if (talking) f.mouthOpen else 0f, if (talking) f.mouthWidth else 0f)
+            val look = f.looks.getOrNull(i) ?: ToonLooks.of(f.heroes[i], i)
+            val sc = (if (n >= 3) 0.8f else 1f) * look.scale
+            hero(c, look, cx, h * 0.58f + (1f - look.scale) * 200f, sc, f.t + i * 0.7, talking, if (talking) f.mouthOpen else 0f, if (talking) f.mouthWidth else 0f, if (talking) f.mood else Mood.CALM)
         }
         if (f.title.isNotEmpty() && f.t < 2.2) title(c, f.title, f.t)
         if (f.subtitle.isNotEmpty() && f.choiceAnim < 0f) subtitle(c, f.subtitle)
@@ -119,6 +120,54 @@ class ToonDraw(val w: Int = 720, val h: Int = 1280) {
                 c.drawLine(rect.centerX(), rect.top, rect.centerX(), rect.bottom, line)
                 c.drawLine(rect.left, rect.centerY(), rect.right, rect.centerY(), line)
             }
+            ToonScene.GAS -> {
+                grad(c, 0xFF10182B.toInt(), 0xFF3B2F5A.toInt(), 0f, gy)
+                fill.color = 0xFF23232C.toInt()
+                c.drawRect(0f, gy, w.toFloat(), h.toFloat(), fill)
+                fill.color = 0xFFF2D230.toInt()
+                for (i in 0..5) c.drawRect(i * 130f + 20f, h * 0.9f, i * 130f + 90f, h * 0.9f + 12f, fill)
+                // навес заправки и вывеска
+                fill.color = 0xFFD9D9E0.toInt()
+                c.drawRect(0f, h * 0.2f, w.toFloat(), h * 0.25f, fill)
+                fill.color = 0xFFE5533D.toInt()
+                c.drawRect(0f, h * 0.25f, w.toFloat(), h * 0.265f, fill)
+                fill.color = 0xFF6B6B78.toInt()
+                c.drawRect(60f, h * 0.265f, 84f, gy, fill)
+                c.drawRect(w - 84f, h * 0.265f, w - 60f, gy, fill)
+                val blinkOn = (t % 1.6) < 1.1
+                fill.color = if (blinkOn) 0xFFFFE066.toInt() else 0xFF7A6B2A.toInt()
+                rect.set(w * 0.3f, h * 0.06f, w * 0.7f, h * 0.15f)
+                c.drawRoundRect(rect, 16f, 16f, fill)
+                fill.color = 0xFF10182B.toInt()
+                textFill.textSize = 52f
+                c.drawText("МОТЕЛЬ", w / 2f, h * 0.122f, textFill.apply { color = 0xFF10182B.toInt() })
+                textFill.color = Color.WHITE
+            }
+            ToonScene.TENT -> {
+                grad(c, 0xFF0B1330.toInt(), 0xFF2B3D73.toInt(), 0f, gy)
+                fill.color = 0xFFEAF1FF.toInt()
+                c.drawRect(0f, gy, w.toFloat(), h.toFloat(), fill)
+                fill.color = 0xFF16294D.toInt()
+                path.reset()
+                path.moveTo(0f, gy); path.lineTo(w * 0.25f, gy - 260f); path.lineTo(w * 0.5f, gy); path.close()
+                path.moveTo(w * 0.35f, gy); path.lineTo(w * 0.7f, gy - 320f); path.lineTo(w.toFloat(), gy); path.close()
+                c.drawPath(path, fill)
+                // палатка с тёплым светом
+                fill.color = 0xFFE58A3D.toInt()
+                path.reset()
+                path.moveTo(w * 0.1f, gy + 90f); path.lineTo(w * 0.28f, gy - 120f); path.lineTo(w * 0.46f, gy + 90f); path.close()
+                c.drawPath(path, fill)
+                fill.color = 0xFFFFE9A8.toInt()
+                path.reset()
+                path.moveTo(w * 0.24f, gy + 90f); path.lineTo(w * 0.28f, gy - 20f); path.lineTo(w * 0.32f, gy + 90f); path.close()
+                c.drawPath(path, fill)
+                fill.color = Color.WHITE
+                for (i in 0 until 40) {
+                    val x = (i * 131 % w).toFloat()
+                    val y = (((i * 53) % h) + t * (30 + i % 4 * 20)).toFloat() % h
+                    c.drawCircle(x, y, (2 + i % 3).toFloat(), fill)
+                }
+            }
             ToonScene.CITY -> {
                 grad(c, 0xFF3A2A6B.toInt(), 0xFFF08A5D.toInt(), 0f, gy)
                 for (i in 0 until 7) {
@@ -142,10 +191,10 @@ class ToonDraw(val w: Int = 720, val h: Int = 1280) {
 
     // ---------- герой ----------
 
-    private fun hero(c: Canvas, idx: Int, cx: Float, baseY: Float, scale: Float, t: Double, talking: Boolean, open: Float, width: Float) {
-        val skin = skins[idx % skins.size]
-        val hair = hairs[(idx + 1) % hairs.size]
-        val shirt = shirts[idx % shirts.size]
+    private fun hero(c: Canvas, look: ToonLook, cx: Float, baseY: Float, scale: Float, t: Double, talking: Boolean, open: Float, width: Float, mood: Mood) {
+        val skin = look.skin
+        val hair = look.hair
+        val shirt = look.shirt
         val bob = (sin(t * 2.2) * 4.0 + (if (talking) abs(sin(t * 7.0)) * 6.0 * open else 0.0)).toFloat()
         c.save()
         c.translate(cx, baseY + bob)
@@ -159,6 +208,9 @@ class ToonDraw(val w: Int = 720, val h: Int = 1280) {
         c.drawRoundRect(RectF(2f, 290f, 56f, 316f), 10f, 10f, fill)
         fill.color = shirt
         c.drawRoundRect(RectF(-78f, -40f, 78f, 140f), 40f, 40f, fill)
+        // полоска на одежде, чтобы герои сильнее различались
+        fill.color = Color.argb(60, 255, 255, 255)
+        c.drawRect(-78f, 40f, 78f, 62f, fill)
         // руки; говорящий жестикулирует
         val wave = if (talking) (sin(t * 5.0) * 14.0).toFloat() else 0f
         fill.color = shirt
@@ -167,21 +219,51 @@ class ToonDraw(val w: Int = 720, val h: Int = 1280) {
         fill.color = skin
         c.drawCircle(-91f, 126f + wave, 20f, fill)
         c.drawCircle(91f, 126f - wave, 20f, fill)
-        // шея и голова
+        // шея
         c.drawRect(-18f, -62f, 18f, -30f, fill)
-        c.drawCircle(0f, -130f, 84f, fill)
-        // причёска
+        // длинные волосы сзади головы
         fill.color = hair
-        path.reset()
-        path.addArc(RectF(-90f, -222f, 90f, -48f), 180f, 180f)
-        path.lineTo(70f, -150f)
-        path.quadTo(0f, -190f, -70f, -150f)
-        path.close()
-        c.drawPath(path, fill)
-        // глаза с морганием
+        if (look.style == HairStyle.LONG) c.drawRoundRect(RectF(-92f, -190f, 92f, -20f), 60f, 60f, fill)
+        if (look.style == HairStyle.BUN) c.drawCircle(0f, -222f, 30f, fill)
+        // голова
+        fill.color = skin
+        c.drawCircle(0f, -130f, 84f, fill)
+        // борода
+        if (look.beard) {
+            fill.color = hair
+            path.reset()
+            path.addArc(RectF(-70f, -120f, 70f, -30f), 0f, 180f)
+            path.close()
+            c.drawPath(path, fill)
+            fill.color = skin
+            c.drawOval(RectF(-30f, -118f, 30f, -70f), fill)
+        }
+        // причёска или кепка
+        fill.color = hair
+        when (look.style) {
+            HairStyle.BALD -> {}
+            HairStyle.CAP -> {
+                fill.color = shirts2(shirt)
+                path.reset()
+                path.addArc(RectF(-88f, -218f, 88f, -60f), 180f, 180f)
+                path.close()
+                c.drawPath(path, fill)
+                c.drawRoundRect(RectF(10f, -168f, 118f, -150f), 9f, 9f, fill)
+            }
+            else -> {
+                path.reset()
+                path.addArc(RectF(-90f, -222f, 90f, -48f), 180f, 180f)
+                path.lineTo(70f, -150f)
+                path.quadTo(0f, -190f, -70f, -150f)
+                path.close()
+                c.drawPath(path, fill)
+            }
+        }
+        // глаза с морганием; удивлённый смотрит шире
         val blink = (t % 3.4) in 3.25..3.4
+        val wide = if (mood == Mood.WOW) 8f else 0f
         fill.color = Color.WHITE
-        val eyeH = if (blink) 3f else 22f
+        val eyeH = if (blink) 3f else 22f + wide
         c.drawOval(RectF(-46f, -140f - eyeH / 2, -14f, -140f + eyeH / 2), fill)
         c.drawOval(RectF(14f, -140f - eyeH / 2, 46f, -140f + eyeH / 2), fill)
         if (!blink) {
@@ -189,22 +271,43 @@ class ToonDraw(val w: Int = 720, val h: Int = 1280) {
             c.drawCircle(-30f, -139f, 7f, fill)
             c.drawCircle(30f, -139f, 7f, fill)
         }
-        line.color = hair; line.strokeWidth = 7f
-        val brow = if (talking) -open * 6f else 0f
-        c.drawLine(-50f, -166f + brow, -12f, -170f + brow, line)
-        c.drawLine(12f, -170f + brow, 50f, -166f + brow, line)
-        mouth(c, 0f, -88f, open, width)
+        if (look.glasses) {
+            line.color = 0xFF222222.toInt(); line.strokeWidth = 5f
+            c.drawCircle(-30f, -140f, 24f, line)
+            c.drawCircle(30f, -140f, 24f, line)
+            c.drawLine(-6f, -140f, 6f, -140f, line)
+        }
+        // брови: говорящий поднимает их, вопрос поднимает одну, грусть опускает внешние края
+        line.color = if (look.style == HairStyle.BALD && !look.beard) 0xFF5A4636.toInt() else hair
+        line.strokeWidth = 7f
+        val up = if (talking) -open * 6f else 0f
+        var l0 = -166f + up
+        var l1 = -170f + up
+        var r0 = -170f + up
+        var r1 = -166f + up
+        when (mood) {
+            Mood.ASK -> { r0 -= 14f; r1 -= 14f }
+            Mood.WOW -> { l0 -= 12f; l1 -= 12f; r0 -= 12f; r1 -= 12f }
+            Mood.SAD -> { l0 += 10f; r1 += 10f }
+            Mood.CALM -> {}
+        }
+        c.drawLine(-50f, l0, -12f, l1, line)
+        c.drawLine(12f, r0, 50f, r1, line)
+        mouth(c, 0f, -88f, open, width, mood == Mood.SAD)
         c.restore()
     }
 
+    private fun shirts2(shirt: Int): Int =
+        Color.rgb((Color.red(shirt) * 0.7f).toInt(), (Color.green(shirt) * 0.7f).toInt(), (Color.blue(shirt) * 0.7f).toInt())
+
     /** Рот: open 0 — улыбка-линия, дальше открывается; width −1 вытянут «у/о», +1 растянут «и/е». */
-    private fun mouth(c: Canvas, cx: Float, cy: Float, open: Float, width: Float) {
+    private fun mouth(c: Canvas, cx: Float, cy: Float, open: Float, width: Float, sad: Boolean = false) {
         val mw = 22f + width * 8f
         if (open < 0.08f) {
             line.color = 0xFF6B2D2D.toInt(); line.strokeWidth = 6f
             path.reset()
             path.moveTo(cx - mw, cy)
-            path.quadTo(cx, cy + 10f, cx + mw, cy)
+            path.quadTo(cx, if (sad) cy - 10f else cy + 10f, cx + mw, cy)
             c.drawPath(path, line)
             return
         }

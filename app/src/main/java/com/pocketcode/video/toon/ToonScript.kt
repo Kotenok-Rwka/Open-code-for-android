@@ -5,7 +5,9 @@ enum class ToonScene(val label: String, val words: List<String>) {
     NIGHT("Ночь и снег", listOf("ночь", "ночью", "снег", "зима", "night", "snow")),
     SEA("Море днём", listOf("море", "день", "днём", "пирс", "пляж", "sea", "day")),
     ROOM("Комната", listOf("комната", "дом", "квартира", "room", "home")),
-    CITY("Город", listOf("город", "улица", "вечер", "city", "street"));
+    CITY("Город", listOf("город", "улица", "вечер", "city", "street")),
+    GAS("Заправка", listOf("заправка", "мотель", "трасса", "дорога", "gas", "road")),
+    TENT("Лагерь", listOf("палатка", "лагерь", "лес", "горы", "tent", "camp"));
 
     companion object {
         fun fromWord(w: String?): ToonScene? {
@@ -17,7 +19,7 @@ enum class ToonScene(val label: String, val words: List<String>) {
 }
 
 /** Одна реплика: кто говорит, что написать в субтитрах и что говорить голосом (null — подготовить из субтитров). */
-data class ToonLine(val speaker: String, val sub: String, val say: String?) {
+data class ToonLine(val speaker: String, val sub: String, val say: String?, val scene: ToonScene? = null) {
     val narrator: Boolean get() = ToonScript.isNarrator(speaker)
 }
 
@@ -57,6 +59,7 @@ data class ToonScript(
         fun parse(text: String): ToonScript {
             var title = ""
             var scene: ToonScene? = null
+            var current: ToonScene? = null
             var choice: ToonChoice? = null
             var cta = DEFAULT_CTA
             val lines = ArrayList<ToonLine>()
@@ -66,7 +69,14 @@ data class ToonScript(
                 val titleV = key(line, "название", "title")
                 if (titleV != null) { title = titleV; continue }
                 val sceneV = key(line, "сцена", "scene")
-                if (sceneV != null) { scene = ToonScene.fromWord(sceneV) ?: scene; continue }
+                if (sceneV != null) {
+                    val sc = ToonScene.fromWord(sceneV)
+                    if (sc != null) {
+                        current = sc
+                        if (scene == null) scene = sc
+                    }
+                    continue
+                }
                 val ctaV = key(line, "призыв", "cta")
                 if (ctaV != null) { if (ctaV.isNotEmpty()) cta = ctaV; continue }
                 val choiceV = key(line, "выбор", "choice")
@@ -82,7 +92,7 @@ data class ToonScript(
                 val sub = bits[0].trim()
                 val say = bits.getOrNull(1)?.trim()?.ifEmpty { null }
                 if (sub.isEmpty() && say == null) continue
-                lines += ToonLine(name, sub.ifEmpty { say.orEmpty() }, say)
+                lines += ToonLine(name, sub.ifEmpty { say.orEmpty() }, say, current)
             }
             require(lines.isNotEmpty()) { "В сценарии нет ни одной реплики. Пишите по строке: «Имя: реплика»." }
             require(lines.size <= MAX_LINES) { "Слишком длинный сценарий: не больше $MAX_LINES реплик." }
