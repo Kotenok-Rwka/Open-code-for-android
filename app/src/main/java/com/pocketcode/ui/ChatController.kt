@@ -5005,6 +5005,22 @@ class ChatController(
         )
     }
 
+    /** Режим «Мультики для TikTok»: герои рисуются кодом, озвучка системная или по ключу. */
+    val toon: com.pocketcode.video.toon.ToonMaker by lazy {
+        com.pocketcode.video.toon.ToonMaker(
+            app = app,
+            root = { workspace.root },
+            ttsEngine = { settingsStore.rawGet("assistTtsEngine").orEmpty() },
+            get = { settingsStore.rawGet(it) },
+            put = { k, v -> settingsStore.rawPut(k, v) },
+            secret = { k -> if (k.isNotBlank()) Secrets.known = Secrets.known + k },
+            fallbackKey = { url -> profiles.firstOrNull { it.apiKey.isNotBlank() && sameHost(it.baseUrl, url) }?.let { it.apiKey to it.label } },
+            proxy = { netProxy },
+            keepAlive = { videoHold = true; startService() },
+            release = { videoHold = false; if (!running) stopService() },
+        )
+    }
+
     /** Создание видео нейросетью по API (ключи сервисов лежат зашифрованно). */
     val videoGen: VideoGenerator by lazy {
         VideoGenerator(

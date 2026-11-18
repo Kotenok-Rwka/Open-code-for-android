@@ -74,7 +74,7 @@ import com.pocketcode.ui.ProjectsScreen
 import com.pocketcode.ui.SessionsScreen
 import com.pocketcode.ui.SettingsScreen
 
-private enum class Screen { CHAT, SETTINGS, SESSIONS, PROJECTS, FILES, DEVICES, PLUGINS, DIAG, COMPARE, CONTEXT, TERMINAL, GIT, OCSESSIONS, REMOTE, DIFF, SEARCH, HUB_PROJECT, HUB_AGENT, HUB_MORE, FIND, ROOT, PHONE, OCSETTINGS, MODELS, LINUX, UPDATE, BACKUP, VIDEO, LANGUAGE, SMART, LEARN, ASSISTANT, HOST }
+private enum class Screen { CHAT, SETTINGS, SESSIONS, PROJECTS, FILES, DEVICES, PLUGINS, DIAG, COMPARE, CONTEXT, TERMINAL, GIT, OCSESSIONS, REMOTE, DIFF, SEARCH, HUB_PROJECT, HUB_AGENT, HUB_MORE, FIND, ROOT, PHONE, OCSETTINGS, MODELS, LINUX, UPDATE, BACKUP, VIDEO, LANGUAGE, SMART, LEARN, ASSISTANT, HOST, TOON }
 
 class MainActivity : ComponentActivity() {
     private val controller: ChatController
@@ -228,7 +228,7 @@ class MainActivity : ComponentActivity() {
                 }
                 val section = when (screen) {
                     Screen.CHAT -> 0
-                    Screen.HUB_PROJECT, Screen.PROJECTS, Screen.FILES, Screen.SEARCH, Screen.DIFF, Screen.GIT, Screen.TERMINAL, Screen.VIDEO, Screen.HOST -> 1
+                    Screen.HUB_PROJECT, Screen.PROJECTS, Screen.FILES, Screen.SEARCH, Screen.DIFF, Screen.GIT, Screen.TERMINAL, Screen.VIDEO, Screen.HOST, Screen.TOON -> 1
                     Screen.HUB_AGENT, Screen.FIND, Screen.MODELS, Screen.OCSESSIONS, Screen.OCSETTINGS, Screen.PLUGINS, Screen.CONTEXT, Screen.COMPARE, Screen.SESSIONS -> 2
                     else -> 3
                 }
@@ -292,6 +292,7 @@ class MainActivity : ComponentActivity() {
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Branch, "Git и GitHub", "Коммиты, ветки, PR, проверки сборки") { openFrom(Screen.HUB_PROJECT, Screen.GIT) },
                                 com.pocketcode.ui.hubHeader("Медиа"),
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Play, "Видео", "Монтаж: вырезать паузы одной кнопкой, без ПК", if (vm.video.busy) "идёт" else null) { openFrom(Screen.HUB_PROJECT, Screen.VIDEO) },
+                                com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Play, "Мультики для TikTok", "Сценарий → герои, озвучка и субтитры → готовый вертикальный ролик", if (vm.toon.busy) "идёт" else null) { openFrom(Screen.HUB_PROJECT, Screen.TOON) },
                             ),
                             onSearch = { openFrom(screen, Screen.FIND) },
                         )
@@ -536,6 +537,10 @@ class MainActivity : ComponentActivity() {
                     Screen.VIDEO -> {
                         BackHandler { screen = backTo }
                         com.pocketcode.video.VideoScreen(vm.video, gen = vm.videoGen, onBack = { screen = backTo }, onOpenLinux = { openFrom(Screen.HUB_PROJECT, Screen.LINUX) }, onAsk = { prompt -> screen = Screen.CHAT; vm.send(prompt) })
+                    }
+                    Screen.TOON -> {
+                        BackHandler { screen = backTo }
+                        com.pocketcode.video.toon.ToonScreen(vm.toon, share = { vm.video.shareUri(it) }, toGallery = { vm.video.saveToGallery(it) }, onBack = { screen = backTo })
                     }
                     Screen.LANGUAGE -> {
                         BackHandler { screen = backTo }
