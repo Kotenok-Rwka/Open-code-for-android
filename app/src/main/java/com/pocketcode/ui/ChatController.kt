@@ -393,15 +393,10 @@ class ChatController(
                 }
                 if (!linuxEnabled) chooseLinuxShell(true)
                 freeStartMsg = "Шаг 2 из 3: ставлю OpenCode, это несколько минут. Ход установки виден в Терминале."
-                termRun(
-                    "(command -v npm >/dev/null 2>&1 || (echo 'Ставлю nodejs и npm…'; apk add --no-cache nodejs npm git libstdc++ libgcc 2>&1 | tail -n 3)); " +
-                        "case \"\$(uname -m)\" in aarch64|arm64) P=opencode-linux-arm64-musl;; *) P=opencode-linux-x64-musl;; esac; " +
-                        "npm install -g --force opencode-ai \$P > /tmp/oc-install.log 2>&1; echo \"код установки: \$?\"; tail -n 15 /tmp/oc-install.log; opencode --version",
-                    900,
-                )
+                termRun(OpenCodeInstall.command(), 900)
                 while (termBusy) delay(500)
                 val out = term.lastOrNull()?.out.orEmpty()
-                if (!out.contains("код установки: 0")) error("OpenCode не установился. Последний вывод:\n" + out.takeLast(500))
+                if (!out.contains("код установки: 0") || term.lastOrNull()?.code != 0) error("OpenCode не установился. Последний вывод:\n" + out.takeLast(500))
                 freeStartMsg = "Шаг 3 из 3: включаю режим OpenCode"
                 openCodeMode = true
                 freeStartMsg = null
@@ -3887,10 +3882,7 @@ class ChatController(
     private val permRegex = Regex("""permission requested: (\w+) \(([^)]+)\); auto-rejecting""")
 
     private fun ocPermEnv(): String {
-        val q = { t: String -> t.replace("\"", "").replace("'", "") }
-        if (ocExtMode == "allow" || ocAllowSession) return "export OPENCODE_PERMISSION='{\"external_directory\":\"allow\"}'; "
-        val rules = (listOf("/tmp", "/tmp/**") + ocGranted).distinct().joinToString(",") { "\"${q(it)}\":\"allow\"" }
-        return "export OPENCODE_PERMISSION='{\"external_directory\":{$rules}}'; "
+        return "export OPENCODE_PERMISSION='" + OpenCodePerm.json(ocExtMode == "allow" || ocAllowSession, ocGranted.toList()) + "'; "
     }
 
     private fun collectOcPerms(text: String) {

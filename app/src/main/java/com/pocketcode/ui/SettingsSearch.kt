@@ -1,13 +1,17 @@
 package com.pocketcode.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -69,6 +73,13 @@ val SETTING_INDEX = listOf(
     SettingEntry("Правки агента", "Проект → Правки", "правки diff откат изменения", "DIFF"),
     SettingEntry("Терминал и запуск", "Проект → Терминал", "терминал команды запуск консоль", "TERMINAL"),
     SettingEntry("Git и GitHub", "Проект → Git", "git коммит ветка pr сборка actions", "GIT"),
+    SettingEntry("Хостинг проектов", "Проект → Хостинг", "хостинг бот сервер запуск фоном расписание телеграм python node", "HOST"),
+    SettingEntry("Видео: монтаж и субтитры", "Проект → Видео", "видео монтаж субтитры нарезка склейка музыка переходы ffmpeg ролик", "VIDEO"),
+    SettingEntry("Мультики для TikTok", "Проект → Мультики", "мультики тикток tiktok сценарий герои озвучка субтитры ролик вертикальный", "TOON"),
+    SettingEntry("Язык интерфейса", "Ещё → Язык", "язык интерфейса перевод английский русский немецкий испанский китайский арабский", "LANGUAGE"),
+    SettingEntry("Умные функции", "Ещё → Умные функции", "умные функции авто режим предохранитель корзина автовыбор модели карта проекта", "SMART"),
+    SettingEntry("Управление телефоном", "Ещё → Управление телефоном", "управление телефоном агент экран нажимает служба доступности помощник фон mika", "PHONE"),
+    SettingEntry("Обучение", "Ещё → Обучение", "обучение уроки практика тесты подсказки", "LEARN"),
 )
 
 /** Поиск по всем разделам и настройкам: нажми на результат, и откроется нужный экран, прокрутив к разделу. */
@@ -78,9 +89,9 @@ fun SettingsSearchScreen(onBack: () -> Unit, onOpen: (SettingEntry) -> Unit) {
     var q by remember { mutableStateOf("") }
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
-    val tokens = q.lowercase().split(' ', ',').filter { it.isNotBlank() }
-    val found = if (tokens.isEmpty()) SETTING_INDEX
-    else SETTING_INDEX.filter { e -> val hay = (e.title + " " + e.words + " " + e.where).lowercase(); tokens.all { it in hay } }
+    val result = SearchLogic.search(SETTING_INDEX, q)
+    val found = result.entries
+    val similar = if (q.isNotBlank() && (found.isEmpty() || result.partial)) SearchLogic.similarWords(SETTING_INDEX, q) else emptyList()
     Scaffold(
         topBar = {
             AppTopBar(
@@ -96,6 +107,13 @@ fun SettingsSearchScreen(onBack: () -> Unit, onOpen: (SettingEntry) -> Unit) {
                 modifier = Modifier.fillMaxWidth().focusRequester(focus),
             )
             if (found.isEmpty()) Text("Ничего не нашлось. Попробуй другое слово: «тема», «ключ», «лимит», «обновление».", style = MaterialTheme.typography.bodyMedium)
+            else if (result.partial) Text("Точного совпадения нет, показано то, что подошло хотя бы по одному слову.", style = MaterialTheme.typography.bodySmall)
+            if (similar.isNotEmpty()) {
+                Text("Похожие слова:", style = MaterialTheme.typography.labelMedium)
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    similar.forEach { w -> AssistChip(onClick = { q = w }, label = { Text(w) }) }
+                }
+            }
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(found) { e ->
                     Card(

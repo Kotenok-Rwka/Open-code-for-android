@@ -2,7 +2,8 @@ package com.pocketcode.ui
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -28,7 +29,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 /** Ручной git: статус, изменения, история, ветки, коммит, push/pull. */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun GitScreen(vm: ChatController, onBack: () -> Unit) {
     var message by remember { mutableStateOf("") }
@@ -43,7 +44,7 @@ fun GitScreen(vm: ChatController, onBack: () -> Unit) {
             Modifier.padding(pad).fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 OutlinedButton(onClick = { vm.gitRun("status") }, enabled = !vm.gitBusy) { Text("Статус") }
                 OutlinedButton(onClick = { vm.gitRun("diff") }, enabled = !vm.gitBusy) { Text("Изменения") }
                 OutlinedButton(onClick = { vm.gitRun("log", "count" to "20") }, enabled = !vm.gitBusy) { Text("История") }
@@ -56,18 +57,18 @@ fun GitScreen(vm: ChatController, onBack: () -> Unit) {
             if (vm.gitBusy) SkeletonRows(count = 2)
             Text("Коммит", style = MaterialTheme.typography.titleSmall)
             OutlinedTextField(value = message, onValueChange = { message = it }, label = { Text("Сообщение коммита") }, modifier = Modifier.fillMaxWidth())
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 OutlinedButton(onClick = { vm.gitRun("add") }, enabled = !vm.gitBusy) { Text("В индекс всё") }
                 Button(onClick = { vm.gitRun("commit", "message" to message); message = "" }, enabled = !vm.gitBusy && message.isNotBlank()) { Text("Закоммитить") }
             }
             Text("Сервер", style = MaterialTheme.typography.titleSmall)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 OutlinedButton(onClick = { vm.gitRun("pull") }, enabled = !vm.gitBusy) { Text("Pull") }
                 OutlinedButton(onClick = { vm.gitRun("push") }, enabled = !vm.gitBusy) { Text("Push") }
             }
             Text("Токен GitHub берётся из настроек.", style = MaterialTheme.typography.bodySmall)
             Text("GitHub", style = MaterialTheme.typography.titleSmall)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 OutlinedButton(onClick = { vm.githubRun("pr_list") }, enabled = !vm.gitBusy) { Text("Pull Request") }
                 OutlinedButton(onClick = { vm.githubRun("issue_list") }, enabled = !vm.gitBusy) { Text("Issues") }
                 OutlinedButton(onClick = { vm.githubRun("checks") }, enabled = !vm.gitBusy) { Text("Проверки") }
@@ -80,7 +81,7 @@ fun GitScreen(vm: ChatController, onBack: () -> Unit) {
             Text("Сначала отправь ветку кнопкой Push.", style = MaterialTheme.typography.labelSmall)
             Text("Ветка", style = MaterialTheme.typography.titleSmall)
             OutlinedTextField(value = branch, onValueChange = { branch = it }, label = { Text("Имя ветки") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 OutlinedButton(onClick = { vm.gitRun("checkout", "branch" to branch) }, enabled = !vm.gitBusy && branch.isNotBlank()) { Text("Переключиться") }
                 OutlinedButton(onClick = { vm.gitRun("checkout", "branch" to branch, "create" to "true") }, enabled = !vm.gitBusy && branch.isNotBlank()) { Text("Создать и перейти") }
             }
