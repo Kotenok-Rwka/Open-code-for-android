@@ -22,7 +22,19 @@ val ACCENTS = listOf(
     Accent("contrast", "Контрастный", Color(0xFFFFE54C), Color(0xFF0030A0)),
 )
 
-fun accentById(id: String): Accent? = ACCENTS.firstOrNull { it.id == id }
+/** Дополнительные цвета: появляются в выборе акцента после перехода по ссылке на экране «Спасибо автору». */
+val EXTRA_ACCENTS = listOf(
+    Accent("lime", "Лайм", Color(0xFFC6F24E), Color(0xFF5B7F00)),
+    Accent("coral", "Коралл", Color(0xFFFF8A75), Color(0xFFB3402A)),
+    Accent("indigo", "Индиго", Color(0xFF9FA8FF), Color(0xFF3F51B5)),
+    Accent("gold", "Золотой", Color(0xFFFFCA28), Color(0xFF8D6E00)),
+)
+
+fun accentById(id: String): Accent? = ACCENTS.firstOrNull { it.id == id } ?: EXTRA_ACCENTS.firstOrNull { it.id == id }
+
+/** Цвета для выбора: обычные, а дополнительные только если открыты. Уже выбранный цвет не пропадает, даже если настройки восстановили из копии. */
+fun visibleAccents(unlocked: Boolean, selected: String): List<Accent> =
+    ACCENTS + EXTRA_ACCENTS.filter { unlocked || it.id == selected }
 
 /** Своя палитра: одинакова на всех телефонах. amoled — чистый чёрный фон. */
 fun buildScheme(dark: Boolean, amoled: Boolean, a: Accent): ColorScheme {

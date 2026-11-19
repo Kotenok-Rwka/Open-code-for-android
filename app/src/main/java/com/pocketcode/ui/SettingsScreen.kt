@@ -710,7 +710,7 @@ fun SettingsScreen(
             }
             Text("Цвет акцента", style = MaterialTheme.typography.bodyMedium, modifier = sec("accent"))
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                (ACCENTS.map { Triple(it.id, it.title, it.dark) } + Triple("system", "Из обоев", androidx.compose.ui.graphics.Color(0xFF9E9E9E))).forEach { (id, title, color) ->
+                (visibleAccents(vm.thanksUnlocked, vm.palette).map { Triple(it.id, it.title, it.dark) } + Triple("system", "Из обоев", androidx.compose.ui.graphics.Color(0xFF9E9E9E))).forEach { (id, title, color) ->
                     androidx.compose.material3.FilterChip(
                         selected = vm.palette == id, onClick = { vm.setPaletteValue(id) },
                         leadingIcon = { androidx.compose.foundation.layout.Box(Modifier.size(14.dp).background(color, androidx.compose.foundation.shape.CircleShape)) },

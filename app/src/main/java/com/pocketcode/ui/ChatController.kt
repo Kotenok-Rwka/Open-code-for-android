@@ -3840,6 +3840,10 @@ class ChatController(
     var palette by mutableStateOf(settingsStore.rawGet("palette") ?: "blue")
         private set
     fun setPaletteValue(v: String) { palette = v; settingsStore.rawPut("palette", v) }
+    /** Открыты ли дополнительные цвета акцента (после перехода по ссылке на экране «Спасибо автору»). */
+    var thanksUnlocked by mutableStateOf(settingsStore.rawGet("thanks") == "1")
+        private set
+    fun markThanks() { if (!thanksUnlocked) { thanksUnlocked = true; settingsStore.rawPut("thanks", "1") } }
     var amoled by mutableStateOf(settingsStore.rawGet("amoled") == "1")
         private set
     fun setAmoledValue(v: Boolean) { amoled = v; settingsStore.rawPut("amoled", if (v) "1" else "0") }

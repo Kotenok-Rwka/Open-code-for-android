@@ -74,7 +74,7 @@ import com.pocketcode.ui.ProjectsScreen
 import com.pocketcode.ui.SessionsScreen
 import com.pocketcode.ui.SettingsScreen
 
-private enum class Screen { CHAT, SETTINGS, SESSIONS, PROJECTS, FILES, DEVICES, PLUGINS, DIAG, COMPARE, CONTEXT, TERMINAL, GIT, OCSESSIONS, REMOTE, DIFF, SEARCH, HUB_PROJECT, HUB_AGENT, HUB_MORE, FIND, ROOT, PHONE, OCSETTINGS, MODELS, LINUX, UPDATE, BACKUP, VIDEO, LANGUAGE, SMART, LEARN, ASSISTANT, HOST, TOON }
+private enum class Screen { CHAT, SETTINGS, SESSIONS, PROJECTS, FILES, DEVICES, PLUGINS, DIAG, COMPARE, CONTEXT, TERMINAL, GIT, OCSESSIONS, REMOTE, DIFF, SEARCH, HUB_PROJECT, HUB_AGENT, HUB_MORE, FIND, ROOT, PHONE, OCSETTINGS, MODELS, LINUX, UPDATE, BACKUP, VIDEO, LANGUAGE, SMART, LEARN, ASSISTANT, HOST, TOON, SUPPORT }
 
 class MainActivity : ComponentActivity() {
     private val controller: ChatController
@@ -281,16 +281,17 @@ class MainActivity : ComponentActivity() {
                         com.pocketcode.ui.HubScreen(
                             "Проект", "Сейчас открыт: " + vm.currentProject,
                             listOf(
-                                com.pocketcode.ui.hubHeader("Что открыто"),
+                                com.pocketcode.ui.hubHeader("Проекты и файлы"),
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Folder, "Проекты", "Список проектов, создать новый или открыть папку телефона") { openFrom(Screen.HUB_PROJECT, Screen.PROJECTS) },
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.File, "Файлы", "Смотреть и править файлы проекта") { openFrom(Screen.HUB_PROJECT, Screen.FILES) },
-                                com.pocketcode.ui.hubHeader("Работа с кодом"),
+                                com.pocketcode.ui.hubHeader("Код"),
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Search, "Поиск по проекту", "Найти текст или TODO во всех файлах") { openFrom(Screen.HUB_PROJECT, Screen.SEARCH) },
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Pencil, "Правки агента", "Что изменил агент, откат по блокам, сравнение со снимком", if (vm.changes.isNotEmpty()) "${vm.changes.size}" else null) { openFrom(Screen.HUB_PROJECT, Screen.DIFF) },
+                                com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Branch, "Git и GitHub", "Коммиты, ветки, PR, проверки сборки") { openFrom(Screen.HUB_PROJECT, Screen.GIT) },
+                                com.pocketcode.ui.hubHeader("Запуск"),
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Terminal, "Терминал и запуск", "Команды в Linux, кнопки запуска проекта") { openFrom(Screen.HUB_PROJECT, Screen.TERMINAL) },
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Terminal, "Хостинг проектов", "Боты и серверы на телефоне: фоном или пока открыто, по расписанию") { openFrom(Screen.HUB_PROJECT, Screen.HOST) },
-                                com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Branch, "Git и GitHub", "Коммиты, ветки, PR, проверки сборки") { openFrom(Screen.HUB_PROJECT, Screen.GIT) },
-                                com.pocketcode.ui.hubHeader("Медиа"),
+                                com.pocketcode.ui.hubHeader("Видео и ролики"),
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Play, "Видео", "Монтаж: вырезать паузы одной кнопкой, без ПК", if (vm.video.busy) "идёт" else null) { openFrom(Screen.HUB_PROJECT, Screen.VIDEO) },
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Play, "Мультики для TikTok", "Сценарий → герои, озвучка и субтитры → готовый вертикальный ролик", if (vm.toon.busy) "идёт" else null) { openFrom(Screen.HUB_PROJECT, Screen.TOON) },
                             ),
@@ -302,15 +303,15 @@ class MainActivity : ComponentActivity() {
                         com.pocketcode.ui.HubScreen(
                             "Агент", vm.profileLabel + (if (vm.openCodeMode) " · режим OpenCode" else ""),
                             listOf(
-                                com.pocketcode.ui.hubHeader("Кто работает"),
+                                com.pocketcode.ui.hubHeader("Модели и OpenCode"),
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Key, "Модель и ключи", "Провайдеры, ключи API, выбор модели, режим работы") { openFrom(Screen.HUB_AGENT, Screen.MODELS) },
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Chat, "Диалоги OpenCode", "Список бесед: открыть, закрепить, переименовать, удалить, начать новую") { openFrom(Screen.HUB_AGENT, Screen.OCSESSIONS) },
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Sliders, "Настройки OpenCode", "Аккаунты, ключ, прокси, лимиты, доступ вне проекта, статистика") { openFrom(Screen.HUB_AGENT, Screen.OCSETTINGS) },
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Layers, "Сравнить модели", "Один запрос сразу в нескольких моделях") { openFrom(Screen.HUB_AGENT, Screen.COMPARE) },
-                                com.pocketcode.ui.hubHeader("Что он знает и умеет"),
+                                com.pocketcode.ui.hubHeader("Память и навыки"),
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Cpu, "Что в контексте", "Что агент сейчас «помнит» и сколько это весит") { openFrom(Screen.HUB_AGENT, Screen.CONTEXT) },
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Wrench, "Навыки, команды, MCP", "Готовые инструкции и подключаемые инструменты") { openFrom(Screen.HUB_AGENT, Screen.PLUGINS) },
-                                com.pocketcode.ui.hubHeader("Прошлое"),
+                                com.pocketcode.ui.hubHeader("История"),
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.History, "История чатов", "Прошлые беседы, вернуться к любой") { openFrom(Screen.HUB_AGENT, Screen.SESSIONS) },
                             ),
                             onSearch = { openFrom(screen, Screen.FIND) },
@@ -319,17 +320,18 @@ class MainActivity : ComponentActivity() {
                     Screen.HUB_MORE -> {
                         BackHandler { screen = Screen.CHAT }
                         com.pocketcode.ui.HubScreen(
-                            "Ещё", "Система, устройства и приложение",
+                            "Ещё", "Настройки, телефон и приложение",
                             listOf(
-                                com.pocketcode.ui.hubHeader("Система"),
+                                com.pocketcode.ui.hubHeader("Основное"),
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Sliders, "Настройки", "Тема и вид, безопасность, правила, общие параметры") { openFrom(Screen.HUB_MORE, Screen.SETTINGS) },
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Globe, "Язык интерфейса", com.pocketcode.ui.I18n.all.firstOrNull { it.code == com.pocketcode.ui.I18n.code }?.native ?: "") { openFrom(Screen.HUB_MORE, Screen.LANGUAGE) },
-                                com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Terminal, "Среда Linux", "Установка мини-Linux, python, git, node", if (!pocketApp.controller.linuxInstalled && pocketApp.controller.linuxSupported) "не установлен" else null) { openFrom(Screen.HUB_MORE, Screen.LINUX) },
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Sparkles, "Умные функции", "Авто-режим, предохранитель, корзина, автовыбор модели, карта проекта", if (pocketApp.controller.rootAuto) "авто вкл" else null) { openFrom(Screen.HUB_MORE, Screen.SMART) },
-                                com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Shield, "Root и Android", "Как дать агенту данные с телефона: четыре способа", if (pocketApp.controller.rootAuto) "авто-режим вкл" else if (pocketApp.controller.hostMode == "ask") "мост вкл" else null) { openFrom(Screen.HUB_MORE, Screen.ROOT) },
-                                com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Sparkles, "Ассистент", "Вызов вместо Google, поиск в интернете, показ ответа и прогресса", if (com.pocketcode.assist.PocketAssistService.isDefault(this@MainActivity)) "вкл" else null) { openFrom(Screen.HUB_MORE, Screen.ASSISTANT) },
+                                com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Terminal, "Среда Linux", "Установка мини-Linux, python, git, node", if (!pocketApp.controller.linuxInstalled && pocketApp.controller.linuxSupported) "не установлен" else null) { openFrom(Screen.HUB_MORE, Screen.LINUX) },
+                                com.pocketcode.ui.hubHeader("Телефон и устройства"),
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Phone, "Управление телефоном", "Агент смотрит на экран и нажимает: служба доступности, помощник, фон", if (pocketApp.controller.phoneMode.enabled) "вкл" else null) { openFrom(Screen.HUB_MORE, Screen.PHONE) },
-                                com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Phone, "Устройства", "ADB, root, подключённые устройства") { openFrom(Screen.HUB_MORE, Screen.DEVICES) },
+                                com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Sparkles, "Ассистент", "Вызов вместо Google, поиск в интернете, показ ответа и прогресса", if (com.pocketcode.assist.PocketAssistService.isDefault(this@MainActivity)) "вкл" else null) { openFrom(Screen.HUB_MORE, Screen.ASSISTANT) },
+                                com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Shield, "Root и Android", "Как дать агенту данные с телефона: четыре способа", if (pocketApp.controller.rootAuto) "авто-режим вкл" else if (pocketApp.controller.hostMode == "ask") "мост вкл" else null) { openFrom(Screen.HUB_MORE, Screen.ROOT) },
+                                com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Phone, "Устройства и ADB", "ADB, root, подключённые устройства") { openFrom(Screen.HUB_MORE, Screen.DEVICES) },
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Refresh, "Синхронизация и пульт", "Файлы между телефонами и задачи на другой телефон") { openFrom(Screen.HUB_MORE, Screen.REMOTE) },
                                 com.pocketcode.ui.hubHeader("Приложение"),
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Package, "Обновления", "Версия ${pocketApp.controller.currentVersion}", if (pocketApp.controller.updateInfo != null) "новая" else null) { openFrom(Screen.HUB_MORE, Screen.UPDATE) },
@@ -338,9 +340,11 @@ class MainActivity : ComponentActivity() {
                                 com.pocketcode.ui.hubHeader("Помощь"),
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Book, "Обучение", "Уроки с практикой и мини-тестами по главным функциям", "${com.pocketcode.ui.LESSONS.count { it.id in pocketApp.controller.learnDone }}/${com.pocketcode.ui.LESSONS.size}") { openFrom(Screen.HUB_MORE, Screen.LEARN) },
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Info, "Подсказки", "Показать обучение первого запуска ещё раз") { screen = Screen.CHAT; pocketApp.controller.restartTour() },
-                                com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Link, "Поддержка", "Помощь, вопросы и идеи: группа PocketCode в Telegram") {
+                                com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Link, "Группа в Telegram", "Помощь, вопросы и идеи: группа PocketCode в Telegram") {
                                     runCatching { startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://t.me/pocket_code_github"))) }
                                 },
+                                com.pocketcode.ui.hubHeader("Автор"),
+                                com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Heart, "Спасибо автору", "Всё по желанию, без обязательств") { openFrom(Screen.HUB_MORE, Screen.SUPPORT) },
                             ),
                             onSearch = { openFrom(screen, Screen.FIND) },
                         )
@@ -529,6 +533,10 @@ class MainActivity : ComponentActivity() {
                             },
                             onTour = { screen = Screen.CHAT; pocketApp.controller.restartTour() },
                         )
+                    }
+                    Screen.SUPPORT -> {
+                        BackHandler { screen = backTo }
+                        com.pocketcode.ui.SupportScreen(pocketApp.controller, onBack = { screen = backTo })
                     }
                     Screen.SMART -> {
                         BackHandler { screen = backTo }
