@@ -9,10 +9,24 @@ class OpenCodeInstallTest {
     private val cmd = OpenCodeInstall.command()
 
     @Test
-    fun installsPackageAndPlatformBinary() {
-        assertTrue(cmd.contains("npm install -g --force opencode-ai \$P"))
-        assertTrue(cmd.contains("opencode-linux-arm64-musl"))
+    fun installsPackageForExplicitPlatform() {
+        assertTrue(cmd.contains("--os=linux --cpu=\$A --libc=musl opencode-ai \$P"))
+        assertTrue(cmd.contains("A=arm64"))
+        assertTrue(cmd.contains("A=x64"))
+        assertTrue(cmd.contains("P=opencode-linux-\$A-musl"))
         assertTrue(cmd.contains("код установки: \$?"))
+    }
+
+    @Test
+    fun installsSystemLibraries() {
+        for (pkg in listOf("libgcc", "libstdc++", "gcompat", "nodejs", "npm")) assertTrue(pkg, cmd.contains(pkg))
+        assertTrue(cmd.indexOf("apk add") < cmd.indexOf("npm install"))
+    }
+
+    @Test
+    fun fixesPermissions() {
+        assertTrue(cmd.contains("chmod -R a+rX"))
+        assertTrue(cmd.contains("chmod a+rx"))
     }
 
     @Test
