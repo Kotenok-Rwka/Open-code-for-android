@@ -72,10 +72,8 @@ fun PhoneScreen(vm: ChatController, onBack: () -> Unit, onToChat: () -> Unit) {
             Text("Без root:", style = MaterialTheme.typography.labelLarge)
             OutlinedButton(onClick = { pm.beginPairing() }, enabled = !pm.busy, modifier = Modifier.fillMaxWidth()) { Text("Сопряжение с отладкой по Wi-Fi") }
             OutlinedButton(onClick = { pm.startWireless() }, enabled = !pm.busy, modifier = Modifier.fillMaxWidth()) { Text("Запустить помощника (без root)") }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = { pm.enableAccessibilityViaHelper() }, enabled = !pm.busy && pm.helper.connected) { Text("Включить доступность") }
-                OutlinedButton(onClick = { pm.stopHelper() }, enabled = !pm.busy && pm.helper.connected) { Text("Остановить помощника") }
-            }
+            OutlinedButton(onClick = { pm.enableAccessibilityViaHelper() }, enabled = !pm.busy && pm.helper.connected, modifier = Modifier.fillMaxWidth()) { Text("Включить доступность") }
+            OutlinedButton(onClick = { pm.stopHelper() }, enabled = !pm.busy && pm.helper.connected, modifier = Modifier.fillMaxWidth()) { Text("Остановить помощника") }
             pm.status?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
 
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {

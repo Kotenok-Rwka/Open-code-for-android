@@ -264,6 +264,7 @@ fun FilesScreen(
 
     Scaffold(
         topBar = {
+          androidx.compose.foundation.layout.Column {
             AppTopBar(
                 title = {
                     Text(
@@ -275,23 +276,6 @@ fun FilesScreen(
                 navigationIcon = { androidx.compose.material3.IconButton(onClick = { goUp() }) { androidx.compose.material3.Icon(com.pocketcode.ui.backIcon(), contentDescription = "Назад") } },
                 actions = {
                     if (editing != null) {
-                        val ext = editing!!.extension.lowercase()
-                        TextButton(onClick = { showSearch = !showSearch }) { Text("Поиск") }
-                        TextButton(onClick = { findDefinitions() }) { Text("Определение") }
-                        if (checker != null) {
-                            TextButton(onClick = {
-                                val f = editing!!
-                                scope.launch {
-                                    checkResult = withContext(Dispatchers.IO) { runCatching { checker(f.name, text) }.getOrElse { "не удалось проверить: ${it.message}" } }
-                                }
-                            }) { Text("Проверить") }
-                        }
-                        if (ext == "html" || ext == "htm" || ext == "svg") {
-                            TextButton(onClick = {
-                                save()
-                                previewFile = editing
-                            }) { Text("Просмотр") }
-                        }
                         TextButton(onClick = { save() }, enabled = text != original) { Text("Сохранить") }
                     } else {
                         TextButton(onClick = { newKind = "file"; newName = "" }) { Text("+ Файл") }
@@ -299,6 +283,31 @@ fun FilesScreen(
                     }
                 },
             )
+            if (editing != null) {
+                val ext = editing!!.extension.lowercase()
+                androidx.compose.foundation.layout.Row(
+                    Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()).padding(horizontal = 8.dp),
+                    horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(4.dp),
+                ) {
+                    TextButton(onClick = { showSearch = !showSearch }) { Text("Поиск") }
+                    TextButton(onClick = { findDefinitions() }) { Text("Определение") }
+                    if (checker != null) {
+                        TextButton(onClick = {
+                            val f = editing!!
+                            scope.launch {
+                                checkResult = withContext(Dispatchers.IO) { runCatching { checker(f.name, text) }.getOrElse { "не удалось проверить: ${it.message}" } }
+                            }
+                        }) { Text("Проверить") }
+                    }
+                    if (ext == "html" || ext == "htm" || ext == "svg") {
+                        TextButton(onClick = {
+                            save()
+                            previewFile = editing
+                        }) { Text("Просмотр") }
+                    }
+                }
+            }
+          }
         },
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {

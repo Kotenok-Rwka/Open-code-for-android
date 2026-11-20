@@ -58,12 +58,31 @@ internal object AndroidAdb {
         }.getOrNull()
     }
 
+    /**
+     * Собственный Conscrypt из приложения для Android 11–13: системный закрывает экспорт ключевого материала скрытым API,
+     * из-за чего сопряжение по коду писало «нужен Android 14». Так же делают другие adb-клиенты для Android 11.
+     * На Android 14 и новее не нужен (null): там работает публичный метод платформы.
+     */
+    private val bundledProvider: java.security.Provider? by lazy {
+        if (Build.VERSION.SDK_INT >= 34) null
+        else runCatching { org.conscrypt.Conscrypt.newProvider() }.onFailure { Log.w(TAG, "bundled Conscrypt is unavailable", it) }.getOrNull()
+    }
+
     // На стороне устройства экспорт идёт без контекста; в TLS 1.3 пустой контекст и отсутствие контекста дают одинаковый результат (RFC 8446 §7.5)
     val exporter = KeyingMaterialExporter { socket, label, length -> exportKeyingMaterial(socket, label, length) }
 
     internal fun exportKeyingMaterial(socket: SSLSocket, label: String, length: Int): ByteArray {
         val empty = ByteArray(0)
         var last: Throwable? = null
+        if (bundledProvider != null && org.conscrypt.Conscrypt.isConscrypt(socket)) {
+            try {
+                return org.conscrypt.Conscrypt.exportKeyingMaterial(socket, label, null, length)
+            } catch (e: SSLException) {
+                last = e
+            } catch (e: RuntimeException) {
+                last = e
+            }
+        }
         if (Build.VERSION.SDK_INT >= 34) {
             publicExport?.let { m ->
                 try {
@@ -117,7 +136,7 @@ internal object AndroidAdb {
     /** Идентичность для сопряжения: нечитаемый сохранённый ключ заменяется новым (см. [AdbIdentitySource.forPairing]). */
     fun pairingIdentity(context: Context): AdbIdentity = identities(context).forPairing()
 
-    fun tls(identity: AdbIdentity) = AdbTls(identity, exporter)
+    fun tls(identity: AdbIdentity) = AdbTls(identity, exporter, bundledProvider)
 
     /** Файл с ключом уже есть (то есть сопряжение хотя бы раз проходило на этом устройстве). Сам ключ не читается и не создаётся. */
     fun hasKey(context: Context): Boolean = keyFile(context).isFile

@@ -21,6 +21,8 @@ class AgentService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        // Сразу в режим переднего плана: иначе быстрый stopService после запуска даёт аварию на Android 8–11
+        runCatching { goForeground() }
         val pm = getSystemService(PowerManager::class.java)
         wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "pocketcode:agent").apply {
             setReferenceCounted(false)
@@ -37,17 +39,22 @@ class AgentService : Service() {
         }
     }
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == Notifier.ACTION_STOP) {
-            (application as PocketCodeApp).tabs.forEach { it.stop() }
-            stopSelf()
-            return START_NOT_STICKY
-        }
+    /** Android требует вызвать startForeground после каждого startForegroundService, даже если сервис тут же остановится. */
+    private fun goForeground() {
         val notification = Notifier.working(this, "Агент работает…")
         if (Build.VERSION.SDK_INT >= 29) {
             startForeground(Notifier.FOREGROUND_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
         } else {
             startForeground(Notifier.FOREGROUND_ID, notification)
+        }
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        goForeground()
+        if (intent?.action == Notifier.ACTION_STOP) {
+            (application as PocketCodeApp).tabs.forEach { it.stop() }
+            stopSelf()
+            return START_NOT_STICKY
         }
         return START_NOT_STICKY
     }

@@ -39,6 +39,9 @@ import androidx.compose.ui.unit.sp
 fun TerminalScreen(vm: ChatController, onBack: () -> Unit, onOpenHost: () -> Unit = {}, onOpenChat: () -> Unit = onBack) {
     var cmd by remember { mutableStateOf("") }
     var tty by remember { mutableStateOf(false) }
+    var danger by remember { mutableStateOf<String?>(null) }
+    var cheat by remember { mutableStateOf(false) }
+    val runCmd: (String) -> Unit = { c -> if (TermGuide.isDangerous(c)) danger = c else { vm.termRun(c, 600, tty); cmd = "" } }
     val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
     val list = rememberLazyListState()
     LaunchedEffect(vm.term.size, vm.term.lastOrNull()?.out) { if (vm.term.isNotEmpty()) list.scrollToItem(vm.term.lastIndex) }
@@ -48,6 +51,7 @@ fun TerminalScreen(vm: ChatController, onBack: () -> Unit, onOpenHost: () -> Uni
             navigationIcon = { androidx.compose.material3.IconButton(onClick = onBack) { androidx.compose.material3.Icon(com.pocketcode.ui.backIcon(), contentDescription = "Назад") } },
             actions = {
                 TextButton(onClick = onOpenHost) { Text("Хостинг") }
+                TextButton(onClick = { cheat = true }) { Text("Шпаргалка") }
                 TextButton(onClick = { vm.term.clear() }) { Text("Очистить") }
             },
         )
@@ -59,6 +63,7 @@ fun TerminalScreen(vm: ChatController, onBack: () -> Unit, onOpenHost: () -> Uni
                         Text("Официальный OpenCode можно запустить внутри Linux (нужны: Linux включён и «Установить python, git, nodejs» в разделе «Проекты»). Это его собственный клиент, поэтому его бесплатные модели работают так же, как на ПК, но скорость в proot ниже и на телефоне это не проверено.", style = MaterialTheme.typography.bodySmall)
                         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             AssistChip(onClick = { vm.termRun(OpenCodeInstall.command(), 900) }, label = { Text("Установить OpenCode") })
+                            AssistChip(onClick = { vm.termRun(AndroidSdkInstall.command(), 1500) }, label = { Text("Установить Android SDK") })
                             AssistChip(onClick = { vm.termRun("opencode --version") }, label = { Text("Версия") })
                             AssistChip(onClick = { vm.termRun("opencode models 2>&1 | head -n 40", 300) }, label = { Text("Список моделей") })
                             AssistChip(onClick = { cmd = "opencode run \"привет\"" }, label = { Text("Пример запуска") })
@@ -80,6 +85,13 @@ fun TerminalScreen(vm: ChatController, onBack: () -> Unit, onOpenHost: () -> Uni
                                 if (e.out.isEmpty()) (if (e.done) "(нет вывода)" else "выполняется…") else e.out + (if (e.done) "" else "\n▍"),
                                 fontFamily = FontFamily.Monospace, fontSize = 11.sp, lineHeight = 14.sp, softWrap = false,
                                 modifier = Modifier.horizontalScroll(rememberScrollState()),
+                            )
+                        }
+                        if (e === vm.term.lastOrNull() && e.done && !vm.termBusy) {
+                            val note = remember(e.out, e.code) { TermGuide.diagnose(e.out, e.code) ?: TermGuide.nextStep(e.cmd, e.code) }
+                            if (note != null) Text(
+                                (if ((e.code ?: 0) != 0) "Что это значит: " else "Подсказка: ") + note,
+                                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.tertiary,
                             )
                         }
                         if (e === vm.term.lastOrNull() && e.done && (e.code ?: 0) != 0 && !vm.termBusy && !e.cmd.startsWith("cd")) {
@@ -141,6 +153,21 @@ fun TerminalScreen(vm: ChatController, onBack: () -> Unit, onOpenHost: () -> Uni
                     androidx.compose.material3.FilterChip(selected = tty, onClick = { tty = !tty }, label = { Text("TTY (для интерактивных программ)") })
                 }
             }
+            if (!vm.termBusy && cmd.isNotBlank()) {
+                val lines = remember(cmd, I18n.code) { TermGuide.explain(cmd) { I18n.t(it) } }
+                val typo = remember(cmd) { TermGuide.didYouMean(cmd) }
+                val sugg = remember(cmd, vm.termHistory.size) { TermGuide.suggest(cmd, vm.termHistory.toList()) }
+                if (lines.isNotEmpty()) androidx.compose.material3.Card(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        lines.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
+                        if (TermGuide.isDangerous(cmd)) Text("Осторожно: " + TermGuide.dangerText(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                    }
+                }
+                if (typo != null || sugg.isNotEmpty()) Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    if (typo != null) AssistChip(onClick = { cmd = typo }, label = { Text("Может, ты имел в виду: " + typo.take(24)) })
+                    sugg.forEach { sg -> AssistChip(onClick = { cmd = sg }, label = { Text(sg.take(30)) }) }
+                }
+            }
             Text("~/" + vm.termRel, fontFamily = FontFamily.Monospace, fontSize = 11.sp, color = MaterialTheme.colorScheme.primary)
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(
@@ -151,11 +178,38 @@ fun TerminalScreen(vm: ChatController, onBack: () -> Unit, onOpenHost: () -> Uni
                 if (vm.termBusy) {
                     Button(onClick = { vm.termSend(cmd + (if (tty) "\r" else "\n")); cmd = "" }) { Text("↵") }
                     OutlinedButton(onClick = { vm.termStop() }) { Text("Стоп") }
-                } else Button(onClick = { vm.termRun(cmd, 600, tty); cmd = "" }, enabled = cmd.isNotBlank()) { Text("▶") }
+                } else Button(onClick = { runCmd(cmd) }, enabled = cmd.isNotBlank()) { Text("▶") }
             }
             BgPanel(vm)
         }
     }
+    danger?.let { c ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { danger = null },
+            title = { Text("Опасная команда") },
+            text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) { Text(TermGuide.dangerText()); Text(c, fontFamily = FontFamily.Monospace, fontSize = 12.sp) } },
+            confirmButton = { TextButton(onClick = { danger = null; vm.termRun(c, 600, tty); cmd = "" }) { Text("Запустить") } },
+            dismissButton = { TextButton(onClick = { danger = null }) { Text("Отмена") } },
+        )
+    }
+    if (cheat) androidx.compose.material3.AlertDialog(
+        onDismissRequest = { cheat = false },
+        title = { Text("Шпаргалка по командам") },
+        text = {
+            LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                TermGuide.cheatSheet.forEach { (group, rows) ->
+                    item { Text(group, style = MaterialTheme.typography.titleSmall) }
+                    items(rows) { (c, what) ->
+                        Column(Modifier.fillMaxWidth().clickable { cmd = c; cheat = false }) {
+                            Text(c, fontFamily = FontFamily.Monospace, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
+                            Text(what, style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = { cheat = false }) { Text("Закрыть") } },
+    )
 }
 
 @Composable

@@ -30,7 +30,7 @@ import java.util.concurrent.TimeoutException
  *
  * Поддерживаемые версии Android: беспроводной отладки нет ниже Android 11 (API 30), там возвращается [AdbFailure.UNSUPPORTED_OS].
  * Для подключения к adbd достаточно API 30+. Для сопряжения по коду нужен экспорт ключевого материала TLS: публичный
- * `SSLSockets.exportKeyingMaterial` есть с Android 14 (API 34), на Android 11–13 используется запасной путь через внутренний Conscrypt
+ * `SSLSockets.exportKeyingMaterial` есть с Android 14 (API 34), на Android 11–13 используется Conscrypt из самого приложения (запасной путь: внутренний Conscrypt системы)
  * (см. [AndroidAdb.exportKeyingMaterial]); если он закрыт системой, сопряжение вернёт [AdbFailure.UNSUPPORTED_OS].
  */
 class AndroidWirelessAdb(context: Context) : WirelessAdb {
@@ -146,7 +146,7 @@ class AndroidWirelessAdb(context: Context) : WirelessAdb {
         if (chain.any { it is KeyingMaterialUnavailableException }) {
             return AdbResult.Failed(
                 AdbFailure.UNSUPPORTED_OS,
-                "Сопряжение по коду не поддерживается на этой версии Android (${Build.VERSION.RELEASE}): системе недоступен нужный TLS-экспорт, он есть в Android 14 и новее.",
+                "Не удалось подготовить шифрование для сопряжения по коду (Android ${Build.VERSION.RELEASE}). Откройте окно «Сопряжение по коду» заново и повторите. Если снова не выйдет, напишите в группу Telegram.",
             )
         }
         return when (e) {

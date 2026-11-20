@@ -116,7 +116,7 @@ fun SupportScreen(vm: ChatController, onBack: () -> Unit) {
                         SupportBadge(AppIcons.Star)
                         Column(Modifier.weight(1f)) {
                             Text("Tribute", style = MaterialTheme.typography.titleMedium)
-                            Text("Через Telegram или на сайте", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("Карты, в том числе российские, и криптовалюта", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                     Spacer(Modifier.height(12.dp))

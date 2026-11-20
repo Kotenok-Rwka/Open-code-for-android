@@ -338,7 +338,7 @@ class MainActivity : ComponentActivity() {
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Archive, "Резервная копия", "Сохранить и восстановить настройки и ключи") { openFrom(Screen.HUB_MORE, Screen.BACKUP) },
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Activity, "Диагностика и расход", "Проверка, расход токенов, очистка места") { openFrom(Screen.HUB_MORE, Screen.DIAG) },
                                 com.pocketcode.ui.hubHeader("Помощь"),
-                                com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Book, "Обучение", "Уроки с практикой и мини-тестами по главным функциям", "${com.pocketcode.ui.LESSONS.count { it.id in pocketApp.controller.learnDone }}/${com.pocketcode.ui.LESSONS.size}") { openFrom(Screen.HUB_MORE, Screen.LEARN) },
+                                com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Book, "Обучение", "Уроки с практикой и мини-тестами по главным функциям", "${com.pocketcode.ui.ALL_LESSONS.count { it.id in pocketApp.controller.learnDone }}/${com.pocketcode.ui.ALL_LESSONS.size}") { openFrom(Screen.HUB_MORE, Screen.LEARN) },
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Info, "Подсказки", "Показать обучение первого запуска ещё раз") { screen = Screen.CHAT; pocketApp.controller.restartTour() },
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Link, "Группа в Telegram", "Помощь, вопросы и идеи: группа PocketCode в Telegram") {
                                     runCatching { startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://t.me/pocket_code_github"))) }
@@ -367,6 +367,7 @@ class MainActivity : ComponentActivity() {
                                 onOpenOcSessions = { screen = Screen.OCSESSIONS },
                                 onOpenDiff = { screen = Screen.DIFF },
                                 onOpenPhone = { openFrom(Screen.CHAT, Screen.PHONE) },
+                                onOpenLearn = { openFrom(Screen.CHAT, Screen.LEARN) },
                                 onMenu = { screen = Screen.HUB_MORE },
                                 onExport = { exportMd.launch("chat-" + vm.currentProject + ".md") },
                                 onPickFolder = {
@@ -527,6 +528,19 @@ class MainActivity : ComponentActivity() {
                                     "diff" -> Screen.DIFF
                                     "linux" -> Screen.LINUX
                                     "diag" -> Screen.DIAG
+                                    "terminal" -> Screen.TERMINAL
+                                    "plugins" -> Screen.PLUGINS
+                                    "context" -> Screen.CONTEXT
+                                    "sessions" -> Screen.SESSIONS
+                                    "git" -> Screen.GIT
+                                    "host" -> Screen.HOST
+                                    "video" -> Screen.VIDEO
+                                    "phone" -> Screen.PHONE
+                                    "devices" -> Screen.DEVICES
+                                    "assistant" -> Screen.ASSISTANT
+                                    "remote" -> Screen.REMOTE
+                                    "settings" -> Screen.SETTINGS
+                                    "search" -> Screen.FIND
                                     else -> Screen.CHAT
                                 }
                                 openFrom(Screen.LEARN, t)

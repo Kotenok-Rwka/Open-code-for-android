@@ -1,6 +1,7 @@
 package com.pocketcode.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -208,9 +209,26 @@ fun UpdatePromptDialog(vm: ChatController) {
     )
 }
 
-/** Карточка приветствия: только пока пользователь её не закрыл. */
+/** Что умеет приложение: короткие пункты для карточки приветствия (нажатие раскрывает описание). */
+private val WELCOME_FEATURES: List<Pair<String, String>> = listOf(
+    "🤖 Агент для кода" to "Напиши задачу обычными словами: агент читает файлы, правит их и запускает команды в папке проекта.",
+    "🐧 Linux на телефоне" to "Мини-Linux с python, git и node без root. Ставится в «Проекты → Установить Linux».",
+    "⌨️ Терминал с подсказками" to "Объясняет команды, замечает опечатки и разбирает ошибки простыми словами. Проект → Терминал и запуск.",
+    "📦 Сборка приложений" to "Агент может собирать Android-приложения: кнопка «Установить Android SDK» в терминале.",
+    "📱 Управление телефоном" to "Агент смотрит на экран и нажимает за тебя. Ещё → Управление телефоном.",
+    "🎬 Видео" to "Вырезать паузы, субтитры и переходы без компьютера. Проект → Видео.",
+    "🔁 Два телефона" to "Задачу можно поставить с одного телефона, а выполнит другой. Ещё → Синхронизация и пульт.",
+)
+
+/** Карточка приветствия: живой чек-лист первых шагов и список возможностей. Показывается, пока пользователь её не скрыл. */
 @Composable
-fun WelcomeCard(vm: ChatController, onOpenGroup: () -> Unit) {
+fun WelcomeCard(vm: ChatController, onOpenLearn: () -> Unit = {}, onOpenSettings: () -> Unit = {}, onOpenGroup: () -> Unit) {
+    var features by remember { mutableStateOf(false) }
+    var openFeature by remember { mutableStateOf<String?>(null) }
+    val hasModel = vm.settings.apiKey.isNotBlank() || vm.profiles.any { it.apiKey.isNotBlank() } || vm.openCodeMode
+    val lessons = ALL_LESSONS
+    val learned = lessons.count { it.id in vm.learnDone }
+    val onText = MaterialTheme.colorScheme.onPrimaryContainer
     Box(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(
             androidx.compose.ui.graphics.Brush.linearGradient(
@@ -218,16 +236,44 @@ fun WelcomeCard(vm: ChatController, onOpenGroup: () -> Unit) {
             ),
         ).padding(20.dp),
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Добро пожаловать в PocketCode", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onPrimaryContainer)
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("Добро пожаловать в PocketCode", style = MaterialTheme.typography.titleLarge, color = onText)
             Text(
-                "Заходи в нашу группу в Telegram и пиши пожелания: что добавить и что доработать. Там же можно задать вопрос или сообщить об ошибке.",
-                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.85f),
+                "ИИ-агент для программирования, который работает прямо на телефоне. Вот четыре шага, чтобы начать:",
+                style = MaterialTheme.typography.bodyMedium, color = onText.copy(alpha = 0.85f),
+            )
+            WelcomeStep(hasModel, "1. Подключи модель", if (hasModel) "Готово: модель подключена." else "Нужен ключ провайдера или бесплатный старт (кнопка выше).", "Открыть", onOpenSettings)
+            WelcomeStep(vm.linuxInstalled, "2. Включи Linux", if (vm.linuxInstalled) "Готово: Linux установлен." else "Проекты → Установить Linux. Нужен для python, git, node и OpenCode.", null) {}
+            WelcomeStep(learned > 0, "3. Пройди обучение", "Пройдено $learned из ${lessons.size}. Там есть ответы почти на все вопросы.", "Открыть", onOpenLearn)
+            WelcomeStep(vm.tourDone, "4. Посмотри подсказки на экране", if (vm.tourDone) "Уже смотрел. Можно повторить." else "Короткий тур по кнопкам.", "Показать") { vm.restartTour() }
+            TextButton(onClick = { features = !features }) { Text(if (features) "Скрыть возможности" else "Что умеет PocketCode") }
+            if (features) WELCOME_FEATURES.forEach { (title, text) ->
+                Column(Modifier.fillMaxWidth().clickable { openFeature = if (openFeature == title) null else title }) {
+                    Text(title, style = MaterialTheme.typography.titleSmall, color = onText)
+                    if (openFeature == title) Text(text, style = MaterialTheme.typography.bodySmall, color = onText.copy(alpha = 0.85f))
+                }
+            }
+            Text(
+                "Вопросы и идеи: группа в Telegram. Пиши, что добавить и что доработать.",
+                style = MaterialTheme.typography.bodySmall, color = onText.copy(alpha = 0.85f),
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = onOpenGroup) { Text("Открыть группу") }
                 TextButton(onClick = { vm.hideWelcome() }) { Text("Скрыть") }
             }
         }
+    }
+}
+
+@Composable
+private fun WelcomeStep(done: Boolean, title: String, text: String, action: String?, onAction: () -> Unit) {
+    val onText = MaterialTheme.colorScheme.onPrimaryContainer
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(if (done) "✅" else "⬜", style = MaterialTheme.typography.titleMedium)
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.titleSmall, color = onText)
+            Text(text, style = MaterialTheme.typography.bodySmall, color = onText.copy(alpha = 0.85f))
+        }
+        if (action != null) TextButton(onClick = onAction) { Text(action) }
     }
 }

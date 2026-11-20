@@ -11,7 +11,7 @@
 ![Android 8+](https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white)
 [![Telegram](https://img.shields.io/badge/Telegram-чат-26A5E4?logo=telegram&logoColor=white)](https://t.me/pocket_code_github)
 
-[**Скачать APK**](https://github.com/Kotenok-Rwka/Open-code-for-android/releases/latest) · [**Чат в Telegram**](https://t.me/pocket_code_github) · [Сообщить об ошибке](https://github.com/Kotenok-Rwka/Open-code-for-android/issues/new/choose)
+[**Скачать APK**](https://github.com/Kotenok-Rwka/Open-code-for-android/releases/latest) · [**Чат в Telegram**](https://t.me/pocket_code_github) · [Сообщить об ошибке](https://github.com/Kotenok-Rwka/Open-code-for-android/issues/new/choose) · [Поддержка автора](#поддержка-автора)
 
 </div>
 
@@ -84,6 +84,16 @@ app/src/main/java/com/pocketcode/
 ## Сообщество
 
 Вопросы, идеи и новости: **[t.me/pocket_code_github](https://t.me/pocket_code_github)**. Баги и предложения принимаются в [Issues](https://github.com/Kotenok-Rwka/Open-code-for-android/issues).
+
+## Поддержка автора
+
+Приложение бесплатное и с открытым кодом. Если оно оказалось полезным и хочется сказать спасибо, это можно сделать по желанию, любым удобным способом:
+
+- [Российские карты (CloudTips)](https://pay.cloudtips.ru/p/76bd7cea)
+- [Криптовалюта (Crypto Bot в Telegram)](https://t.me/send?start=IVbKweFfcV4w)
+- Tribute: карты (в том числе российские) и криптовалюта. [Через Telegram](https://t.me/tribute/app?startapp=dUqC) или [на сайте](https://web.tribute.tg/d/UqC)
+
+В самом приложении то же самое лежит в «Ещё → Спасибо автору». Не хочется или нечем — тоже нормально: идеи и сообщения об ошибках в [группе Telegram](https://t.me/pocket_code_github) помогают не меньше.
 
 ## Лицензия
 

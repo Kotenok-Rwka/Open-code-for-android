@@ -40,6 +40,10 @@ class Lesson(
     val options: List<String>,
     val answer: Int,
     val explain: String,
+    /** Необязательно: шаги, советы и раздел. Урок без вопроса (пустые options) засчитывается кнопкой «Понятно». */
+    val steps: List<String> = emptyList(),
+    val tips: List<String> = emptyList(),
+    val group: String = "",
 )
 
 val LESSONS = listOf(
@@ -125,11 +129,17 @@ val LESSONS = listOf(
     ),
 )
 
+/** Все уроки: основные с тестом и дополнительные из LearnContent. */
+val ALL_LESSONS: List<Lesson> get() = LESSONS + MORE_LESSONS
+
 /** Обучение с практикой: уроки, кнопка «Показать, где это» и мини-тест на каждый. Прогресс сохраняется. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LearnScreen(vm: ChatController, onBack: () -> Unit, onGo: (String) -> Unit, onTour: () -> Unit) {
-    var open by remember { mutableStateOf<String?>(LESSONS.firstOrNull { it.id !in vm.learnDone }?.id) }
+    val lessons = ALL_LESSONS
+    var open by remember { mutableStateOf<String?>(lessons.firstOrNull { it.id !in vm.learnDone }?.id) }
+    var query by remember { mutableStateOf("") }
+    var faqOpen by remember { mutableStateOf<String?>(null) }
     Scaffold(
         topBar = {
             AppTopBar(
@@ -142,16 +152,45 @@ fun LearnScreen(vm: ChatController, onBack: () -> Unit, onGo: (String) -> Unit, 
             Modifier.padding(pad).fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            val done = LESSONS.count { it.id in vm.learnDone }
-            Text("Пройдено $done из ${LESSONS.size}", style = MaterialTheme.typography.titleMedium)
-            LinearProgressIndicator(progress = { done.toFloat() / LESSONS.size }, modifier = Modifier.fillMaxWidth())
+            val done = lessons.count { it.id in vm.learnDone }
+            Text("Пройдено $done из ${lessons.size}", style = MaterialTheme.typography.titleMedium)
+            LinearProgressIndicator(progress = { done.toFloat() / lessons.size }, modifier = Modifier.fillMaxWidth())
+            androidx.compose.material3.OutlinedTextField(
+                value = query, onValueChange = { query = it }, modifier = Modifier.fillMaxWidth(), singleLine = true,
+                placeholder = { Text("Найти ответ: например «лимит» или «sdk»") },
+            )
             Text(
                 "Открой урок, нажми «Показать, где это» и ответь на вопрос. Правильный ответ засчитывает урок.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            LESSONS.forEach { l ->
+            val shown = remember(query) { searchLessons(lessons, query) }
+            val faq = remember(query) { searchFaq(query) }
+            if (query.isNotBlank() && shown.isEmpty() && faq.isEmpty()) {
+                Text("Ничего не нашлось. Попробуй другое слово или открой «Диагностика и расход» или группу в Telegram.", style = MaterialTheme.typography.bodyMedium)
+            }
+            shown.forEach { l ->
                 LessonCard(l, vm.learnDone, open == l.id, { open = if (open == l.id) null else l.id }, onGo) { vm.markLesson(l.id) }
+            }
+            if (faq.isNotEmpty()) {
+                Text("Частые вопросы", style = MaterialTheme.typography.titleMedium)
+                faq.forEach { f ->
+                    Card(
+                        shape = RoundedCornerShape(14.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = { faqOpen = if (faqOpen == f.q) null else f.q },
+                    ) {
+                        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(f.q, style = MaterialTheme.typography.titleSmall)
+                            if (faqOpen == f.q) {
+                                Text(f.a, style = MaterialTheme.typography.bodyMedium)
+                                val target = lessons.firstOrNull { it.id == f.lesson }
+                                if (target != null) TextButton(onClick = { query = ""; open = target.id }) { Text("К уроку: " + target.title) }
+                            }
+                        }
+                    }
+                }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = onTour, modifier = Modifier.weight(1f)) { Text("Показать подсказки на экране") }
@@ -179,8 +218,27 @@ private fun LessonCard(l: Lesson, doneSet: Set<String>, expanded: Boolean, onTog
             }
             if (expanded) {
                 Text(l.body, style = MaterialTheme.typography.bodyMedium)
+                if (l.steps.isNotEmpty()) {
+                    Text("Как сделать", style = MaterialTheme.typography.titleSmall)
+                    l.steps.forEachIndexed { i, st ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text("${i + 1}.", style = MaterialTheme.typography.bodyMedium)
+                            Text(st, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                        }
+                    }
+                }
+                if (l.tips.isNotEmpty()) {
+                    Text("Полезно знать", style = MaterialTheme.typography.titleSmall)
+                    l.tips.forEach {
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text("•", style = MaterialTheme.typography.bodySmall)
+                            Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+                        }
+                    }
+                }
                 Button(onClick = { onGo(l.target) }, modifier = Modifier.fillMaxWidth()) { Text("Показать, где это") }
-                Text(l.question, style = MaterialTheme.typography.titleSmall)
+                if (l.options.isEmpty() && !done) OutlinedButton(onClick = onPassed, modifier = Modifier.fillMaxWidth()) { Text("Понятно, отметить пройденным") }
+                if (l.options.isNotEmpty()) Text(l.question, style = MaterialTheme.typography.titleSmall)
                 l.options.forEachIndexed { i, o ->
                     val p = picked
                     val label = when {
