@@ -3276,6 +3276,24 @@ class ChatController(
         if (!isTab) settingsStore.rawPut("ocContinue", if (v) "1" else "0")
     }
 
+    /**
+     * Запоминает id беседы, которую OpenCode только что создал или продолжил. Дальше запросы идут в неё по id,
+     * а не в «последнюю» через --continue: та терялась при смене проекта, перезапуске и в других вкладках.
+     */
+    private suspend fun captureOcSession() {
+        val raw = try {
+            withContext(Dispatchers.IO) { linuxShell.run(proxyEnv() + "opencode session list --format json -n 1 2>/dev/null", workspace.root, 60) }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            return
+        }
+        val found = OcSessionPick.latest(raw) ?: return
+        ocSessionId = found.id
+        ocSessionTitle = found.title.ifBlank { "Текущая беседа" }
+        persist()
+    }
+
     fun setOcModelValue(v: String) { ocModel = v; settingsStore.rawPut("ocModel", v); if (!isTab) settingsStore.rawPut("ocModel|" + currentProject, v) }
 
     /** Модель и беседа OpenCode помнятся отдельно для каждого проекта. */
@@ -4481,6 +4499,7 @@ class ChatController(
                 val code = withContext(Dispatchers.IO) { p.waitFor() }
                 if (placeholder && cards && idx < items.size && (items[idx] as? UiItem.Assistant)?.text?.startsWith("⏳") == true) items.removeAt(idx)
                 setOcContinue(true)
+                if (code == 0 && !permHold && !ocCompact && !ocFreshEach && ocSessionId == null) captureOcSession()
                 if (permHold) {
                     items += UiItem.Notice("⏸ Агент приостановлен: OpenCode просит доступ вне папки проекта. Реши в окне, времени сколько угодно.")
                     val decision = kotlinx.coroutines.CompletableDeferred<Boolean>()
@@ -4496,6 +4515,11 @@ class ChatController(
                     return@launch
                 }
                 val text = buf.toString() + (if (hung) "\nETIMEDOUT: нет ответа от сервера за 120 с" else "")
+                if (code != 0 && ocSessionId != null && OcSessionPick.isMissing(text)) {
+                    ocSessionId = null; ocSessionTitle = ""; setOcContinue(false)
+                    persist()
+                    items += UiItem.Notice("Беседа не найдена в OpenCode (возможно, он сбросил свою базу). Следующее сообщение начнёт новую беседу.")
+                }
                 // Токены: точные из событий OpenCode, иначе оценка по длине текста (≈3 символа на токен)
                 if (ocTokSeen) recordUsage(ocTokIn, ocTokOut, ocTokCache)
                 else if (code == 0 && text.isNotBlank()) recordUsage(prompt.length / 3 + 1, text.length / 3 + 1, 0)
