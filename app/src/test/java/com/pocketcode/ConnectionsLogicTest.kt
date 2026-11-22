@@ -29,7 +29,6 @@ class ConnectionsLogicTest {
         assertTrue(args.contains("user@192.168.1.20"))
         assertTrue(args.last().contains("'hi'"))
         assertFalse(args.any { it == "-c" })
-        assertNull(SshProfiles.validate(p.copy(port = 0)))
         assertTrue(SshProfiles.validate(p.copy(port = 0))!!.contains("Порт"))
         assertTrue(SshProfiles.validate(p.copy(host = "host\nrm -rf /"))!!.isNotEmpty())
     }

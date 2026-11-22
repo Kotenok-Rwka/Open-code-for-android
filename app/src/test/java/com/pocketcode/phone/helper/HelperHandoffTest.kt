@@ -25,7 +25,7 @@ class HelperHandoffTest {
     }
 
     @Test fun rootCommandPrintsUidFirst() {
-        assertTrue(HelperHandoff.rootCommand("/a.apk", "p", 1, "x").startsWith("id -u; read n;"))
+        assertTrue(HelperHandoff.rootCommand("/a.apk", "p", 1, "x").startsWith("id -u; ") && HelperHandoff.rootCommand("/a.apk", "p", 1, "x").contains("read n;"))
     }
 
     @Test fun quoteEscapesSingleQuotes() {

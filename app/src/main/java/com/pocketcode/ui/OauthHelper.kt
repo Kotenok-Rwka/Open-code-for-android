@@ -22,9 +22,9 @@ object OauthHelper {
         )
         val state = random(16)
         val url = authorizeEndpoint + (if (authorizeEndpoint.contains("?")) "&" else "?") +
-            "response_type=code&client_id=${android.net.Uri.encode(clientId)}" +
-            "&redirect_uri=${android.net.Uri.encode(redirectUri)}" +
-            "&scope=${android.net.Uri.encode(scopes)}" +
+            "response_type=code&client_id=${java.net.URLEncoder.encode(clientId, "UTF-8")}" +
+            "&redirect_uri=${java.net.URLEncoder.encode(redirectUri, "UTF-8")}" +
+            "&scope=${java.net.URLEncoder.encode(scopes, "UTF-8")}" +
             "&state=$state&code_challenge=$challenge&code_challenge_method=S256"
         return Flow(url, verifier, state)
     }

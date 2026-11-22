@@ -8,14 +8,14 @@ class LearnNewLessonsTest {
     @Test
     fun newLessonsCoverNewFeatures() {
         val ids = ALL_LESSONS.map { it.id }
-        for (id in listOf("howai", "tools", "appearance", "plugins", "sync")) {
+        for (id in listOf("howai", "tools", "appearance_themes", "plugins_github", "sync")) {
             assertTrue("Нет урока $id", ids.contains(id))
         }
     }
 
     @Test
     fun lessonsHaveQuizAndAnswers() {
-        for (l in ALL_LESSONS.filter { it.id in setOf("howai", "tools", "appearance", "plugins", "sync") }) {
+        for (l in ALL_LESSONS.filter { it.id in setOf("howai", "tools", "appearance_themes", "plugins_github", "sync") }) {
             assertTrue(l.title.isNotBlank())
             assertTrue(l.body.isNotBlank())
             assertTrue(l.question.isNotBlank())
