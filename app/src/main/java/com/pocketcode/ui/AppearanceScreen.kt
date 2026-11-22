@@ -112,7 +112,7 @@ fun AppearanceScreen(
                 ) {
                     Box(
                         Modifier.size(44.dp).clip(MaterialTheme.shapes.small)
-                            .background(if (b.colors.size > 1) Brush.linearGradient(b.colors.map { Color(it) }) else Color(b.colors.firstOrNull() ?: 0xFF000000)),
+                            .then(if (b.colors.size > 1) Modifier.background(Brush.linearGradient(b.colors.map { Color(it) })) else Modifier.background(Color(b.colors.firstOrNull() ?: 0xFF000000))),
                     )
                     Text(b.title, style = MaterialTheme.typography.labelSmall)
                 }

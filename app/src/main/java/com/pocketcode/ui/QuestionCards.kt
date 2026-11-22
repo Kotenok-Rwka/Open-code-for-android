@@ -23,7 +23,7 @@ fun parseQuestionCards(raw: String): ParsedQuestions? {
     val lines = raw.replace("\r\n", "\n").lines()
     val start = lines.indexOfFirst { it.trim().equals("QUESTIONS", ignoreCase = true) || it.trim().equals("ВОПРОСЫ", ignoreCase = true) }
     if (start < 0) return null
-    val end = lines.indexOfFirst { i -> i > start && lines[i].trim().equals("/QUESTIONS", ignoreCase = true) }
+    val end = lines.withIndex().firstOrNull { (i, l) -> i > start && l.trim().equals("/QUESTIONS", ignoreCase = true) }?.index ?: -1
     val body = lines.drop(start + 1).take(if (end < 0) lines.size - start - 1 else end - start - 1)
     var tag = ""
     val questions = ArrayList<QuestionItem>()

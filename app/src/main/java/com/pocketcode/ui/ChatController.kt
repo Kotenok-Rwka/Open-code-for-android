@@ -63,6 +63,7 @@ import com.pocketcode.tools.looksBinary
 import com.pocketcode.tools.str
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import com.pocketcode.tools.McpClient
@@ -1784,8 +1785,10 @@ class ChatController(
 
     // ---------- режим плана, задачи, журнал правок ----------
 
-    var planMode by mutableStateOf(false)
-        set(value) { field = value; agent = null }
+    private var planModeState by mutableStateOf(false)
+    var planMode: Boolean
+        get() = planModeState
+        set(value) { planModeState = value; agent = null }
     var todos by mutableStateOf<List<String>>(emptyList())
         private set
 
@@ -1898,13 +1901,13 @@ class ChatController(
         runCatching { Json.decodeFromString<com.pocketcode.SyncConfig>(settingsStore.rawGet("syncConfig") ?: "{}") }.getOrDefault(com.pocketcode.SyncConfig())
     )
         private set
-    var syncStatus by mutableStateOf("")
+    var pcSyncStatus by mutableStateOf("")
         private set
 
     fun saveSyncConfig(c: com.pocketcode.SyncConfig) {
         syncConfig = c
         settingsStore.rawPut("syncConfig", Json.encodeToString(c))
-        if (c.enabled && c.mode != "LIVE") com.pocketcode.SyncWorker.schedule(app, c)
+        if (c.enabled && c.mode != "LIVE") com.pocketcode.PcSyncWorker.schedule(app, c)
         else runCatching { androidx.work.WorkManager.getInstance(app).cancelUniqueWork("pocketcode-sync") }
     }
 
@@ -1919,12 +1922,12 @@ class ChatController(
             val seq = syncSeq + 1
             val body = com.pocketcode.SyncEngine.eventPacket(seq, android.os.Build.MODEL, currentProject, kind, Secrets.mask(data))
             val r = com.pocketcode.SyncEngine.send(com.pocketcode.SyncEngine.endpoint(cfg), body)
-            syncStatus = if (r.isSuccess) "OK · seq $seq · ${System.currentTimeMillis()}" else "Ошибка: ${r.exceptionOrNull()?.message ?: "нет связи"}"
+            pcSyncStatus = if (r.isSuccess) "OK · seq $seq · ${System.currentTimeMillis()}" else "Ошибка: ${r.exceptionOrNull()?.message ?: "нет связи"}"
             if (r.isSuccess) syncSeq = seq
         }
     }
 
-    fun syncNow() {
+    fun pcSyncNow() {
         val cfg = syncConfig
         scope.launch(Dispatchers.IO) {
             val seq = syncSeq + 1
@@ -1942,7 +1945,7 @@ class ChatController(
             })
             val body = com.pocketcode.SyncEngine.fullPacket(seq, android.os.Build.MODEL, currentProject, msgs, workspace.root, cfg.includeFiles)
             val r = com.pocketcode.SyncEngine.send(com.pocketcode.SyncEngine.endpoint(cfg), body)
-            syncStatus = if (r.isSuccess) "Снимок отправлен · seq $seq" else "Ошибка: ${r.exceptionOrNull()?.message ?: "нет связи"}"
+            pcSyncStatus = if (r.isSuccess) "Снимок отправлен · seq $seq" else "Ошибка: ${r.exceptionOrNull()?.message ?: "нет связи"}"
             if (r.isSuccess) syncSeq = seq
         }
     }
@@ -4833,6 +4836,7 @@ class ChatController(
                 var liveStage = "запускается"
                 var liveDetail = ""
                 var liveItem: UiItem.Notice? = null
+                var readerJob: kotlinx.coroutines.Job? = null
                 var permHold = false
                 // Показываем РЕАЛЬНОЕ состояние: что делает нейронка прямо сейчас.
                 // Раньше здесь висел таймер «молчит 20 с / зависла», который пугал пользователя,
@@ -4840,7 +4844,7 @@ class ChatController(
                 val progress = launch {
                     while (true) {
                         kotlinx.coroutines.delay(3_000)
-                        if (!p.isAlive && !reader.isActive) break
+                        if (!p.isAlive && readerJob?.isActive != true) break
                         val idle = (System.currentTimeMillis() - lastOut) / 1000
                         val icon = when {
                             liveStage.startsWith("инструмент") -> "⚙️"
@@ -4863,13 +4867,14 @@ class ChatController(
                     }
                 }
                 val reader = launch(Dispatchers.IO) {
+                  readerJob = coroutineContext[kotlinx.coroutines.Job]
                   try {
                     val br = p.inputStream.bufferedReader()
                     while (true) {
                         val line = br.readLine() ?: break
                         val clean = Secrets.mask(ansi.replace(line, "").substringAfterLast('\r'))
                         lastOut = System.currentTimeMillis()
-                        idleItem?.let { old -> withContext(Dispatchers.Main) { items.removeAll { it === old } }; idleItem = null }
+                        liveItem?.let { old -> withContext(Dispatchers.Main) { items.removeAll { it === old } }; liveItem = null }
                         if (clean.isBlank() && buf.isEmpty()) continue
                         buf.append(clean).append('\n')
                         if (ocExtMode == "ask" && !ocAllowSession) {
@@ -5226,7 +5231,7 @@ class ChatController(
         items[index] = updated
         persist()
         if (!updated.done) return
-        val text = questionAnswerText(updated.answers)
+        val text = questionAnswerText(updated.answers.map { it.question to it.answer })
         send(text, auto = true)
     }
 

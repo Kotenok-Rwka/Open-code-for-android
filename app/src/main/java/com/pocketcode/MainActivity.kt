@@ -556,7 +556,7 @@ class MainActivity : ComponentActivity() {
                     Screen.MODELROLES -> {
                         BackHandler { screen = backTo }
                         com.pocketcode.ui.ModelRolesScreen(
-                            profiles = controller.profiles.map { it.name },
+                            profiles = controller.profiles.map { "${it.label} (${it.id})" },
                             planning = controller.planningProfileId,
                             execution = controller.executionProfileId,
                             routerUrl = controller.routerBaseUrl,
@@ -588,9 +588,9 @@ class MainActivity : ComponentActivity() {
                         BackHandler { screen = backTo }
                         com.pocketcode.ui.AutoSyncScreen(
                             initial = controller.syncConfig,
-                            status = controller.syncStatus,
+                            status = controller.pcSyncStatus,
                             onSave = { controller.saveSyncConfig(it) },
-                            onSendNow = { controller.syncNow() },
+                            onSendNow = { controller.pcSyncNow() },
                             onBack = { screen = backTo },
                         )
                     }

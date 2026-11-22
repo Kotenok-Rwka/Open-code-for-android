@@ -177,6 +177,7 @@ fun GitScreen(vm: ChatController, onBack: () -> Unit) {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun actionRow(title: String, actions: List<Pair<String, () -> Unit>>, busy: Boolean) {
     if (title.isNotBlank()) Text(title, style = MaterialTheme.typography.titleSmall)

@@ -51,7 +51,7 @@ class SshTool(
         val name = input.need("profile")
         val p = profiles()[name] ?: throw IllegalArgumentException("Нет SSH-подключения «$name». Сначала сохрани его в настройках.")
         val error = SshProfiles.validate(p)
-        require(error == null) { error }
+        require(error == null) { error ?: "" }
 
         val password = input.str("password")?.takeIf { it.isNotEmpty() } ?: secret(name).orEmpty()
         val keyFile = p.keyPath.takeIf { it.isNotEmpty() }?.let { File(it) }

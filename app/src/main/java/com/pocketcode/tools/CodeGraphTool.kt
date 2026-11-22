@@ -25,6 +25,8 @@ class CodeGraphTool(
         Prop("query", "string", "Что искать при action=symbols", required = false),
     )
 
+    override fun needsApproval(input: JsonObject): Boolean = false
+
     override suspend fun run(input: JsonObject): String = withContext(Dispatchers.IO) {
         val action = input.str("action") ?: "status"
         val index = File(ws.root, ".pocketcode/codegraph.txt")

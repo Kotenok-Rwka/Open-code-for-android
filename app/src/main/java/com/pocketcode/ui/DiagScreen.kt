@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -174,7 +175,7 @@ fun DiagScreen(vm: ChatController, onBack: () -> Unit) {
                 }
             }
             Text("Состояние подключений", style = MaterialTheme.typography.titleMedium)
-            diagnosticCard("Инструменты Linux", if (vm.linuxInstalled && vm.linuxEnabled) "Включены" to true else "Выкл. — ставятся в среде Linux" to false, "Открыть настройки терминала") { onOpen -> }
+            diagnosticCard("Инструменты Linux", if (vm.linuxInstalled && vm.linuxEnabled) "Включены" to true else "Выкл. — ставятся в среде Linux" to false, "Открыть настройки терминала") {}
             diagnosticCard("Shizuku", "Необязательно" to false, "Открыть настройки Shizuku") {}
             diagnosticCard("Рабочие области SSH", if (vm.sshProfiles.isEmpty()) "Нет подключений" to false else "${vm.sshProfiles.size} подключений" to true, "Управление подключениями") {}
             diagnosticCard("Подключённые инструменты", if (vm.mcpServers.none { it.enabled }) "Нет включённых MCP-серверов" to false else "${vm.mcpServers.count { it.enabled }} серверов" to true, "Управление инструментами") {}

@@ -7,12 +7,15 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import kotlinx.coroutines.Dispatchers
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.decodeFromString
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.concurrent.TimeUnit
 
 /** Периодическая отправка снимка истории+файлов на ПК. */
-class SyncWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, params) {
+class PcSyncWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, params) {
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         val cfg = runCatching { Json.decodeFromString<SyncConfig>(SettingsStore(applicationContext).rawGet("syncConfig") ?: "{}") }
             .getOrDefault(SyncConfig())
@@ -35,7 +38,7 @@ class SyncWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, 
         fun schedule(ctx: Context, cfg: SyncConfig) {
             val wm = WorkManager.getInstance(ctx)
             if (!SyncEngine.shouldRunPeriodic(cfg)) { wm.cancelUniqueWork("pocketcode-sync"); return }
-            val req = PeriodicWorkRequestBuilder<SyncWorker>(cfg.intervalMin.coerceIn(5, 720).toLong(), TimeUnit.MINUTES).build()
+            val req = PeriodicWorkRequestBuilder<PcSyncWorker>(cfg.intervalMin.coerceIn(5, 720).toLong(), TimeUnit.MINUTES).build()
             wm.enqueueUniquePeriodicWork("pocketcode-sync", ExistingPeriodicWorkPolicy.UPDATE, req)
         }
     }

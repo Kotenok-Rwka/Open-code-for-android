@@ -190,7 +190,7 @@ fun ChatScreen(
                     Box {
                         TextButton(onClick = { moreMenu = true }) { Text("⋮") }
                         DropdownMenu(expanded = moreMenu, onDismissRequest = { moreMenu = false }) {
-                            fun group(title: String) {
+                            @Composable fun group(title: String) {
                                 androidx.compose.material3.HorizontalDivider()
                                 DropdownMenuItem(text = { Text(title, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary) }, onClick = {}, enabled = false)
                             }
@@ -319,7 +319,7 @@ fun ChatScreen(
                 ) {
                     Text(
                         if (vm.queue.isNotEmpty()) "В очереди задач: ${vm.queue.size}"
-                        else if (vm.running) "Агент работает: «Уточнить сейчас» передаст текст на текущем шаге, ▲ поставит в очередь",
+                        else if (vm.running) "Агент работает: «Уточнить сейчас» передаст текст на текущем шаге, ▲ поставит в очередь"
                         else "Задач в очереди нет",
                         style = MaterialTheme.typography.labelMedium,
                         modifier = Modifier.weight(1f),
