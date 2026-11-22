@@ -1865,7 +1865,7 @@ class ChatController(
     var keepScreenOn by mutableStateOf(settingsStore.rawGet("keepScreenOn") == "1")
         private set
 
-    fun setKeepScreenOn(v: Boolean) {
+    fun setKeepScreenOnValue(v: Boolean) {
         keepScreenOn = v
         settingsStore.rawPut("keepScreenOn", if (v) "1" else "0")
         if (v) startService() else stopService()
