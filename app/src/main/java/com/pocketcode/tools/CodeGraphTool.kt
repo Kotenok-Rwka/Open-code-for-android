@@ -26,6 +26,7 @@ class CodeGraphTool(
     )
 
     override fun needsApproval(input: JsonObject): Boolean = false
+    override fun describe(input: JsonObject) = "граф кода: " + (input.str("action") ?: "status")
 
     override suspend fun run(input: JsonObject): String = withContext(Dispatchers.IO) {
         val action = input.str("action") ?: "status"
