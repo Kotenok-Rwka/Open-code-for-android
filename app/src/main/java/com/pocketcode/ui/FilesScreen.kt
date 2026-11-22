@@ -122,7 +122,33 @@ fun FilesScreen(
 
     fun rel(f: File): String = f.relativeTo(root).path.ifEmpty { "." }
 
+    val context = androidx.compose.ui.platform.LocalContext.current
+    fun openMedia(f: File): Boolean {
+        val ext = f.extension.lowercase()
+        if (ext !in setOf(
+                "png", "jpg", "jpeg", "webp", "gif", "bmp", "heic", "svg",
+                "mp4", "mkv", "webm", "3gp", "mov",
+                "mp3", "wav", "ogg", "m4a", "flac", "aac", "opus",
+            )) return false
+        runCatching {
+            val uri = androidx.core.content.FileProvider.getUriForFile(context, context.packageName + ".fileprovider", f)
+            val mime = when (ext) {
+                "png", "jpg", "jpeg", "webp", "gif", "bmp", "heic" -> "image/*"
+                "svg" -> "image/svg+xml"
+                "mp4", "mkv", "webm", "3gp", "mov" -> "video/*"
+                else -> "audio/*"
+            }
+            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, mime)
+                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            context.startActivity(android.content.Intent.createChooser(intent, "Открыть в:")) 
+        }.onFailure { message = "Нет приложения для просмотра: ${it.message}" }
+        return true
+    }
+
     fun open(f: File) {
+        if (openMedia(f)) return
         scope.launch {
             val r = withContext(Dispatchers.IO) { runCatching { loadFile(f) } }
             r.onSuccess {

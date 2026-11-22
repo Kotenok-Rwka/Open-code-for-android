@@ -33,6 +33,11 @@ class SmartFeatures(private val store: SettingsStore) {
     var verdictNotes by mutableStateOf(flag("sf_verdict", true))
         private set
 
+    /** Не вывести в чат служебные подсказки авто-режима (предохранитель, проверки, роутинг). */
+    var quietAuto by mutableStateOf(flag("sf_quietauto", false))
+        private set
+    fun changeQuietAuto(on: Boolean) { quietAuto = on; save("sf_quietauto", on) }
+
     /** Писать в чате, когда ответ отдан модели-помощнику. */
     var routeNotes by mutableStateOf(flag("sf_routenote", true))
         private set

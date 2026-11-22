@@ -15,10 +15,10 @@ import java.io.File
 @Serializable
 sealed class UiItem {
     @Serializable
-    data class User(val text: String, val images: Int = 0) : UiItem()
+    data class User(val text: String, val images: Int = 0, val ts: Long = 0L) : UiItem()
 
     @Serializable
-    data class Assistant(val text: String) : UiItem()
+    data class Assistant(val text: String, val ts: Long = 0L) : UiItem()
 
     @Serializable
     data class Tool(
@@ -30,6 +30,15 @@ sealed class UiItem {
 
     @Serializable
     data class Error(val text: String) : UiItem()
+
+    /** Карточка уточняющих вопросов с вариантами ответов. */
+    @Serializable
+    data class Questions(
+        val questions: List<QuestionData>,
+        val answers: List<QuestionAnswer> = emptyList(),
+        val index: Int = 0,
+        val done: Boolean = false,
+    ) : UiItem()
 
     /** Служебная строка: сжатие контекста и т.п. */
     @Serializable

@@ -14,10 +14,15 @@ android {
         applicationId = "com.pocketcode"
         minSdk = 26
         targetSdk = 34
-        // CI передаёт номер сборки: по нему приложение понимает, что вышло обновление
-        val buildNumber = System.getenv("BUILD_NUMBER")?.toIntOrNull() ?: 1
-        versionCode = buildNumber
-        versionName = "0.6.$buildNumber"
+        // Версия X.Y.Z: CI передаёт готовую в APP_VERSION (патч считается по коммитам, см. version.properties).
+        // Без CI (локальная сборка, тесты) берём мажор.минор из version.properties и патч 1.
+        val baseFromFile = rootProject.file("version.properties").takeIf { it.exists() }?.readLines()
+            ?.firstOrNull { it.startsWith("VERSION_BASE=") }?.substringAfter("=")?.trim().orEmpty()
+        val appVersion = System.getenv("APP_VERSION")?.takeIf { Regex("""\d+\.\d+\.\d+""").matches(it) }
+            ?: "${baseFromFile.ifBlank { "4.0" }}.1"
+        val vp = appVersion.split(".").map { it.toInt() }
+        versionCode = vp[0] * 1_000_000 + vp[1] * 1_000 + vp[2]
+        versionName = appVersion
 
         ndk {
             // 64-битные и 32-битные ARM-телефоны; x86 нужен только эмуляторам
@@ -66,6 +71,8 @@ android {
     }
     buildFeatures {
         compose = true
+        // BuildConfig.VERSION_NAME нужен экрану диагностики
+        buildConfig = true
         // AIDL-интерфейс помощника управления телефоном (src/main/aidl)
         aidl = true
     }

@@ -67,6 +67,13 @@ data class Settings(
     val compactUi: Boolean = false,
     /** Резервный профиль на случай, если у основного кончилась квота. */
     val fallbackProfileId: String = "",
+    /** Отдельная модель планирования: анализирует и составляет план, но не меняет файлы. */
+    val planningProfileId: String = "",
+    /** Отдельная модель выполнения: применяет одобренный план. */
+    val executionProfileId: String = "",
+    /** Адрес локального маршрутизатора моделей (9Router / similar), пусто — выключено. */
+    val routerBaseUrl: String = "",
+    val routerApiKey: String = "",
 )
 
 const val DEFAULT_PROJECT = "main"
@@ -137,6 +144,10 @@ class SettingsStore(context: Context) {
             fontScale = prefs.getFloat("fontScale", d.fontScale),
             compactUi = prefs.getBoolean("compactUi", d.compactUi),
             fallbackProfileId = prefs.getString("fallbackProfileId", d.fallbackProfileId) ?: "",
+            planningProfileId = prefs.getString("planningProfileId", d.planningProfileId) ?: "",
+            executionProfileId = prefs.getString("executionProfileId", d.executionProfileId) ?: "",
+            routerBaseUrl = prefs.getString("routerBaseUrl", d.routerBaseUrl) ?: "",
+            routerApiKey = prefs.getString("routerApiKey", d.routerApiKey) ?: "",
         )
     }
 
@@ -265,6 +276,29 @@ class SettingsStore(context: Context) {
     fun rawGet(key: String): String? = prefs.getString(key, null)
     fun rawPut(key: String, value: String) { prefs.edit().putString(key, value).apply() }
 
+    fun loadSshProfiles(): List<SshProfile> =
+        rawGet("sshProfiles")?.let { runCatching { Json.decodeFromString<List<SshProfile>>(it) }.getOrNull() }.orEmpty()
+
+    fun saveSshProfiles(list: List<SshProfile>) { rawPut("sshProfiles", Json.encodeToString(list)) }
+
+    fun loadSshSecret(name: String): String? = runCatching {
+        Json.decodeFromString<Map<String, String>>(rawGet("sshSecrets") ?: "{}")[name]
+    }.getOrNull()
+
+    fun saveSshSecret(name: String, value: String) {
+        val map = runCatching { Json.decodeFromString<Map<String, String>>(rawGet("sshSecrets") ?: "{}") }.getOrNull().orEmpty()
+        rawPut("sshSecrets", Json.encodeToString(map + (name to value)))
+    }
+
+    fun loadAppearance(): com.pocketcode.ui.AppearanceConfig =
+        rawGet("appearance")?.let { runCatching { Json.decodeFromString<com.pocketcode.ui.AppearanceConfig>(it) }.getOrNull() }
+            ?: com.pocketcode.ui.AppearanceConfig()
+
+    fun saveAppearance(c: com.pocketcode.ui.AppearanceConfig) { rawPut("appearance", Json.encodeToString(c)) }
+
+    fun loadRootFs(): String = rawGet("rootFs") ?: "ALPINE"
+    fun saveRootFs(value: String) = rawPut("rootFs", value)
+
     fun loadDevices(): List<com.pocketcode.tools.Device> = try {
         Json.decodeFromString<List<com.pocketcode.tools.Device>>(prefs.getString("devices", null) ?: "[]")
     } catch (e: Exception) {
@@ -313,6 +347,10 @@ class SettingsStore(context: Context) {
             .putFloat("fontScale", s.fontScale)
             .putBoolean("compactUi", s.compactUi)
             .putString("fallbackProfileId", s.fallbackProfileId)
+            .putString("planningProfileId", s.planningProfileId)
+            .putString("executionProfileId", s.executionProfileId)
+            .putString("routerBaseUrl", s.routerBaseUrl)
+            .putString("routerApiKey", s.routerApiKey)
             .apply()
     }
 }

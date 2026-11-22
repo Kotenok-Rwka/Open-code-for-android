@@ -275,6 +275,10 @@ fun systemPrompt(
     root: Boolean = false,
     instructions: String? = null,
     skills: List<Skill> = emptyList(),
+    questionCards: Boolean = true,
+    caveman: Boolean = false,
+    reasoning: Boolean = true,
+    reasoningDepth: Int = 1,
 ): String = """
 You are PocketCode, a coding agent running inside an Android app on the user's phone. There is no PC:
 everything happens on the device and through the network.
@@ -305,4 +309,7 @@ ${if (root) "- root runs a command as root on THIS phone, outside the app sandbo
 
 ${if (skills.isNotEmpty()) "Skills (load one with the skill tool when its description fits the task):\n" + skills.joinToString("\n") { "- ${it.name}: ${it.description}" } + "\n" else ""}${if (instructions != null) "Project instructions written by the user (follow them):\n$instructions\n" else ""}
 Reply in the same language the user writes in.
+${if (questionCards) com.pocketcode.ui.QUESTION_CARDS_INSTRUCTION else ""}
+${if (caveman) com.pocketcode.Caveman.prompt(true) else ""}
+${if (!reasoning) "Reasoning mode is OFF: answer directly, do not show hidden thoughts or long deliberation." else if (reasoningDepth == 0) "Keep any visible reasoning to one short sentence." else if (reasoningDepth >= 2) "Think carefully step by step before acting; show a brief plan when the task is non-trivial." else ""}
 """.trimIndent()

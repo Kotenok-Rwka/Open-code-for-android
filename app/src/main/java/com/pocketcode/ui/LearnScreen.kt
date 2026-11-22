@@ -1,5 +1,6 @@
 package com.pocketcode.ui
 
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -121,7 +122,7 @@ val LESSONS = listOf(
     ),
     Lesson(
         "help", "🩺 Диагностика и поддержка",
-        "«Ещё → Диагностика и расход» проверяет связь с моделью, файлы, git и противоречия в настройках, а ещё показывает расход токенов. Вопросы и идеи пиши в Telegram-группу PocketCode.",
+        "«Ещё → Проверка и расход» проверяет связь с моделью, файлы, git и противоречия в настройках, а ещё показывает расход токенов. Вопросы и идеи пиши в Telegram-группу PocketCode.",
         "diag",
         "Что проверяет диагностика?",
         listOf("Только версию приложения", "Скорость интернета", "Ключ, связь с моделью, файлы, git и противоречия в настройках"), 2,
@@ -129,8 +130,51 @@ val LESSONS = listOf(
     ),
 )
 
+private val NEW_LESSONS = listOf(
+    Lesson(
+        "howai", "🧠 Как работает нейронка",
+        "Новый пункт в меню «⋮». Простыми словами: что модель видит (контекст и правила), как выбирает шаг, зачем вызывает инструменты и почему «думает» несколько секунд. Там же объясняются живые статусы 🧠/⚙️ и размышления.",
+        "chat",
+        "Что получает модель при каждом запросе?",
+        listOf("Только последнее сообщение", "Контекст: правила, историю, описания инструментов", "Только файлы проекта"), 1,
+        "Модель видит системные правила, историю чата и результаты инструментов. Всё это вместе называется контекстом.",
+    ),
+    Lesson(
+        "tools", "🛠 Инструменты модели",
+        "Меню «⋮» → «Инструменты модели»: здесь видно все доступные модели инструменты и тумблеры. Отключённые не передаются в запрос — модель их не увидит. На этом же экране включаются и выключаются размышления и их глубина.",
+        "chat",
+        "Что произойдёт, если выключить инструмент тумблером?",
+        listOf("Модель не сможет его вызвать", "Инструмент удалится с телефона", "Ничего не изменится"), 0,
+        "Мы просто не передаём описание инструмента модели, поэтому она о нём не знает. Файлы и настройки остаются на месте.",
+    ),
+    Lesson(
+        "appearance", "🎨 Оформление и темы",
+        "Меню «⋮» → «Оформление и темы»: 14 палитр, свой цвет акцента, свои шрифты, размер текста, уровень анимаций, фоны и режим чтения. Настройки применяются сразу и сохраняются.",
+        "chat",
+        "Где настроить размер текста отдельно для чата?",
+        listOf("В настройках модели", "В «Оформлении и темах»", "В настройках телефона"), 1,
+        "В «Оформлении и темах» есть отдельные слайдеры масштаба интерфейса и чата.",
+    ),
+    Lesson(
+        "plugins", "🔌 Навыки, плагины и GitHub-поиск",
+        "На экране «Навыки и плагины» можно ставить встроенные навыки, подключать MCP и искать готовые репозитории прямо на GitHub с описанием и числом звёзд. При первом открытии поиск запускается сам; есть сортировка и фильтры по категориям.",
+        "plugins",
+        "Что показывает поиск GitHub?",
+        listOf("Только названия файлов", "Репозитории с описанием и звёздами", "Только ошибки"), 1,
+        "Поиск показывает готовые проекты с описанием, языком и числом звёзд — можно сразу установить или открыть.",
+    ),
+    Lesson(
+        "sync", "🔄 Синхронизация с ПК",
+        "Меню «⋮» → «Экспорт истории на ПК» экспортирует полную историю чата в JSON, а «Загрузить с ПК» загружает её обратно. На ПК компаньон читает и показывает ответы целиком, без обрезки символов.",
+        "chat",
+        "Чем отличается синхронизация с ПК от обычного бэкапа?",
+        listOf("Это экран пошаговой истории для ПК без обрезки текста", "Она удаляет чат", "Она работает только в root"), 0,
+        "Формат содержит полный текст каждого сообщения и проект, чтобы продолжить работу на другом устройстве.",
+    ),
+)
+
 /** Все уроки: основные с тестом и дополнительные из LearnContent. */
-val ALL_LESSONS: List<Lesson> get() = LESSONS + MORE_LESSONS
+val ALL_LESSONS: List<Lesson> get() = LESSONS + MORE_LESSONS + NEW_LESSONS
 
 /** Обучение с практикой: уроки, кнопка «Показать, где это» и мини-тест на каждый. Прогресс сохраняется. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -154,7 +198,9 @@ fun LearnScreen(vm: ChatController, onBack: () -> Unit, onGo: (String) -> Unit, 
         ) {
             val done = lessons.count { it.id in vm.learnDone }
             Text("Пройдено $done из ${lessons.size}", style = MaterialTheme.typography.titleMedium)
-            LinearProgressIndicator(progress = { done.toFloat() / lessons.size }, modifier = Modifier.fillMaxWidth())
+            val progress by androidx.compose.runtime.rememberUpdatedState(done.toFloat() / lessons.size)
+            val animated by androidx.compose.animation.core.animateFloatAsState(progress, tween(if (LocalReduceMotion.current) 0 else 500), label = "learnProgress")
+            LinearProgressIndicator(progress = { animated }, modifier = Modifier.fillMaxWidth())
             androidx.compose.material3.OutlinedTextField(
                 value = query, onValueChange = { query = it }, modifier = Modifier.fillMaxWidth(), singleLine = true,
                 placeholder = { Text("Найти ответ: например «лимит» или «sdk»") },
@@ -167,7 +213,7 @@ fun LearnScreen(vm: ChatController, onBack: () -> Unit, onGo: (String) -> Unit, 
             val shown = remember(query) { searchLessons(lessons, query) }
             val faq = remember(query) { searchFaq(query) }
             if (query.isNotBlank() && shown.isEmpty() && faq.isEmpty()) {
-                Text("Ничего не нашлось. Попробуй другое слово или открой «Диагностика и расход» или группу в Telegram.", style = MaterialTheme.typography.bodyMedium)
+                Text("Ничего не нашлось. Попробуй другое слово или открой «Проверка и расход» или группу в Telegram.", style = MaterialTheme.typography.bodyMedium)
             }
             shown.forEach { l ->
                 LessonCard(l, vm.learnDone, open == l.id, { open = if (open == l.id) null else l.id }, onGo) { vm.markLesson(l.id) }

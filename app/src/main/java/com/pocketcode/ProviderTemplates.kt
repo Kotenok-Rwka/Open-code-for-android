@@ -23,4 +23,8 @@ val PROVIDER_TEMPLATES = listOf(
     ProviderTemplate("NVIDIA NIM", Provider.OPENAI, "https://integrate.api.nvidia.com/v1", "meta/llama-3.3-70b-instruct", 64_000, 4_000, "Бесплатный ключ на build.nvidia.com (нужна регистрация). Много открытых моделей, лимит запросов в минуту."),
     ProviderTemplate("OpenRouter (бесплатные)", Provider.OPENAI, "https://openrouter.ai/api/v1", "deepseek/deepseek-chat-v3.1:free", 64_000, 4_000, "Бесплатные модели с суффиксом :free, список на openrouter.ai/models?q=free. Дневной лимит запросов."),
     ProviderTemplate("Локальный (Ollama)", Provider.OPENAI, "http://192.168.1.10:11434/v1", "qwen2.5-coder:14b", 32_000, 4_000, "Модель на твоём ПК в той же Wi-Fi сети. Замени адрес на адрес ПК. Ключ любой.", "ollama"),
+    ProviderTemplate("LM Studio", Provider.OPENAI, "http://localhost:1234/v1", "local-model", 32_000, 4_000, "Локальный сервер LM Studio на этом устройстве или в той же сети. В LM Studio включи Developer → Start Server; ключ можно поставить любой.", "lm-studio"),
+    ProviderTemplate("llama.cpp", Provider.OPENAI, "http://localhost:8080/v1", "local-model", 32_000, 4_000, "Сервер llama-server из llama.cpp. Запусти с флагом --host 0.0.0.0, чтобы подключиться с телефона. Ключ любой.", "llama"),
+    ProviderTemplate("LocalAI", Provider.OPENAI, "http://localhost:8080/v1", "local-model", 32_000, 4_000, "LocalAI: OpenAI-совместимый сервер с GGUF-моделями. Ключ любой.", "localai"),
+    ProviderTemplate("vLLM", Provider.OPENAI, "http://localhost:8000/v1", "local-model", 32_000, 4_000, "vLLM на твоём Linux-сервере. Для доступа с телефона слушай 0.0.0.0 и открой порт в фаерволе. Ключ любой.", "vllm"),
 )

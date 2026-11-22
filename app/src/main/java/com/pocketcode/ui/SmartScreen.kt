@@ -85,6 +85,14 @@ fun SmartScreen(vm: ChatController, onBack: () -> Unit, onOpenRoot: () -> Unit) 
                 presetNote?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
             }
 
+            Group("Стили ответов") {
+                Toggle(
+                    "Caveman",
+                    "Короткие ответы, без вступлений; включает 5 дополнительных навыков (критика, тесты, компрессия) без отдельного ключа API.",
+                    vm.cavemanEnabled,
+                ) { vm.setCaveman(it) }
+            }
+
             Group("Авто-режим и безопасность") {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
@@ -114,6 +122,16 @@ fun SmartScreen(vm: ChatController, onBack: () -> Unit, onOpenRoot: () -> Unit) 
                     "Когда нейросеть одобрила действие, в ленте появляется строка с причиной.",
                     sf.verdictNotes,
                 ) { sf.changeVerdictNotes(it) }
+                Toggle(
+                    "Держать экран включённым",
+                    "Для слабых прошивок: во время работы агента экран не гаснет. Расходует больше батареи.",
+                    vm.keepScreenOn,
+                ) { vm.setKeepScreenOn(it) }
+                Toggle(
+                    "Тихий авто-режим",
+                    "Не показывать в чате служебные строки про проверки, предохранитель и выбор модели-помощника. Красные ошибки при этом остаются, но их можно скрыть кнопкой «✕ Скрыть» рядом с сообщением.",
+                    sf.quietAuto,
+                ) { sf.changeQuietAuto(it) }
                 Toggle(
                     "Двойная проверка удаления",
                     "В авто-режиме удаление одобряют две нейросети. Если второй нет или она сомневается, решаешь ты. Нужен режим «Нейросеть».",

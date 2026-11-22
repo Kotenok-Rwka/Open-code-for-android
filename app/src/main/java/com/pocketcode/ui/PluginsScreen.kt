@@ -46,6 +46,12 @@ fun PluginsScreen(vm: ChatController, onBack: () -> Unit) {
     var kind by remember { mutableStateOf(0) }
     var viewing by remember { mutableStateOf<com.pocketcode.agent.Skill?>(null) }
     var confirmNode by remember { mutableStateOf(false) }
+    var ghQuery by remember { mutableStateOf("claude code skills") }
+    var ghSort by remember { mutableStateOf("stars") }
+    var ghCategory by remember { mutableStateOf("Все") }
+    LaunchedEffect(Unit) {
+        if (vm.pluginSearchResults.isEmpty() && vm.pluginSearchStatus == null) vm.searchPlugins(ghQuery)
+    }
     var confirmDel by remember { mutableStateOf<com.pocketcode.agent.Skill?>(null) }
     LaunchedEffect(Unit) { vm.refreshExtensions() }
 
@@ -62,7 +68,7 @@ fun PluginsScreen(vm: ChatController, onBack: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             androidx.compose.material3.ScrollableTabRow(selectedTabIndex = tab, edgePadding = 0.dp) {
-                listOf("Навыки и команды", "Инструменты", "Плагины и MCP", "Расписание").forEachIndexed { i, t ->
+                listOf("Навыки и команды", "Инструменты", "Плагины и MCP", "Расписание", "Поиск GitHub").forEachIndexed { i, t ->
                     androidx.compose.material3.Tab(selected = tab == i, onClick = { tab = i }, text = { Text(t) })
                 }
             }
@@ -286,6 +292,45 @@ fun PluginsScreen(vm: ChatController, onBack: () -> Unit) {
             vm.mcpMessage?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
             }
         }
+    if (tab == 4) {
+        Text("Поиск навыков и плагинов на GitHub", style = MaterialTheme.typography.titleMedium)
+        Text(
+            "Находит репозитории с навыками и плагинами, показывает описание и число звёзд. " +
+                "Для большего лимита запросов укажи токен GitHub в настройках.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+        OutlinedTextField(ghQuery, { ghQuery = it }, label = { Text("Что ищем (например: claude skills)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        Button(onClick = { vm.searchPlugins(ghQuery) }, enabled = ghQuery.isNotBlank() && !vm.pluginSearchBusy) {
+            Text(if (vm.pluginSearchBusy) "Ищу…" else "Найти на GitHub")
+        }
+        vm.pluginSearchStatus?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            listOf("Все", "skills", "agents", "MCP", "plugins").forEach { cat ->
+                androidx.compose.material3.FilterChip(selected = ghCategory == cat, onClick = { ghCategory = cat }, label = { Text(cat) })
+            }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            listOf("stars" to "По звёздам", "updated" to "По обновлению", "name" to "По названию").forEach { (k, label) ->
+                androidx.compose.material3.FilterChip(selected = ghSort == k, onClick = { ghSort = k; vm.searchPlugins(ghQuery, k) }, label = { Text(label) })
+            }
+        }
+        val shown = vm.pluginSearchResults
+            .filter { cat -> ghCategory == "Все" || cat.fullName.contains(ghCategory, ignoreCase = true) || cat.description.contains(ghCategory, ignoreCase = true) }
+            .let { list -> if (ghSort == "name") list.sortedBy { it.fullName } else list }
+        shown.forEach { hit ->
+            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer), modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(12.dp), Arrangement.spacedBy(4.dp)) {
+                    Text(hit.fullName, style = MaterialTheme.typography.titleSmall)
+                    if (hit.description.isNotBlank()) Text(hit.description, style = MaterialTheme.typography.bodySmall)
+                    Text("★ ${hit.stars}" + if (hit.language.isNotBlank()) " · ${hit.language}" else "", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        TextButton(onClick = { vm.installPlugin(hit.url) }) { Text("Установить") }
+                        TextButton(onClick = { vm.previewUrl = hit.url }) { Text("Открыть на GitHub") }
+                    }
+                }
+            }
+        }
+    }
     }
     viewing?.let { sk ->
         androidx.compose.material3.AlertDialog(
@@ -304,6 +349,7 @@ fun PluginsScreen(vm: ChatController, onBack: () -> Unit) {
             dismissButton = { TextButton(onClick = { confirmDel = null }) { Text("Отмена") } },
         )
     }
+
     if (confirmNode) {
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { confirmNode = false },

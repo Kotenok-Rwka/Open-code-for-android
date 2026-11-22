@@ -15,7 +15,12 @@ import java.util.Date
 import java.util.Locale
 import java.util.concurrent.CancellationException
 
-enum class ToonVoiceMode(val label: String) { SYSTEM("Встроенный голос (без интернета)"), CLOUD("Нейросеть по ключу"), SILENT("Без озвучки (быстрый показ)") }
+enum class ToonVoiceMode(val label: String) {
+    SYSTEM("Встроенный голос (без интернета)"),
+    SYSTEM_MULTI("Несколько голосов (разные движки)"),
+    CLOUD("Нейросеть по ключу"),
+    SILENT("Без озвучки (быстрый показ)"),
+}
 
 enum class ToonStage { IDLE, WRITE, VOICE, DRAW, DONE, ERROR }
 
@@ -66,6 +71,16 @@ class ToonMaker(
     var model by mutableStateOf(get("toonModel") ?: TOON_DEFAULT_MODEL)
     var key by mutableStateOf(get("toonKey") ?: "")
     var voices by mutableStateOf(get("toonVoices") ?: TOON_DEFAULT_VOICES)
+    /** Несколько системных TTS-движков через "|", по одному на героя. */
+    var multiEngines by mutableStateOf(get("toonMultiEngines") ?: "")
+    var multiPitches by mutableStateOf(get("toonMultiPitches") ?: "")
+    var multiRates by mutableStateOf(get("toonMultiRates") ?: "")
+    /** Произвольные параметры сценария: name=value построчно. */
+    var extraParams by mutableStateOf(get("toonExtraParams") ?: "")
+    /** Сколько вариантов в блоке выбора (0 — сколько сочинила модель). */
+    var choiceCount by mutableStateOf((get("toonChoiceCount")?.toIntOrNull() ?: 0).coerceIn(0, 8))
+    /** Всегда озвучивать: SILENT доступен только явным выбором в настройках. */
+    var alwaysVoice by mutableStateOf((get("toonAlwaysVoice") ?: "1") == "1")
 
     // сочинение сценария и серии
     var topic by mutableStateOf("")
@@ -95,6 +110,12 @@ class ToonMaker(
         put("toonModel", model.trim())
         put("toonKey", key.trim())
         put("toonVoices", voices.trim())
+        put("toonMultiEngines", multiEngines.trim())
+        put("toonMultiPitches", multiPitches.trim())
+        put("toonMultiRates", multiRates.trim())
+        put("toonExtraParams", extraParams.trim())
+        put("toonChoiceCount", choiceCount.toString())
+        put("toonAlwaysVoice", if (alwaysVoice) "1" else "0")
         put("toonFormat", format.name)
         put("toonMin", minSeconds.toString())
         if (key.isNotBlank()) secret(key.trim())
@@ -227,7 +248,7 @@ class ToonMaker(
     private suspend fun writeScript(topicText: String, fmt: ToonFormat, minSec: Int, prev: ToonEntry?, chosen: String): String {
         stage = ToonStage.WRITE
         val episode = if (prev == null) 1 else prev.episode + 1
-        val system = ToonPrompt.system(minSec, fmt, prev?.script, chosen, episode)
+        val system = ToonPrompt.system(minSec, fmt, prev?.script, chosen, episode, choiceCount, extraParams)
         var text = ToonPrompt.applyFormat(ToonPrompt.extract(generate(system, ToonPrompt.user(topicText))), fmt)
         var tries = 0
         while (!ToonPrompt.longEnough(ToonScript.parse(text), minSec) && tries < 2) {
@@ -258,6 +279,7 @@ class ToonMaker(
     private fun voiceFor(): ToonVoice? = when (mode) {
         ToonVoiceMode.SILENT -> null
         ToonVoiceMode.SYSTEM -> SystemToonVoice(app, ttsEngine(), app.cacheDir)
+        ToonVoiceMode.SYSTEM_MULTI -> MultiToonVoice(app, multiEngines, app.cacheDir, multiPitches, multiRates)
         ToonVoiceMode.CLOUD -> {
             val k = key.trim().ifBlank { fallbackKey(url)?.first.orEmpty() }
             require(k.isNotBlank()) { "Для озвучки нейросетью нужен ключ: впишите его в настройках озвучки на этом экране." }

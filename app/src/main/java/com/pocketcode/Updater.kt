@@ -20,10 +20,10 @@ import okhttp3.Request
 import java.io.File
 import java.util.concurrent.TimeUnit
 
-data class UpdateInfo(val build: Int, val title: String, val notes: String, val assetUrl: String, val size: Long)
+data class UpdateInfo(val build: Int, val title: String, val notes: String, val assetUrl: String, val size: Long, val label: String = build.toString())
 
 /**
- * Проверка и установка обновлений из GitHub Releases. CI выкладывает APK в релиз «build-N».
+ * Проверка и установка обновлений из GitHub Releases. CI выкладывает APK в релиз «vX.Y.Z» (раньше — «build-N», такие тоже понимаем).
  * Репозиторий приватный, поэтому нужен токен с доступом Contents: read.
  */
 class Updater(private val context: Context) {
@@ -68,7 +68,8 @@ class Updater(private val context: Context) {
             arr.mapNotNull { el ->
                 val o: JsonObject = el.jsonObject
                 val tag = o["tag_name"]?.jsonPrimitive?.content ?: return@mapNotNull null
-                val build = tag.removePrefix("build-").toIntOrNull() ?: return@mapNotNull null
+                val tv = VersionUtil.fromTag(tag) ?: return@mapNotNull null
+                val build = tv.first
                 val asset = o["assets"]?.jsonArray?.map { it.jsonObject }
                     ?.firstOrNull { it["name"]?.jsonPrimitive?.content?.endsWith(".apk") == true } ?: return@mapNotNull null
                 UpdateInfo(
@@ -77,6 +78,7 @@ class Updater(private val context: Context) {
                     (o["body"] as? JsonPrimitive)?.contentOrNull.orEmpty(),
                     asset["url"]?.jsonPrimitive?.content ?: return@mapNotNull null,
                     asset["size"]?.jsonPrimitive?.content?.toLongOrNull() ?: 0L,
+                    tv.second,
                 )
             }.maxByOrNull { it.build }
         }

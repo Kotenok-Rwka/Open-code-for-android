@@ -159,6 +159,12 @@ class GitTool(
                     git.checkout().setName(branch).setCreateBranch(input.bool("create") == true).call()
                     return "Ветка: ${git.repository.branch}"
                 }
+                "reset_hard" -> {
+                    // Явное действие: выбросить несохранённые изменения рабочей области.
+                    val n = git.status().call().changed.size
+                    git.reset().setMode(org.eclipse.jgit.api.ResetCommand.ResetType.HARD).setRef("HEAD").call()
+                    return "Отменено изменений: $n"
+                }
                 else -> throw IllegalArgumentException("Неизвестное действие git: $action")
             }
         }

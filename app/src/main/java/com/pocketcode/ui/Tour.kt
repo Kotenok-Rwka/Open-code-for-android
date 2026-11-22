@@ -143,7 +143,7 @@ fun TourOverlay(onDone: () -> Unit, onOpenLearn: () -> Unit = {}) {
         AlertDialog(
             onDismissRequest = { confirmSkip = false },
             title = { Text("Пропустить подсказки?") },
-            text = { Text("Их можно открыть снова: Ещё → Подсказки.") },
+            text = { Text("Их можно открыть снова: Ещё → Подсказки первого запуска.") },
             confirmButton = { TextButton(onClick = { confirmSkip = false; onDone() }) { Text("Да, пропустить") } },
             dismissButton = { TextButton(onClick = { confirmSkip = false }) { Text("Продолжить") } },
         )
@@ -196,7 +196,7 @@ fun UpdatePromptDialog(vm: ChatController) {
         title = { Text("Доступно обновление") },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Новая сборка ${info.build}" + (if (info.size > 0) " (${info.size / 1048576} МБ)" else "") + ". У тебя ${vm.currentVersion}.")
+                Text("Новая версия ${info.label}" + (if (info.size > 0) " (${info.size / 1048576} МБ)" else "") + ". У тебя ${vm.currentVersion}.")
                 if (info.notes.isNotBlank()) Text(info.notes.take(1500), style = MaterialTheme.typography.bodySmall)
                 Text("Скачивание пойдёт в фоне, можно пользоваться приложением. С включённым VPN обычно быстрее. Установишь, когда скачается.", style = MaterialTheme.typography.bodySmall)
                 Text("Заходи в нашу группу в Telegram и пиши пожелания: что добавить и что доработать.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
@@ -217,7 +217,7 @@ private val WELCOME_FEATURES: List<Pair<String, String>> = listOf(
     "📦 Сборка приложений" to "Агент может собирать Android-приложения: кнопка «Установить Android SDK» в терминале.",
     "📱 Управление телефоном" to "Агент смотрит на экран и нажимает за тебя. Ещё → Управление телефоном.",
     "🎬 Видео" to "Вырезать паузы, субтитры и переходы без компьютера. Проект → Видео.",
-    "🔁 Два телефона" to "Задачу можно поставить с одного телефона, а выполнит другой. Ещё → Синхронизация и пульт.",
+    "🔁 Два телефона" to "Задачу можно поставить с одного телефона, а выполнит другой. Ещё → Синхронизация устройств.",
 )
 
 /** Карточка приветствия: живой чек-лист первых шагов и список возможностей. Показывается, пока пользователь её не скрыл. */
@@ -242,10 +242,10 @@ fun WelcomeCard(vm: ChatController, onOpenLearn: () -> Unit = {}, onOpenSettings
                 "ИИ-агент для программирования, который работает прямо на телефоне. Вот четыре шага, чтобы начать:",
                 style = MaterialTheme.typography.bodyMedium, color = onText.copy(alpha = 0.85f),
             )
-            WelcomeStep(hasModel, "1. Подключи модель", if (hasModel) "Готово: модель подключена." else "Нужен ключ провайдера или бесплатный старт (кнопка выше).", "Открыть", onOpenSettings)
-            WelcomeStep(vm.linuxInstalled, "2. Включи Linux", if (vm.linuxInstalled) "Готово: Linux установлен." else "Проекты → Установить Linux. Нужен для python, git, node и OpenCode.", null) {}
-            WelcomeStep(learned > 0, "3. Пройди обучение", "Пройдено $learned из ${lessons.size}. Там есть ответы почти на все вопросы.", "Открыть", onOpenLearn)
-            WelcomeStep(vm.tourDone, "4. Посмотри подсказки на экране", if (vm.tourDone) "Уже смотрел. Можно повторить." else "Короткий тур по кнопкам.", "Показать") { vm.restartTour() }
+            AnimatedWelcomeStep(hasModel, 0, "1. Подключи модель", if (hasModel) "Готово: модель подключена." else "Нужен ключ провайдера или бесплатный старт (кнопка выше).", "Открыть", onOpenSettings)
+            AnimatedWelcomeStep(vm.linuxInstalled, 1, "2. Включи Linux", if (vm.linuxInstalled) "Готово: Linux установлен." else "Проекты → Установить Linux. Нужен для python, git, node и OpenCode.", null) {}
+            AnimatedWelcomeStep(learned > 0, 2, "3. Пройди обучение", "Пройдено $learned из ${lessons.size}. Там есть ответы почти на все вопросы.", "Открыть", onOpenLearn)
+            AnimatedWelcomeStep(vm.tourDone, 3, "4. Посмотри подсказки на экране", if (vm.tourDone) "Уже смотрел. Можно повторить." else "Короткий тур по кнопкам.", "Показать") { vm.restartTour() }
             TextButton(onClick = { features = !features }) { Text(if (features) "Скрыть возможности" else "Что умеет PocketCode") }
             if (features) WELCOME_FEATURES.forEach { (title, text) ->
                 Column(Modifier.fillMaxWidth().clickable { openFeature = if (openFeature == title) null else title }) {
@@ -265,15 +265,3 @@ fun WelcomeCard(vm: ChatController, onOpenLearn: () -> Unit = {}, onOpenSettings
     }
 }
 
-@Composable
-private fun WelcomeStep(done: Boolean, title: String, text: String, action: String?, onAction: () -> Unit) {
-    val onText = MaterialTheme.colorScheme.onPrimaryContainer
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(if (done) "✅" else "⬜", style = MaterialTheme.typography.titleMedium)
-        Column(Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.titleSmall, color = onText)
-            Text(text, style = MaterialTheme.typography.bodySmall, color = onText.copy(alpha = 0.85f))
-        }
-        if (action != null) TextButton(onClick = onAction) { Text(action) }
-    }
-}

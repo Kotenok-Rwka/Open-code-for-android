@@ -1,0 +1,44 @@
+name: Desktop packages (Windows + Linux .deb)
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install build tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq dpkg-dev
+          python -m pip install --upgrade pyinstaller
+      - name: Build Linux .deb
+        run: bash desktop/build_linux_deb.sh
+      - name: Build Windows portable ZIP
+        run: |
+          python -m PyInstaller --noconfirm --onefile --name PocketCodeDesktop desktop/pocketcode_desktop.py
+          mkdir -p winout
+          cp dist/PocketCodeDesktop.exe winout/
+          cp desktop/INSTALL.md desktop/EDITOR_INTEGRATION.md desktop/README.md winout/
+          cd winout && zip -r ../PocketCodeDesktop-windows.zip .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-packages
+          path: |
+            pocketcode-desktop_*.deb
+            PocketCodeDesktop-windows.zip
+      - name: Publish to Release (on version tag)
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${GITHUB_REF_NAME}" pocketcode-desktop_*.deb PocketCodeDesktop-windows.zip --clobber

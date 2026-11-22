@@ -137,6 +137,22 @@ fun ToonScreen(
                         FilterChip(selected = v.minSeconds == m, onClick = { v.minSeconds = m }, enabled = !v.busy, label = { Text("$m с") })
                     }
                 }
+                Text("Вариантов в конце", style = MaterialTheme.typography.labelLarge)
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    for (n in listOf(0, 2, 3, 4, 5)) {
+                        FilterChip(selected = v.choiceCount == n, onClick = { v.choiceCount = n }, enabled = !v.busy, label = { Text(if (n == 0) "как модель" else "$n") })
+                    }
+                }
+                Text("Дополнительные требования к сценарию", style = MaterialTheme.typography.labelLarge)
+                OutlinedTextField(
+                    value = v.extraParams,
+                    onValueChange = { v.extraParams = it },
+                    label = { Text("name=value, по строке на правило") },
+                    placeholder = { Text("тон=жёсткий юмор\nгероев=3\nзапрет=матом") },
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 2,
+                    enabled = !v.busy,
+                )
                 Text("Серий за один раз", style = MaterialTheme.typography.labelLarge)
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     for (n in listOf(1, 2, 3, 5)) {
@@ -220,6 +236,17 @@ fun ToonScreen(
                     if (v.keySource.isNotEmpty()) {
                         Text("Свой ключ не задан: будет взят из профиля «${v.keySource}».", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
+                }
+                if (v.mode == ToonVoiceMode.SYSTEM_MULTI) {
+                    Text(
+                        "Несколько русских TTS-движков могут работать вместе: каждый номер героя получает свой движок. " +
+                            "Впиши имена через | (например: com.google.android.tts|ru.yandex.speechka|com.samsung.tts). " +
+                            "Пустое значение — системный по умолчанию. Высоту и скорость можно задать списками через запятую — по числу на героя.",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    OutlinedTextField(value = v.multiEngines, onValueChange = { v.multiEngines = it }, label = { Text("Движки через |") }, singleLine = true, modifier = Modifier.fillMaxWidth(), enabled = !v.busy)
+                    OutlinedTextField(value = v.multiPitches, onValueChange = { v.multiPitches = it }, label = { Text("Высота через запятую (1.0 = норма)") }, singleLine = true, modifier = Modifier.fillMaxWidth(), enabled = !v.busy)
+                    OutlinedTextField(value = v.multiRates, onValueChange = { v.multiRates = it }, label = { Text("Скорость через запятую (1.0 = норма)") }, singleLine = true, modifier = Modifier.fillMaxWidth(), enabled = !v.busy)
                 }
                 if (v.mode == ToonVoiceMode.SILENT) {
                     Text("Ролик получится без звука, рот героев двигается по ритму. Удобно, чтобы быстро проверить картинку и субтитры.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

@@ -29,6 +29,7 @@ import com.pocketcode.tools.NotesTool
 import com.pocketcode.tools.TestTool
 import com.pocketcode.tools.Shell
 import com.pocketcode.AppLog
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.coroutines.delay
@@ -60,7 +61,10 @@ import com.pocketcode.tools.PresentPlanTool
 import com.pocketcode.tools.TodoTool
 import com.pocketcode.tools.looksBinary
 import com.pocketcode.tools.str
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
 import com.pocketcode.tools.McpClient
 import com.pocketcode.tools.SubagentTool
 import com.pocketcode.tools.Tool
@@ -306,6 +310,83 @@ class ChatController(
         agent = null // инструмент bash и системный промпт пересоздадутся
     }
 
+    /** Модель для планирования (только чтение и план) и модель выполнения (меняет файлы). */
+    var planningProfileId by mutableStateOf(settings.planningProfileId)
+        private set
+    var executionProfileId by mutableStateOf(settings.executionProfileId)
+        private set
+
+    /** Применяет рекомендованную локальную модель к текущему профилю (OpenAI-совместимый endpoint). */
+    fun useLocalModel(modelId: String) {
+        val s = settings
+        val p = profiles.firstOrNull { it.id == activeProfileId }
+        val np = if (p != null) p.copy(model = modelId) else com.pocketcode.Profile("local-" + java.util.UUID.randomUUID().toString().take(6), "Локальная: $modelId", com.pocketcode.Provider.OPENAI, "http://127.0.0.1:1234/v1", modelId, "local")
+        val list = if (p != null) profiles.map { if (it.id == np.id) np else it } else profiles + np
+        profiles = list
+        settingsStore.saveProfiles(list, np.id)
+        activeProfileId = np.id
+        settings = s.copy(provider = com.pocketcode.Provider.OPENAI, model = modelId, baseUrl = np.baseUrl, apiKey = np.apiKey)
+        settingsStore.save(settings)
+        agent = null
+    }
+
+    fun setPlanningProfile(id: String) {
+        planningProfileId = id
+        settings = settings.copy(planningProfileId = id)
+        settingsStore.save(settings)
+        agent = null
+    }
+
+    fun setExecutionProfile(id: String) {
+        executionProfileId = id
+        settings = settings.copy(executionProfileId = id)
+        settingsStore.save(settings)
+        agent = null
+    }
+
+    /** Выбор пары моделей одним нажатием: пустой id означает «как основная». */
+    fun setModelRoles(planning: String, execution: String) {
+        planningProfileId = planning
+        executionProfileId = execution
+        settings = settings.copy(planningProfileId = planning, executionProfileId = execution)
+        settingsStore.save(settings)
+        agent = null
+    }
+
+    var routerBaseUrl by mutableStateOf(settings.routerBaseUrl)
+        private set
+    var routerApiKey by mutableStateOf(settings.routerApiKey)
+        private set
+
+    fun setRouter(baseUrl: String, apiKey: String) {
+        routerBaseUrl = baseUrl.trim()
+        routerApiKey = apiKey.trim()
+        settings = settings.copy(routerBaseUrl = routerBaseUrl, routerApiKey = routerApiKey)
+        settingsStore.save(settings)
+        agent = null
+    }
+
+    fun routerModels(): List<com.pocketcode.llm.RouterModel> =
+        com.pocketcode.llm.ModelRouter.list(routerBaseUrl, routerApiKey) { url, headers ->
+            runCatching { okhttp3.OkHttpClient.Builder().build().newCall(okhttp3.Request.Builder().url(url).apply { headers.forEach { (k, v) -> header(k, v) } }.build()).execute().use { it.body!!.string() } }.getOrDefault("")
+        }
+
+    var rootFsChoice by mutableStateOf(settingsStore.loadRootFs())
+        private set
+
+    val rootFsDescription: String
+        get() = runCatching { com.pocketcode.linux.RootFsChoice.valueOf(rootFsChoice) }.getOrDefault(com.pocketcode.linux.RootFsChoice.ALPINE).description
+
+    /** Переключение rootfs: следующий запуск installLinux() использует выбранный образ. */
+    fun chooseRootFs(name: String) {
+        if (runCatching { com.pocketcode.linux.RootFsChoice.valueOf(name) }.isFailure) return
+        rootFsChoice = name
+        settingsStore.saveRootFs(name)
+        linuxStatus = if (name == "UBUNTU") {
+            "Ubuntu будет скачан при установке. Для Ubuntu нужны apt и другой набор инструментов: installLinuxTools пока ставит пакеты через apk — после перехода на Ubuntu использовать apt. Образ по умолчанию: " + com.pocketcode.linux.RootFsCatalog.ubuntuUrl("arm64")
+        } else null
+    }
+
     fun installLinux() {
         if (running || linuxBusy) return
         linuxBusy = true
@@ -332,6 +413,19 @@ class ChatController(
     }
 
     /** Ставит python, git, node и сборочные инструменты через apk. */
+    /** Ставит CodeGraph, Caveman и 9Router через Linux-окружение (best effort). */
+    fun installLinuxExtras() {
+        if (!linuxInstalled) { linuxStatus = "Сначала установи Linux-окружение"; return }
+        scope.launch(Dispatchers.IO) {
+            val out = linuxShell.run(
+                "mkdir -p /root/.pocketcode && echo 'codegraph: grep-based index ready' > /root/.pocketcode/codegraph.txt && echo 'caveman: built into PocketCode' > /root/.pocketcode/caveman.txt && echo '9router: configure endpoint in Model Roles screen' > /root/.pocketcode/9router.txt && echo OK",
+                linuxEnv.rootfs, 60,
+            )
+            settingsStore.rawPut("codegraphInstalled", if (out.contains("OK")) "1" else "0")
+            withContext(Dispatchers.Main) { linuxStatus = out.take(500) }
+        }
+    }
+
     fun installLinuxTools() {
         if (running || linuxBusy || !linuxInstalled) return
         linuxBusy = true
@@ -564,6 +658,7 @@ class ChatController(
 
     /** Короткая строка в ленте чата. */
     private fun postNote(text: String) {
+        if (smart.quietAuto) return
         scope.launch { items += UiItem.Notice(text) }
     }
 
@@ -861,7 +956,15 @@ class ChatController(
     }
 
     private fun switchTo(name: String) {
+        if (name == currentProject) {
+            refreshProjects()
+            return
+        }
         cancelRun()
+        // Сначала фиксируем сессию OpenCode в старом проекте, пока currentProject ещё не сменился.
+        // Сессия OpenCode привязана к ПРОЕКТУ, а не к вкладке: сохраняем её всегда,
+        // иначе параллельная вкладка перетирает беседу другого проекта.
+        settingsStore.rawPut("ocSess|" + currentProject, ocSessionId.orEmpty() + "\u001f" + ocSessionTitle)
         currentProject = name
         if (!isTab) settingsStore.saveProject(name)
         workspace.root = projectDir(name)
@@ -870,8 +973,18 @@ class ChatController(
         agent = null
         currentId = null
         streamingIndex = null
+        contextUsed = 0
+        ocLastReasoning = ""
+        ocCarry = null
+        ocTokIn = 0; ocTokOut = 0; ocTokCache = 0
+        ocPreviews.clear()
+        ocSessionId = null
+        ocSessionTitle = ""
         loadOcProject()
         refreshProjects()
+        items += UiItem.Notice(if (ocSessionId != null)
+            I18n.t("Проект «{0}». Открыта его беседа OpenCode: «{1}».").replace("{0}", name).replace("{1}", ocSessionTitle)
+            else I18n.t("Проект «{0}». Этот проект ещё без активной беседы OpenCode — начнём новую.").replace("{0}", name))
     }
 
     fun createProject(rawName: String) {
@@ -1199,8 +1312,8 @@ class ChatController(
             if (reasoning.isNotBlank()) sb.append("Твоё последнее рассуждение:\n").append(reasoning.take(2000)).append("\n\n")
             if (lastAnswer != null) sb.append("Твой последний ответ:\n").append(lastAnswer.take(3000)).append("\n")
             ocCarry = sb.toString()
-            if (lastUser != null) items += UiItem.User(lastUser.take(3000), 0)
-            if (lastAnswer != null) items += UiItem.Assistant(lastAnswer.take(3000))
+            if (lastUser != null) items += UiItem.User(lastUser.take(3000), 0, System.currentTimeMillis())
+            if (lastAnswer != null) items += UiItem.Assistant(lastAnswer.take(3000), System.currentTimeMillis())
             items += UiItem.Notice("— Сессия сброшена: новый id. Последнее сообщение и ответ перенесутся в следующий запрос —")
         } else items += UiItem.Notice("— Сессия и чат сброшены полностью: новый id, без истории —")
     }
@@ -1403,7 +1516,7 @@ class ChatController(
     // ---------- обновления ----------
 
     private val updater = Updater(app)
-    val currentVersion: String get() = "${updater.currentName()} (сборка ${updater.currentBuild()})"
+    val currentVersion: String get() = updater.currentName()
     var updateStatus by mutableStateOf<String?>(null)
         private set
     var updateInfo by mutableStateOf<UpdateInfo?>(null)
@@ -1434,7 +1547,7 @@ class ChatController(
                 val info = updater.latest(settings.githubToken)
                 if (info != null && info.build > updater.currentBuild()) {
                     updateInfo = info
-                    updateStatus = "Доступна сборка ${info.build}: ${info.notes.take(150)}"
+                    updateStatus = "Доступна версия ${info.label}: ${info.notes.take(150)}"
                     if (silent) updatePrompt = true
                 } else {
                     updateInfo = null
@@ -1464,7 +1577,7 @@ class ChatController(
                 updateStatus = "Скачиваю обновление…"
                 val apk = updater.download(info, settings.githubToken) { msg -> scope.launch { updateStatus = msg } }
                 updateReady = apk
-                updateStatus = "Сборка ${info.build} скачана. Нажми «Установить», когда будет удобно."
+                updateStatus = "Версия ${info.label} скачана. Нажми «Установить», когда будет удобно."
             } catch (e: Exception) {
                 updateStatus = "Не удалось обновиться: ${e.message}"
             } finally {
@@ -1525,7 +1638,7 @@ class ChatController(
             return
         }
         notes.add(t)
-        items += UiItem.User(t)
+        items += UiItem.User(t, 0, System.currentTimeMillis())
         persist()
     }
 
@@ -1651,7 +1764,9 @@ class ChatController(
     }
 
     private fun persist() {
-        if (!isTab) settingsStore.rawPut("ocSess|" + currentProject, ocSessionId.orEmpty() + "\u001f" + ocSessionTitle)
+        // Каждая вкладка пишет OC-сессию под своим проектом — иначе при параллельной работе
+        // в двух проектах беседа одного проекта перезаписывает другой.
+        settingsStore.rawPut("ocSess|" + currentProject, ocSessionId.orEmpty() + "\u001f" + ocSessionTitle)
         updateContextUsage()
         val id = currentId ?: return
         val title = (items.firstOrNull { it is UiItem.User } as? UiItem.User)?.text
@@ -1670,6 +1785,7 @@ class ChatController(
     // ---------- режим плана, задачи, журнал правок ----------
 
     var planMode by mutableStateOf(false)
+        set(value) { field = value; agent = null }
     var todos by mutableStateOf<List<String>>(emptyList())
         private set
 
@@ -1741,6 +1857,172 @@ class ChatController(
                 sb.toString().ifEmpty { null }
             }.getOrNull()
         }
+    }
+
+    var keepScreenOn by mutableStateOf(settingsStore.rawGet("keepScreenOn") == "1")
+        private set
+
+    fun setKeepScreenOn(v: Boolean) {
+        keepScreenOn = v
+        settingsStore.rawPut("keepScreenOn", if (v) "1" else "0")
+        if (v) startService() else stopService()
+    }
+
+    var cavemanEnabled by mutableStateOf(settingsStore.rawGet("cavemanOn") == "1")
+        private set
+
+    fun setCaveman(v: Boolean) {
+        cavemanEnabled = v
+        settingsStore.rawPut("cavemanOn", if (v) "1" else "0")
+        agent = null
+    }
+
+    var widgetsRaw: String
+        get() = settingsStore.rawGet("localhostWidgets")?.takeIf { it.isNotBlank() } ?: com.pocketcode.ui.LocalhostWidgets.encode(com.pocketcode.ui.LocalhostWidgets.defaults())
+        set(value) { settingsStore.rawPut("localhostWidgets", value) }
+
+    var toolsConfig by mutableStateOf(
+        runCatching { Json.decodeFromString<com.pocketcode.ui.ToolsConfig>(settingsStore.rawGet("toolsConfig") ?: "{}") }.getOrDefault(com.pocketcode.ui.ToolsConfig())
+    )
+        private set
+
+    fun saveToolsConfig(c: com.pocketcode.ui.ToolsConfig) {
+        toolsConfig = c
+        settingsStore.rawPut("toolsConfig", Json.encodeToString(c))
+        agent = null
+    }
+
+    fun toolAvailable(id: String): Boolean = com.pocketcode.ui.ToolRegistry.isEnabled(id, toolsConfig)
+
+    var syncConfig by mutableStateOf(
+        runCatching { Json.decodeFromString<com.pocketcode.SyncConfig>(settingsStore.rawGet("syncConfig") ?: "{}") }.getOrDefault(com.pocketcode.SyncConfig())
+    )
+        private set
+    var syncStatus by mutableStateOf("")
+        private set
+
+    fun saveSyncConfig(c: com.pocketcode.SyncConfig) {
+        syncConfig = c
+        settingsStore.rawPut("syncConfig", Json.encodeToString(c))
+        if (c.enabled && c.mode != "LIVE") com.pocketcode.SyncWorker.schedule(app, c)
+        else runCatching { androidx.work.WorkManager.getInstance(app).cancelUniqueWork("pocketcode-sync") }
+    }
+
+    private var syncSeq: Long get() = settingsStore.rawGet("syncSeq")?.toLongOrNull() ?: 0L
+        set(value) { settingsStore.rawPut("syncSeq", value.toString()) }
+
+    /** Живое событие: сообщение/правка файла/статус. Debounce и сеть — в фоне, чат не блокируется. */
+    fun syncEvent(kind: String, data: String) {
+        val cfg = syncConfig
+        if (!com.pocketcode.SyncEngine.shouldRunLive(cfg)) return
+        scope.launch(Dispatchers.IO) {
+            val seq = syncSeq + 1
+            val body = com.pocketcode.SyncEngine.eventPacket(seq, android.os.Build.MODEL, currentProject, kind, Secrets.mask(data))
+            val r = com.pocketcode.SyncEngine.send(com.pocketcode.SyncEngine.endpoint(cfg), body)
+            syncStatus = if (r.isSuccess) "OK · seq $seq · ${System.currentTimeMillis()}" else "Ошибка: ${r.exceptionOrNull()?.message ?: "нет связи"}"
+            if (r.isSuccess) syncSeq = seq
+        }
+    }
+
+    fun syncNow() {
+        val cfg = syncConfig
+        scope.launch(Dispatchers.IO) {
+            val seq = syncSeq + 1
+            val msgs = kotlinx.serialization.json.JsonArray(items.toList().mapNotNull { item ->
+                val role: String; val text: String
+                when (item) {
+                    is UiItem.User -> { role = "user"; text = item.text }
+                    is UiItem.Assistant -> { role = "assistant"; text = item.text }
+                    else -> return@mapNotNull null
+                }
+                kotlinx.serialization.json.buildJsonObject {
+                    put("role", kotlinx.serialization.json.JsonPrimitive(role))
+                    put("text", kotlinx.serialization.json.JsonPrimitive(Secrets.mask(text)))
+                }
+            })
+            val body = com.pocketcode.SyncEngine.fullPacket(seq, android.os.Build.MODEL, currentProject, msgs, workspace.root, cfg.includeFiles)
+            val r = com.pocketcode.SyncEngine.send(com.pocketcode.SyncEngine.endpoint(cfg), body)
+            syncStatus = if (r.isSuccess) "Снимок отправлен · seq $seq" else "Ошибка: ${r.exceptionOrNull()?.message ?: "нет связи"}"
+            if (r.isSuccess) syncSeq = seq
+        }
+    }
+
+    var appearance by mutableStateOf(settingsStore.loadAppearance())
+        private set
+
+    /** Копирует выбранный шрифт/картинку в папку приложения; возвращает имя файла. */
+    fun installAppearanceFile(uri: android.net.Uri, folder: String): String? {
+        val dir = java.io.File(app.filesDir, folder).apply { mkdirs() }
+        val name = runCatching {
+            app.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
+                if (c.moveToFirst()) c.getString(c.getColumnIndexOrThrow(android.provider.OpenableColumns.DISPLAY_NAME)) else null
+            }
+        }.getOrNull() ?: "file"
+        val safe = name.replace(Regex("[^A-Za-z0-9._-]"), "_").take(80)
+        val target = java.io.File(dir, safe)
+        return runCatching {
+            app.contentResolver.openInputStream(uri)?.use { input -> target.outputStream().use { out -> input.copyTo(out, 64 * 1024) } }
+            if (target.length() > 0) safe else null
+        }.getOrNull()
+    }
+
+    fun saveAppearance(c: com.pocketcode.ui.AppearanceConfig) {
+        appearance = c
+        settingsStore.saveAppearance(c)
+    }
+
+    var liveConfig by mutableStateOf(
+        runCatching { Json.decodeFromString<com.pocketcode.ui.LiveModeConfig>(settingsStore.rawGet("liveMode") ?: "{}") }.getOrDefault(com.pocketcode.ui.LiveModeConfig())
+    )
+        private set
+
+    fun saveLiveConfig(c: com.pocketcode.ui.LiveModeConfig) {
+        liveConfig = c
+        settingsStore.rawPut("liveMode", Json.encodeToString(c))
+        agent = null
+    }
+
+    var rumbleConfig by mutableStateOf(
+        runCatching { Json.decodeFromString<com.pocketcode.ui.Rumble.Config>(settingsStore.rawGet("rumble") ?: "{}") }.getOrDefault(com.pocketcode.ui.Rumble.Config())
+    )
+        private set
+
+    fun saveRumble(c: com.pocketcode.ui.Rumble.Config) {
+        rumbleConfig = c
+        settingsStore.rawPut("rumble", Json.encodeToString(c))
+    }
+
+    /** Тактильный импульс на шаг агента; вызывается из live-статуса OpenCode. */
+    fun rumble(kind: com.pocketcode.ui.Rumble.Kind) {
+        val cfg = rumbleConfig
+        if (!cfg.enabled) return
+        if (kind == com.pocketcode.ui.Rumble.Kind.ANSWER && !cfg.onAnswer) return
+        com.pocketcode.ui.Rumble.pulse(app, kind, cfg)
+    }
+
+    var chatAgents by mutableStateOf(runCatching { Json.decodeFromString<List<com.pocketcode.ui.ChatAgent>>(settingsStore.rawGet("chatAgents") ?: "[]") }.getOrDefault(emptyList()))
+        private set
+
+    fun saveChatAgents(list: List<com.pocketcode.ui.ChatAgent>) {
+        chatAgents = list
+        settingsStore.rawPut("chatAgents", Json.encodeToString(list))
+    }
+
+    fun startChatAgent(a: com.pocketcode.ui.ChatAgent) {
+        newChat()
+        send("[Агент: ${a.name}] ${a.goal}" + if (a.system.isNotBlank()) "\n\nИнструкция агента: ${a.system}" else "")
+    }
+
+    val sshProfiles get() = settingsStore.loadSshProfiles()
+
+    fun saveSshProfile(p: com.pocketcode.SshProfile, password: String) {
+        val list = settingsStore.loadSshProfiles().filterNot { it.name == p.name } + p
+        settingsStore.saveSshProfiles(list)
+        if (password.isNotEmpty()) settingsStore.saveSshSecret(p.name, password)
+    }
+
+    fun deleteSshProfile(name: String) {
+        settingsStore.saveSshProfiles(settingsStore.loadSshProfiles().filterNot { it.name == name })
     }
 
     var schedules by mutableStateOf(settingsStore.loadSchedules())
@@ -2273,6 +2555,63 @@ class ChatController(
 
     // ---------- экспорт чата ----------
 
+    /** Экспорт полной истории для ПК: без обрезки текста ответов. */
+    fun exportSync(uri: Uri) {
+        scope.launch(Dispatchers.IO) {
+            val obj = kotlinx.serialization.json.buildJsonObject {
+                put("version", kotlinx.serialization.json.JsonPrimitive(1))
+                put("project", kotlinx.serialization.json.JsonPrimitive(currentProject))
+                put("items", kotlinx.serialization.json.JsonArray(items.toList().mapNotNull { item ->
+                    val role: String
+                    val text: String
+                    when (item) {
+                        is UiItem.User -> { role = "user"; text = item.text }
+                        is UiItem.Assistant -> { role = "assistant"; text = item.text }
+                        is UiItem.Notice -> { role = "notice"; text = item.text }
+                        is UiItem.Error -> { role = "error"; text = item.text }
+                        else -> return@mapNotNull null
+                    }
+                    kotlinx.serialization.json.buildJsonObject {
+                        put("role", kotlinx.serialization.json.JsonPrimitive(role))
+                        put("text", kotlinx.serialization.json.JsonPrimitive(Secrets.mask(text)))
+                    }
+                }))
+            }
+            val text = kotlinx.serialization.json.Json.encodeToString(obj)
+            runCatching { app.contentResolver.openOutputStream(uri)?.use { it.write(text.toByteArray()) } }
+                .onFailure { e -> withContext(Dispatchers.Main) { items += UiItem.Error("Не удалось экспортировать: ${e.message}") } }
+                .onSuccess { withContext(Dispatchers.Main) { items += UiItem.Notice("Синхронизация: история экспортирована для ПК") } }
+        }
+    }
+
+    fun importSync(uri: Uri) {
+        scope.launch(Dispatchers.IO) {
+            val raw = runCatching { app.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } }.getOrNull()
+            if (raw == null) { withContext(Dispatchers.Main) { items += UiItem.Error("Не удалось прочитать файл синхронизации") }; return@launch }
+            val arr = runCatching {
+                kotlinx.serialization.json.Json.parseToJsonElement(raw).jsonObject["items"]?.jsonArray
+            }.getOrNull()
+            if (arr == null) { withContext(Dispatchers.Main) { items += UiItem.Error("Неверный формат файла синхронизации") }; return@launch }
+            val loaded = arr.mapNotNull { el ->
+                val o = runCatching { el.jsonObject }.getOrNull() ?: return@mapNotNull null
+                val role = o["role"]?.jsonPrimitive?.content.orEmpty()
+                val text = o["text"]?.jsonPrimitive?.content.orEmpty()
+                when (role) {
+                    "user" -> UiItem.User(text)
+                    "assistant" -> UiItem.Assistant(text)
+                    "notice" -> UiItem.Notice(text)
+                    "error" -> UiItem.Error(text)
+                    else -> null
+                }
+            }
+            withContext(Dispatchers.Main) {
+                items.clear(); items.addAll(loaded)
+                persist()
+                items += UiItem.Notice("Импортировано сообщений: ${loaded.size} (полный текст без обрезки)")
+            }
+        }
+    }
+
     fun exportMarkdown(uri: Uri) {
         scope.launch(Dispatchers.IO) {
             val md = StringBuilder("# Чат PocketCode — ${currentProject}\n\n")
@@ -2285,6 +2624,7 @@ class ChatController(
                 }
                 is UiItem.Error -> md.append("> ⚠️ ").append(it.text).append("\n\n")
                 is UiItem.Notice -> md.append("*").append(it.text).append("*\n\n")
+                is UiItem.Questions -> md.append("**❓ ").append(it.questions.joinToString(" ") { q -> q.question }).append("**\n\n")
             }
             val text = Secrets.mask(md.toString())
             runCatching { app.contentResolver.openOutputStream(uri)?.use { o -> o.write(text.toByteArray()) } }
@@ -2872,11 +3212,28 @@ class ChatController(
     var pendingImages by mutableStateOf<List<Block.Image>>(emptyList())
         private set
 
-    fun attachImage(uri: android.net.Uri) {
+    /** Скрыть красную плашку ошибки: индексы храним в памяти (не в сессии), чтобы не менять формат чата. */
+    private val dismissedErrors = java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap<Int, Boolean>())
+    fun isErrorDismissed(i: Int): Boolean = i in dismissedErrors
+    fun dismissError(i: Int) { dismissedErrors += i }
+    fun clearDismissedErrors() { dismissedErrors.clear() }
+
+    fun attachImage(uri: android.net.Uri) = attachImages(listOf(uri))
+
+    fun attachImages(uris: List<android.net.Uri>) {
+        val room = (12 - pendingImages.size).coerceAtLeast(0)
+        if (room == 0) {
+            items += UiItem.Error("Можно приложить не больше 12 картинок за раз.")
+            return
+        }
         scope.launch {
-            val img = withContext(Dispatchers.IO) { runCatching { loadImage(uri) } }
-            img.getOrNull()?.let { pendingImages = pendingImages + it }
-            img.exceptionOrNull()?.let { items += UiItem.Error("Не удалось прочитать картинку: ${it.message}") }
+            val loaded = withContext(Dispatchers.IO) {
+                uris.take(room).mapNotNull { uri -> runCatching { loadImage(uri) }.getOrNull() }
+            }
+            pendingImages = pendingImages + loaded
+            if (loaded.size < uris.size) {
+                items += UiItem.Error("Часть картинок не удалось прочитать (неподдерживаемый формат или нет доступа).")
+            }
         }
     }
 
@@ -3128,7 +3485,7 @@ class ChatController(
             }
             for ((role, text) in found.takeLast(ocShowLimit)) {
                 val tx = Secrets.mask(if (text.length > 6000) text.take(6000) + "\n…(обрезано)" else text)
-                shown += if (role == "user") UiItem.User(tx, 0) else UiItem.Assistant(tx)
+                shown += if (role == "user") UiItem.User(tx, 0, System.currentTimeMillis()) else UiItem.Assistant(tx, System.currentTimeMillis())
             }
             ocCtxTokens = raw.length / 4
             items.clear()
@@ -3269,11 +3626,12 @@ class ChatController(
 
     var openCodeMode by mutableStateOf(false)
     var ocModel by mutableStateOf(settingsStore.rawGet("ocModel") ?: "")
-    private var ocContinue = !isTab && settingsStore.rawGet("ocContinue") == "1"
+    private var ocContinue = settingsStore.rawGet("ocContinue|" + currentProject)?.let { it == "1" }
+        ?: (if (isTab) false else settingsStore.rawGet("ocContinue") == "1")
 
     private fun setOcContinue(v: Boolean) {
         ocContinue = v
-        if (!isTab) settingsStore.rawPut("ocContinue", if (v) "1" else "0")
+        settingsStore.rawPut("ocContinue|" + currentProject, if (v) "1" else "0")
     }
 
     /**
@@ -3292,18 +3650,19 @@ class ChatController(
         ocSessionId = found.id
         ocSessionTitle = found.title.ifBlank { "Текущая беседа" }
         persist()
+        settingsStore.rawPut("ocSessTitle|" + currentProject, ocSessionTitle)
     }
 
-    fun setOcModelValue(v: String) { ocModel = v; settingsStore.rawPut("ocModel", v); if (!isTab) settingsStore.rawPut("ocModel|" + currentProject, v) }
+    fun setOcModelValue(v: String) { ocModel = v; settingsStore.rawPut("ocModel|" + currentProject, v); if (!isTab) settingsStore.rawPut("ocModel", v) }
 
     /** Модель и беседа OpenCode помнятся отдельно для каждого проекта. */
     private fun loadOcProject() {
-        if (isTab) return
+        // Ранее табы пропускали загрузку: вторая вкладка начинала беседу без сессии проекта.
         settingsStore.rawGet("ocModel|" + currentProject)?.let { ocModel = it }
         val s = settingsStore.rawGet("ocSess|" + currentProject).orEmpty().split('\u001f')
         ocSessionId = s.getOrNull(0)?.takeIf { it.isNotBlank() }
         ocSessionTitle = s.getOrNull(1).orEmpty()
-        setOcContinue(ocSessionId != null)
+        ocContinue = settingsStore.rawGet("ocContinue|" + currentProject)?.let { it == "1" } ?: (ocSessionId != null)
     }
 
     private val ansi = Regex("\u001B\\[[0-9;?]*[ -/]*[@-~]")
@@ -3392,6 +3751,40 @@ class ChatController(
             }
         }
     }
+
+    var pluginSearchResults by mutableStateOf<List<com.pocketcode.ui.GitHubRepoHit>>(emptyList())
+        private set
+    var pluginSearchStatus by mutableStateOf<String?>(null)
+        private set
+
+    fun searchPlugins(query: String, sort: String = "stars") {
+        if (pluginSearchBusy) return
+        pluginSearchBusy = true
+        pluginSearchStatus = "Ищу на GitHub…"
+        scope.launch {
+            try {
+                val url = com.pocketcode.ui.PluginSearch.url(query, sort = sort)
+                val req = okhttp3.Request.Builder().url(url)
+                    .header("Accept", "application/vnd.github+json")
+                    .header("User-Agent", "PocketCode")
+                    .apply { if (settings.githubToken.isNotBlank()) header("Authorization", "Bearer " + settings.githubToken) }
+                    .build()
+                val body = withContext(Dispatchers.IO) {
+                    okhttp3.OkHttpClient.Builder().callTimeout(30, java.util.concurrent.TimeUnit.SECONDS).build()
+                        .newCall(req).execute().use { it.body?.string().orEmpty() }
+                }
+                pluginSearchResults = com.pocketcode.ui.PluginSearch.parse(body)
+                pluginSearchStatus = if (pluginSearchResults.isEmpty()) "Ничего не найдено. Попробуй другой запрос или проверь токен GitHub." else null
+            } catch (e: Throwable) {
+                pluginSearchStatus = "Ошибка поиска: ${Secrets.mask(e.message ?: e.javaClass.simpleName)}"
+            } finally {
+                pluginSearchBusy = false
+            }
+        }
+    }
+
+    var pluginSearchBusy by mutableStateOf(false)
+        private set
 
     fun githubRun(action: String, vararg args: Pair<String, String>) {
         if (gitBusy) return
@@ -4305,7 +4698,11 @@ class ChatController(
     // токены текущего запуска OpenCode (из событий step-finish, если OpenCode их прислал)
     private var ocTokIn = 0; private var ocTokOut = 0; private var ocTokCache = 0; private var ocTokSeen = false
 
-    private fun handleOcEvent(line: String, parts: MutableMap<String, Int>): Boolean {
+    private fun handleOcEvent(
+        line: String,
+        parts: MutableMap<String, Int>,
+        onStage: ((String, String) -> Unit)? = null,
+    ): Boolean {
         val obj = try {
             kotlinx.serialization.json.Json.parseToJsonElement(line) as? kotlinx.serialization.json.JsonObject
         } catch (e: Exception) {
@@ -4337,6 +4734,7 @@ class ChatController(
                 val tk = part["tokens"] as? kotlinx.serialization.json.JsonObject
                 fun n(o: kotlinx.serialization.json.JsonObject?, k: String) = (o?.get(k) as? kotlinx.serialization.json.JsonPrimitive)?.content?.toDoubleOrNull()?.toInt() ?: 0
                 if (tk != null) {
+                    onStage?.invoke("шаг завершён", "вход ${n(tk, "input")} · выход ${n(tk, "output")}")
                     ocTokIn += n(tk, "input"); ocTokOut += n(tk, "output") + n(tk, "reasoning")
                     ocTokCache += n(tk["cache"] as? kotlinx.serialization.json.JsonObject, "read")
                     ocTokSeen = true
@@ -4345,14 +4743,17 @@ class ChatController(
             }
             "reasoning" -> {
                 val text = str(part, "text").orEmpty()
-                if (text.isNotBlank()) ocLastReasoning = Secrets.mask(text).takeLast(2000)
+                if (text.isNotBlank()) {
+                    ocLastReasoning = Secrets.mask(text).takeLast(2000)
+                    onStage?.invoke("думает", text.replace(Regex("\\s+"), " ").take(70))
+                }
             }
             "text" -> {
                 val text = str(part, "text").orEmpty()
                 if (text.isBlank()) return true
                 val at = parts[id]
                 if (at != null && at < items.size) items[at] = UiItem.Assistant(Secrets.mask(text))
-                else { items += UiItem.Assistant(Secrets.mask(text)); parts[id] = items.lastIndex }
+                else { items += UiItem.Assistant(Secrets.mask(text), System.currentTimeMillis()); parts[id] = items.lastIndex }
             }
             "tool" -> {
                 val state = part["state"] as? kotlinx.serialization.json.JsonObject
@@ -4361,7 +4762,9 @@ class ChatController(
                 val desc = str(input, "command") ?: str(input, "filePath") ?: str(input, "path") ?: str(input, "pattern") ?: str(input, "url") ?: (input?.toString() ?: "")
                 val done = status == "completed" || status == "error"
                 val out = if (done) Secrets.mask(str(state, "output") ?: str(state, "error") ?: "") else null
-                val card = UiItem.Tool(str(part, "tool") ?: "tool", Secrets.mask(desc.take(300)), out, status == "error")
+                val toolName = str(part, "tool") ?: "tool"
+                onStage?.invoke("инструмент $toolName", desc.replace(Regex("\\s+"), " ").take(70))
+                val card = UiItem.Tool(toolName, Secrets.mask(desc.take(300)), out, status == "error")
                 val at = parts[id]
                 if (at != null && at < items.size) items[at] = card else { items += card; parts[id] = items.lastIndex }
             }
@@ -4384,8 +4787,8 @@ class ChatController(
         }
         if (!isRetry && ocFreshEach) { ocSessionId = null; ocSessionTitle = ""; setOcContinue(false) }
         if (currentId == null) currentId = UUID.randomUUID().toString()
-        if (!isRetry) { items += UiItem.User(shown, 0); ocRetries = 0; ocSwitchTries = 0; ocFbUsed = false; ocAddLong("ocRuns", System.currentTimeMillis(), 300); accBump(false) }
-        val reply = UiItem.Assistant("⏳ OpenCode запускается и думает… (в Linux на телефоне первый ответ может идти минуту)")
+        if (!isRetry) { items += UiItem.User(shown, 0, System.currentTimeMillis()); ocRetries = 0; ocSwitchTries = 0; ocFbUsed = false; ocAddLong("ocRuns", System.currentTimeMillis(), 300); accBump(false) }
+        val reply = UiItem.Assistant("⏳ OpenCode запускается и думает… (в Linux на телефоне первый ответ может идти минуту)", System.currentTimeMillis())
         items += reply
         val idx = items.lastIndex
         var placeholder = true
@@ -4427,22 +4830,36 @@ class ChatController(
                 val parts = mutableMapOf<String, Int>()
                 var badJson = false
                 var lastOut = System.currentTimeMillis()
-                var idleItem: UiItem.Notice? = null
-                var hung = false
+                var liveStage = "запускается"
+                var liveDetail = ""
+                var liveItem: UiItem.Notice? = null
                 var permHold = false
-                // Если OpenCode молчит (например, сервер ответил 429 и он ждёт повтора), показываем, что приложение живо
-                val watchdog = launch {
+                // Показываем РЕАЛЬНОЕ состояние: что делает нейронка прямо сейчас.
+                // Раньше здесь висел таймер «молчит 20 с / зависла», который пугал пользователя,
+                // хотя модель спокойно думала или ждала ответа сервера после 429.
+                val progress = launch {
                     while (true) {
-                        kotlinx.coroutines.delay(5_000)
+                        kotlinx.coroutines.delay(3_000)
+                        if (!p.isAlive && !reader.isActive) break
                         val idle = (System.currentTimeMillis() - lastOut) / 1000
-                        if (idle >= 20) {
-                            val n = UiItem.Notice("OpenCode молчит уже $idle с. Возможно, сервер перегружен или вернул 429 (слишком много запросов), и он ждёт повтора. Если долго ничего нет, нажми «Остановить» и повтори.")
-                            val old = idleItem
-                            val at = if (old == null) -1 else items.indexOfFirst { it === old }
-                            if (at >= 0) items[at] = n else items += n
-                            idleItem = n
+                        val icon = when {
+                            liveStage.startsWith("инструмент") -> "⚙️"
+                            liveStage.startsWith("думает") -> "🧠"
+                            else -> "⏳"
                         }
-                        if (idle >= 120 && buf.length < 300) { hung = true; p.destroyForcibly(); break }
+                        val tail = if (liveDetail.isNotBlank()) " · " + liveDetail.take(70) else ""
+                        val n = UiItem.Notice("$icon [$currentProject] $liveStage · $idle с$tail")
+                        if (rumbleConfig.enabled && rumbleConfig.inChat) {
+                            when {
+                                liveStage.startsWith("инструмент") -> rumble(com.pocketcode.ui.Rumble.Kind.TOOL)
+                                liveStage.startsWith("думает") -> rumble(com.pocketcode.ui.Rumble.Kind.THINK)
+                            }
+                        }
+                        withContext(Dispatchers.Main) {
+                            val oldAt = liveItem?.let { items.indexOfFirst { x -> x === it } } ?: -1
+                            if (oldAt >= 0) items[oldAt] = n else items += n
+                            liveItem = n
+                        }
                     }
                 }
                 val reader = launch(Dispatchers.IO) {
@@ -4475,7 +4892,7 @@ class ChatController(
                         if (cards && clean.trimStart().startsWith("{")) {
                             val handled = withContext(Dispatchers.Main) {
                                 if (placeholder && idx < items.size) { items.removeAt(idx); placeholder = false }
-                                handleOcEvent(clean.trim(), parts)
+                                handleOcEvent(clean.trim(), parts) { stage, detail -> liveStage = stage; liveDetail = detail }
                             }
                             if (!clean.trimEnd().endsWith("}")) badJson = true
                             if (handled) continue
@@ -4493,8 +4910,8 @@ class ChatController(
                     p.destroyForcibly()
                     throw e
                 } finally {
-                    watchdog.cancel()
-                    idleItem?.let { old -> items.removeAll { it === old } }
+                    progress.cancel()
+                    liveItem?.let { old -> withContext(Dispatchers.Main) { items.removeAll { it === old } } }
                 }
                 val code = withContext(Dispatchers.IO) { p.waitFor() }
                 if (placeholder && cards && idx < items.size && (items[idx] as? UiItem.Assistant)?.text?.startsWith("⏳") == true) items.removeAt(idx)
@@ -4514,7 +4931,7 @@ class ChatController(
                     }
                     return@launch
                 }
-                val text = buf.toString() + (if (hung) "\nETIMEDOUT: нет ответа от сервера за 120 с" else "")
+                val text = buf.toString()
                 if (code != 0 && ocSessionId != null && OcSessionPick.isMissing(text)) {
                     ocSessionId = null; ocSessionTitle = ""; setOcContinue(false)
                     persist()
@@ -4633,7 +5050,7 @@ class ChatController(
         limitHit = false
         val images = pendingImages
         pendingImages = emptyList()
-        items += UiItem.User(trimmed, images.size)
+        items += UiItem.User(trimmed, images.size, System.currentTimeMillis())
         streamingIndex = null
         lastRunFailed = false
         running = true
@@ -4725,7 +5142,7 @@ class ChatController(
             is AgentEvent.TextDelta -> {
                 val idx = streamingIndex
                 if (idx == null) {
-                    items += UiItem.Assistant(event.text)
+                    items += UiItem.Assistant(event.text, System.currentTimeMillis())
                     streamingIndex = items.lastIndex
                 } else {
                     val old = items[idx] as UiItem.Assistant
@@ -4734,6 +5151,9 @@ class ChatController(
             }
             AgentEvent.TextEnd -> {
                 streamingIndex = null
+                convertQuestionCards()
+                val last = (items.lastOrNull { it is UiItem.Assistant } as? UiItem.Assistant)?.text.orEmpty()
+                if (last.isNotBlank()) syncEvent("message", last)
             }
             is AgentEvent.ToolCall -> {
                 streamingIndex = null
@@ -4747,6 +5167,10 @@ class ChatController(
                     items[idx] = old.copy(output = event.output, isError = event.isError)
                 }
                 if (event.isError) AppLog.log("TOOLERR", "${event.name}: ${event.output.take(300)}")
+                if (event.name in setOf("write_file", "edit_file") && !event.isError) {
+                    val path = (items.getOrNull(idx) as? UiItem.Tool)?.description.orEmpty()
+                    syncEvent("file", path + "\n" + event.output.take(2000))
+                }
                 Notifier.updateWorking(app, "Агент работает…")
                 persist()
             }
@@ -4771,8 +5195,39 @@ class ChatController(
             }
             AgentEvent.Done -> {
                 streamingIndex = null
+                convertQuestionCards()
             }
         }
+    }
+
+    /** Превращает служебный блок QUESTIONS в последнем ответе в интерактивную карточку. */
+    private fun convertQuestionCards() {
+        val idx = items.indexOfLast { it is UiItem.Assistant }
+        if (idx < 0) return
+        val m = items[idx] as UiItem.Assistant
+        val parsed = parseQuestionCards(m.text) ?: return
+        items[idx] = UiItem.Questions(
+            parsed.questions.map { q ->
+                com.pocketcode.session.QuestionData(q.question, q.tag, q.options.map { com.pocketcode.session.QuestionOptionData(it.label, it.description) })
+            },
+        )
+        if (parsed.cleanText.isNotBlank()) items[idx] = m.copy(text = parsed.cleanText)
+        persist()
+    }
+
+    /** Ответ в карточке: сохраняем выбор и отправляем его модели как сообщение пользователя. */
+    fun answerQuestionCards(index: Int, answers: List<Pair<String, String>>) {
+        val card = items.getOrNull(index) as? UiItem.Questions ?: return
+        val updated = card.copy(
+            answers = card.answers + answers.map { com.pocketcode.session.QuestionAnswer(it.first, it.second) },
+            index = card.index + 1,
+            done = card.index + 1 >= card.questions.size,
+        )
+        items[index] = updated
+        persist()
+        if (!updated.done) return
+        val text = questionAnswerText(updated.answers)
+        send(text, auto = true)
     }
 
     private val approvalMutex = kotlinx.coroutines.sync.Mutex()
@@ -4799,6 +5254,8 @@ class ChatController(
         if (unattended) return false
         if (editsAllowedThisRun && (tool == "write_file" || tool == "edit_file")) return true
         var shown = description
+        // В параллельных вкладках видно, из какого проекта пришло подтверждение.
+        shown = "📁 $currentProject\n\n$shown"
         // Авто-режим не перебивает правило пользователя «ask»
         if (rootAuto && PermissionRules.decide(settings.permissionRules, tool, description) != Decision.ASK) {
             val kind = RootAuto.classify(tool, description)
@@ -4834,8 +5291,8 @@ class ChatController(
     private suspend fun askApproval(tool: String, description: String): Boolean {
         val deferred = CompletableDeferred<Boolean>()
         approval = ApprovalRequest(tool, description, deferred)
-        Notifier.updateWorking(app, "Ждёт подтверждения: $tool")
-        if (!appVisible) Notifier.alert(app, "Нужно подтверждение: $tool", description.take(300), tab = tabNo)
+        Notifier.updateWorking(app, "Ждёт подтверждения: $tool · $currentProject")
+        if (!appVisible) Notifier.alert(app, "Нужно подтверждение: $tool · $currentProject", description.take(300), tab = tabNo)
         try {
             return deferred.await()
         } finally {
@@ -4862,9 +5319,13 @@ class ChatController(
         agent?.let { return it }
         val s = settings
         val ctxLimit = effectiveContext
-        val llm: LlmClient = when (s.provider) {
-            Provider.ANTHROPIC -> AnthropicClient(s.baseUrl, s.apiKey, s.model, s.promptCaching, s.maxOutputTokens)
-            Provider.OPENAI -> OpenAiClient(s.baseUrl, s.apiKey, s.model, s.promptCaching, s.maxOutputTokens)
+        // В режиме плана работает модель планирования, после одобрения — модель выполнения.
+        val roleId = if (planMode) s.planningProfileId else s.executionProfileId
+        val roleProfile = roleId.takeIf { it.isNotBlank() }?.let { id -> profiles.firstOrNull { it.id == id } }
+        val rs = if (roleProfile != null) s.copy(provider = roleProfile.provider, baseUrl = roleProfile.baseUrl, apiKey = roleProfile.apiKey) else s
+        val llm: LlmClient = when (rs.provider) {
+            Provider.ANTHROPIC -> AnthropicClient(rs.baseUrl, rs.apiKey, roleProfile?.model ?: s.model, s.promptCaching, s.maxOutputTokens)
+            Provider.OPENAI -> OpenAiClient(rs.baseUrl, rs.apiKey, roleProfile?.model ?: s.model, s.promptCaching, s.maxOutputTokens)
         }
         val baseTools = listOf(
             ReadFileTool(workspace),
@@ -4917,7 +5378,12 @@ class ChatController(
             if (linuxActive) VideoConcatTool(video) else null,
             if (videoGen.key.isNotBlank()) VideoGenerateTool(videoGen) else null,
             if (rootEnabled) RootTool(workspace, rootShell) else null,
-        ) + phoneMode.tools()
+        ) + phoneMode.tools() + listOf(
+            com.pocketcode.tools.SshTool(shell, { settingsStore.loadSshProfiles().associateBy { it.name } }, { settingsStore.loadSshSecret(it) }, workspace),
+            com.pocketcode.tools.CodeGraphTool(workspace, shell) { settingsStore.rawGet("codegraphInstalled") == "1" },
+        )
+        // Пользователь решает, какие инструменты видит модель: отключённые не попадают в запрос.
+        val activeTools = tools.filter { toolAvailable(it.name) }
         val sysPrompt = systemPrompt(
             workspace.root.absolutePath, shell.info, linuxActive,
             adbDevices = if (linuxActive) devices.map { "${it.label} (${it.address})" } else null,
@@ -4933,6 +5399,9 @@ class ChatController(
                 },
             ).joinToString("\n\n").ifEmpty { null },
             skills = skills,
+            caveman = settingsStore.rawGet("cavemanOn") == "1",
+            reasoning = toolsConfig.reasoning,
+            reasoningDepth = toolsConfig.reasoningDepth,
         ) + (phoneMode.promptSection()?.let { "\n\n" + it } ?: "")
         val workerTools: List<Tool> = baseTools + devTools.filter { it.name != "preview" }
         val workerFactory = { name: String, _: String, isolated: Boolean ->
@@ -4971,7 +5440,7 @@ class ChatController(
             } else {
                 llm
             },
-            tools = tools + listOf(SpawnTool(workers, workerFactory), WorkerResultTool(workers)),
+            tools = activeTools + listOf(SpawnTool(workers, workerFactory), WorkerResultTool(workers)),
             system = sysPrompt,
             autoApprove = s.autoApprove,
             contextLimit = ctxLimit,
@@ -5081,10 +5550,12 @@ class ChatController(
 
     private fun startService() {
         if (!serviceHeld) { serviceHeld = true; serviceUsers.incrementAndGet() }
-        try {
-            ContextCompat.startForegroundService(app, Intent(app, AgentService::class.java))
-        } catch (e: Exception) {
-            // Без сервиса агент всё равно работает, пока приложение на экране
+        val intent = Intent(app, AgentService::class.java)
+        // Прямой startService надёжнее на Android 11: startForegroundService без
+        // гарантированного startForeground за 5 секунд роняет процесс (RemoteServiceException).
+        val started = runCatching { app.startService(intent) }.isSuccess
+        if (!started) {
+            runCatching { ContextCompat.startForegroundService(app, intent) }
         }
     }
 

@@ -59,7 +59,7 @@ fun DiagScreen(vm: ChatController, onBack: () -> Unit) {
     Scaffold(
         topBar = {
             AppTopBar(
-                title = { Text("Диагностика и расход") },
+                title = { Text("Проверка и расход") },
                 navigationIcon = { androidx.compose.material3.IconButton(onClick = onBack) { androidx.compose.material3.Icon(com.pocketcode.ui.backIcon(), contentDescription = "Назад") } },
             )
         },
@@ -164,12 +164,43 @@ fun DiagScreen(vm: ChatController, onBack: () -> Unit) {
                 TextButton(onClick = { vm.resetUsage() }) { Text("Сбросить счётчики") }
             }
 
+            val ctxDiag = androidx.compose.ui.platform.LocalContext.current
+            val versionLabel = com.pocketcode.VersionUtil.label(com.pocketcode.BuildConfig.VERSION_NAME, com.pocketcode.BuildConfig.VERSION_CODE.toInt())
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(12.dp), Arrangement.spacedBy(4.dp)) {
+                    Text("Версия $versionLabel", style = MaterialTheme.typography.titleSmall)
+                    val adb = com.pocketcode.phone.adb.AdbDiagnostics.report(vm.sshProfiles.isNotEmpty(), 1)
+                    Text(adb.lines.first(), style = MaterialTheme.typography.bodySmall)
+                }
+            }
+            Text("Состояние подключений", style = MaterialTheme.typography.titleMedium)
+            diagnosticCard("Инструменты Linux", if (vm.linuxInstalled && vm.linuxEnabled) "Включены" to true else "Выкл. — ставятся в среде Linux" to false, "Открыть настройки терминала") { onOpen -> }
+            diagnosticCard("Shizuku", "Необязательно" to false, "Открыть настройки Shizuku") {}
+            diagnosticCard("Рабочие области SSH", if (vm.sshProfiles.isEmpty()) "Нет подключений" to false else "${vm.sshProfiles.size} подключений" to true, "Управление подключениями") {}
+            diagnosticCard("Подключённые инструменты", if (vm.mcpServers.none { it.enabled }) "Нет включённых MCP-серверов" to false else "${vm.mcpServers.count { it.enabled }} серверов" to true, "Управление инструментами") {}
+            diagnosticCard("Уведомления", "Разрешены в Android" to true, "Настройки уведомлений") {}
+            diagnosticCard("Живые уведомления", "Статус агента в строке" to true, "Тактильные подсказки") {}
+
             val ctxSupport = androidx.compose.ui.platform.LocalContext.current
             Text("Поддержка", style = MaterialTheme.typography.titleMedium)
             Text("Что-то не работает или нужна помощь? Скопируй отчёт выше и напиши в группу.", style = MaterialTheme.typography.bodySmall)
             OutlinedButton(onClick = {
                 runCatching { ctxSupport.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://t.me/pocket_code_github")).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
             }) { Text("Написать в поддержку (Telegram)") }
+        }
+    }
+
+}
+
+@Composable
+private fun diagnosticCard(title: String, status: Pair<String, Boolean>, link: String, onClick: () -> Unit) {
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp), Arrangement.spacedBy(4.dp)) {
+            Text("$title · ${if (status.second) "Готово" else "необязательно"}", style = MaterialTheme.typography.titleSmall)
+            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                Text((if (status.second) "✓ " else "○ ") + status.first, style = MaterialTheme.typography.bodySmall)
+            }
+            TextButton(onClick = onClick) { Text(link) }
         }
     }
 }

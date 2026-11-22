@@ -11,12 +11,21 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    env:
-      BUILD_NUMBER: ${{ github.run_number }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Версия приложения (мажор.минор из version.properties, патч по коммитам)
+        # Патч = число коммитов с последней правки version.properties + 1. Растёт сам, при смене VERSION_BASE начинается с 1.
+        run: |
+          BASE=$(sed -n 's/^VERSION_BASE=//p' version.properties | head -1 | tr -d '[:space:]')
+          echo "$BASE" | grep -Eq '^[0-9]+\.[0-9]+$' || { echo "::error title=Версия::в version.properties нет VERSION_BASE вида 4.0"; exit 1; }
+          FIRST=$(git log -1 --format=%H -- version.properties)
+          PATCH=$(( $(git rev-list --count "$FIRST"..HEAD) + 1 ))
+          echo "APP_VERSION=$BASE.$PATCH" >> "$GITHUB_ENV"
+          echo "PC_PATCH=$PATCH" >> "$GITHUB_ENV"
+          echo "::notice title=Версия::$BASE.$PATCH"
 
       - uses: actions/setup-java@v4
         with:
@@ -120,8 +129,11 @@ jobs:
           NOTES=$(git log $RANGE --no-merges --pretty='• %s' | grep -v -i -E 'ci:|\[skip' | head -40 | cut -c1-300)
           [ -z "$NOTES" ] && NOTES="• $(git log -1 --pretty=%s)"
           printf 'Что нового %s:\n%s\n' "$FROM" "$NOTES" > notes.txt
-          gh release create "build-${{ github.run_number }}" PocketCode.apk \
-            --title "PocketCode 0.6 · сборка ${{ github.run_number }}" \
+          TAG="v$APP_VERSION"
+          # повторный запуск той же сборки: старый релиз с этим тегом заменяем
+          if gh release view "$TAG" >/dev/null 2>&1; then gh release delete "$TAG" --cleanup-tag -y; fi
+          gh release create "$TAG" PocketCode.apk \
+            --title "PocketCode $APP_VERSION" \
             --notes-file notes.txt \
             --target "${{ github.sha }}"
           # оставляем только 10 последних релизов

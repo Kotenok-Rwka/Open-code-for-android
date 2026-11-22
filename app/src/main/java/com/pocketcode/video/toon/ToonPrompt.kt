@@ -37,7 +37,15 @@ object ToonPrompt {
     /** Сколько реплик нужно, чтобы набралась длина: средняя реплика с паузой около 3.6 секунды. */
     fun linesFor(minSec: Int): Int = (minSec / 3.6).toInt().coerceAtLeast(6) + 2
 
-    fun system(minSec: Int, format: ToonFormat, previous: String?, chosen: String?, episode: Int): String {
+    fun system(
+        minSec: Int,
+        format: ToonFormat,
+        previous: String?,
+        chosen: String?,
+        episode: Int,
+        choiceCount: Int = 2,
+        extra: String = "",
+    ): String {
         val n = linesFor(minSec)
         val sb = StringBuilder()
         sb.append("Ты сценарист коротких вертикальных мультиков для TikTok: плоские вырезные герои, живые люди и необычные истории. ")
@@ -46,7 +54,10 @@ object ToonPrompt {
         sb.append("Имя: реплика\nРассказчик: реплика\n")
         sb.append("Сцену можно менять по ходу истории новой строкой «Сцена: …».\n")
         if (format == ToonFormat.CHOICE) {
-            sb.append("В конце строка «Выбор: вопрос зрителям | вариант 1 | вариант 2», ровно два варианта.\n")
+            val count = choiceCount.coerceIn(1, 8)
+            sb.append("В конце строка «Выбор: вопрос зрителям | вариант 1 | вариант 2»")
+            if (count != 2) sb.append(" с ровно $count вариантами через |") else sb.append(", ровно два варианта")
+            sb.append(".\n")
         } else {
             sb.append("Без строки «Выбор». История обрывается на интересном месте, чтобы хотелось смотреть следующую серию.\n")
         }
@@ -55,6 +66,9 @@ object ToonPrompt {
         sb.append("Реплики короткие, живая разговорная речь, до 90 знаков. Никаких цифр и сокращений: числа пиши словами, как произносятся.\n")
         sb.append("Не меньше $n реплик, чтобы серия шла не короче $minSec секунд. Первая реплика сразу цепляет.\n")
         if (episode > 1) sb.append("Это серия номер $episode: продолжай историю с теми же героями.\n")
+        if (extra.isNotBlank()) {
+            sb.append("Дополнительные требования (соблюдай их):\n").append(extra.trim().take(2000)).append("\n")
+        }
         if (!previous.isNullOrBlank()) {
             sb.append("Предыдущая серия:\n").append(previous.trim().take(3500)).append("\n")
             if (!chosen.isNullOrBlank()) sb.append("Зрители проголосовали за вариант: «${chosen.trim()}». Продолжай именно с него.\n")

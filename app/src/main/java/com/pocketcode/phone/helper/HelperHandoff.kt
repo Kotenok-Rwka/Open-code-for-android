@@ -58,8 +58,13 @@ object HelperHandoff {
      * Команда для `su 2000 -c`: сначала печатает `id -u`; приложение пишет пароль только если прочитало 2000
      * (su согласился и сменил uid на shell). Дальше всё как в [command].
      */
-    fun rootCommand(apkPath: String, packageName: String, appUid: Int, certPin: String): String =
-        "id -u; " + command(apkPath, packageName, appUid, certPin)
+    fun rootCommand(apkPath: String, packageName: String, appUid: Int, certPin: String): String {
+        // Supervisor из Mika: su завершается, но helper живёт в отдельной сессии; при закрытии stdin
+        // watcher добивает только группу su, а не сам helper. Команда передаётся АРГУМЕНТОМ ($1),
+        // а не подставляется в текст скрипта — иначе кавычки и $n внутри helper ломают цитирование.
+        val cmd = command(apkPath, packageName, appUid, certPin)
+        return "id -u; /system/bin/sh -c " + quote(RootCommandSession.androidScript) + " pc-root " + quote(cmd)
+    }
 
     /** Отпечаток SHA-256 сертификата подписи (DER); несколько подписантов сортируются и склеиваются запятой. Нет сертификатов — null. */
     fun certPin(certs: List<ByteArray>?): String? {

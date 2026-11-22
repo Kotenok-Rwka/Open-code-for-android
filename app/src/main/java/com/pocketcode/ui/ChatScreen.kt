@@ -86,6 +86,9 @@ fun ChatScreen(
     onOpenDiff: () -> Unit = {},
     onOpenPhone: () -> Unit = {},
     onOpenLearn: () -> Unit = {},
+    onOpenExtra: (String) -> Unit = {},
+    onSyncExport: () -> Unit = {},
+    onSyncImport: () -> Unit = {},
 ) {
     var showNewChat by remember { mutableStateOf(false) }
     val imeOpen = androidx.compose.foundation.layout.WindowInsets.isImeVisible
@@ -110,8 +113,8 @@ fun ChatScreen(
     var editIndex by remember { mutableStateOf(-1) }
     var editText by remember { mutableStateOf("") }
     val pickImage = androidx.activity.compose.rememberLauncherForActivityResult(
-        androidx.activity.result.contract.ActivityResultContracts.GetContent(),
-    ) { uri -> if (uri != null) vm.attachImage(uri) }
+        androidx.activity.result.contract.ActivityResultContracts.GetMultipleContents(),
+    ) { uris -> if (uris.isNotEmpty()) vm.attachImages(uris) }
     val listState = rememberLazyListState()
     // Список сообщений меняется на каждый токен стрима. Читаем из него только нужные значения через derivedStateOf,
     // иначе весь экран (панель, чипы, поле ввода) перерисовывался бы на каждый токен.
@@ -187,21 +190,30 @@ fun ChatScreen(
                     Box {
                         TextButton(onClick = { moreMenu = true }) { Text("⋮") }
                         DropdownMenu(expanded = moreMenu, onDismissRequest = { moreMenu = false }) {
-                            DropdownMenuItem(text = { Text("Новая вкладка чата") }, onClick = { moreMenu = false; (ctx.applicationContext as com.pocketcode.PocketCodeApp).addTab() })
-                            DropdownMenuItem(text = { Text("Терминал") }, onClick = { moreMenu = false; onOpenTerminal() })
-                            DropdownMenuItem(text = { Text("Git") }, onClick = { moreMenu = false; onOpenGit() })
-                            DropdownMenuItem(text = { Text("Что в контексте") }, onClick = { moreMenu = false; onOpenContext() })
-                            DropdownMenuItem(text = { Text("Экспорт чата в Markdown") }, onClick = { moreMenu = false; onExport() })
-                            if (vm.openCodeMode) DropdownMenuItem(text = { Text("Сбросить сессию (оставить последнее)") }, onClick = { moreMenu = false; vm.resetSessionAndChat(true) })
-                            if (vm.openCodeMode) DropdownMenuItem(text = { Text("Сбросить, выбрав с какого сообщения") }, onClick = { moreMenu = false; pickFrom = vm.items.indexOfLast { it is UiItem.User }.coerceAtLeast(0); dlg = "resetpick" })
-                            if (vm.openCodeMode) DropdownMenuItem(text = { Text("Сбросить сессию и чат полностью") }, onClick = { moreMenu = false; vm.resetSessionAndChat(false) })
-                            if (vm.openCodeMode) DropdownMenuItem(text = { Text("Сжать беседу") }, onClick = { moreMenu = false; vm.compactOcSession() })
+                            fun group(title: String) {
+                                androidx.compose.material3.HorizontalDivider()
+                                DropdownMenuItem(text = { Text(title, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary) }, onClick = {}, enabled = false)
+                            }
+                            group("Чат")
+                            DropdownMenuItem(text = { Text("Новая вкладка") }, onClick = { moreMenu = false; (ctx.applicationContext as com.pocketcode.PocketCodeApp).addTab() })
+                            DropdownMenuItem(text = { Text("Сменить модель") }, onClick = { moreMenu = false; modelDraft = vm.settings.model; if (vm.openCodeMode) vm.loadOcModels(); dlg = "model" })
+                            DropdownMenuItem(text = { Text("Поиск по чату") }, onClick = { moreMenu = false; searchQ = ""; dlg = "search" })
+                            DropdownMenuItem(text = { Text("Мои шаблоны") }, onClick = { moreMenu = false; newTpl = ""; dlg = "tpl" })
                             DropdownMenuItem(text = { Text("Отмеченные ответы (${vm.stars.size})") }, onClick = { moreMenu = false; dlg = "stars" })
                             DropdownMenuItem(text = { Text("Отправить позже") }, onClick = { moreMenu = false; dlg = "later" })
-                            DropdownMenuItem(text = { Text("Поиск по чату") }, onClick = { moreMenu = false; searchQ = ""; dlg = "search" })
+                            DropdownMenuItem(text = { Text("Экспорт чата в Markdown") }, onClick = { moreMenu = false; onExport() })
+                            group("Действия")
+                            DropdownMenuItem(text = { Text("Терминал") }, onClick = { moreMenu = false; onOpenTerminal() })
                             DropdownMenuItem(text = { Text("Заметки проекта") }, onClick = { moreMenu = false; notesDraft = vm.notesText(); dlg = "notes" })
-                            DropdownMenuItem(text = { Text("Мои шаблоны") }, onClick = { moreMenu = false; newTpl = ""; dlg = "tpl" })
-                            DropdownMenuItem(text = { Text("Сменить модель") }, onClick = { moreMenu = false; modelDraft = vm.settings.model; if (vm.openCodeMode) vm.loadOcModels(); dlg = "model" })
+                            DropdownMenuItem(text = { Text("Экспорт истории на ПК") }, onClick = { moreMenu = false; onSyncExport() })
+                            DropdownMenuItem(text = { Text("Загрузить с ПК") }, onClick = { moreMenu = false; onSyncImport() })
+                            if (vm.openCodeMode) {
+                                group("OpenCode")
+                                DropdownMenuItem(text = { Text("Сбросить (оставить последнее)") }, onClick = { moreMenu = false; vm.resetSessionAndChat(true) })
+                                DropdownMenuItem(text = { Text("Сбросить с сообщения") }, onClick = { moreMenu = false; pickFrom = vm.items.indexOfLast { it is UiItem.User }.coerceAtLeast(0); dlg = "resetpick" })
+                                DropdownMenuItem(text = { Text("Сбросить полностью") }, onClick = { moreMenu = false; vm.resetSessionAndChat(false) })
+                                DropdownMenuItem(text = { Text("Сжать беседу") }, onClick = { moreMenu = false; vm.compactOcSession() })
+                            }
                         }
                     }
                 },
@@ -259,7 +271,9 @@ fun ChatScreen(
                     ) {
                         itemsIndexed(vm.items, key = { i, _ -> i }, contentType = { _, item -> item::class }) { i, item ->
                             Column {
-                                ItemView(item, live = vm.running && i == lastItemIndex)
+                                if (item is UiItem.Error && vm.isErrorDismissed(i)) { /* скрыто пользователем */ }
+                                else if (item is UiItem.Questions) QuestionCardView(item, onAnswer = { vm.answerQuestionCards(i, it) })
+                                else ItemView(item, live = vm.running && i == lastItemIndex)
                                 if (item is UiItem.Assistant && !item.text.startsWith("⏳") && !(vm.running && i == lastItemIndex)) {
                                     Row {
                                         val star = vm.isStarred(item.text)
@@ -271,9 +285,12 @@ fun ChatScreen(
                                         }, contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp)) { Text("Поделиться", style = MaterialTheme.typography.labelSmall) }
                                     }
                                 }
-                                if (item is UiItem.Error && !vm.running) {
+                                if (item is UiItem.Error && !vm.running && !vm.isErrorDismissed(i)) {
                                     TextButton(onClick = { adviceText = item.text; dlg = "advice" }, contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp)) {
                                         Text("Что делать?", style = MaterialTheme.typography.labelMedium)
+                                    }
+                                    TextButton(onClick = { vm.dismissError(i) }, contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp)) {
+                                        Text("✕ Скрыть", style = MaterialTheme.typography.labelMedium)
                                     }
                                 }
                                 if (item is UiItem.User && !vm.running) {
@@ -295,13 +312,15 @@ fun ChatScreen(
                     }
                 }
             }
-            if (vm.queue.isNotEmpty() || (vm.running && input.isNotBlank() && !imeOpen)) {
+            if (vm.running || vm.queue.isNotEmpty()) {
                 Row(
                     Modifier.fillMaxWidth().padding(horizontal = 12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        if (vm.queue.isNotEmpty()) "В очереди задач: ${vm.queue.size}" else "Отправка ставит в очередь. «Уточнить сейчас» передаст агенту на следующем шаге",
+                        if (vm.queue.isNotEmpty()) "В очереди задач: ${vm.queue.size}"
+                        else if (vm.running) "Агент работает: «Уточнить сейчас» передаст текст на текущем шаге, ▲ поставит в очередь",
+                        else "Задач в очереди нет",
                         style = MaterialTheme.typography.labelMedium,
                         modifier = Modifier.weight(1f),
                     )
@@ -309,11 +328,11 @@ fun ChatScreen(
                         if (!vm.running) TextButton(onClick = { vm.runQueue() }) { Text("Запустить") }
                         TextButton(onClick = { showQueue = true }) { Text("Очередь") }
                     }
-                    if (vm.running && input.isNotBlank()) {
-                        TextButton(onClick = {
-                            vm.sendWhileRunning(input)
-                            input = ""
-                        }) { Text("Уточнить сейчас") }
+                    if (vm.running) {
+                        TextButton(
+                            onClick = { vm.sendWhileRunning(input); input = "" },
+                            enabled = input.isNotBlank(),
+                        ) { Text("Уточнить сейчас") }
                     }
                 }
             }
@@ -800,6 +819,7 @@ fun ChatScreen(
                 is UiItem.Tool -> it.description
                 is UiItem.Error -> it.text
                 is UiItem.Notice -> it.text
+                is UiItem.Questions -> it.questions.joinToString(" ") { q -> q.question }
             }
             val p = t.indexOf(q, ignoreCase = true)
             if (p < 0) null else i to t.substring(maxOf(0, p - 30), minOf(t.length, p + 70)).replace("\n", " ")
@@ -1032,6 +1052,7 @@ private fun EmptyHint(workspacePath: String, welcome: (@Composable () -> Unit)?,
 @Composable
 private fun ItemView(item: UiItem, live: Boolean = false) {
     when (item) {
+        is UiItem.Questions -> QuestionCardView(item, onAnswer = { answers -> /* ответ обрабатывается в списке чата */ })
         is UiItem.User -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
             val ios = LocalUiStyle.current == UiStyle.IOS
             val cs = MaterialTheme.colorScheme
@@ -1046,6 +1067,11 @@ private fun ItemView(item: UiItem, live: Boolean = false) {
                         color = if (ios) cs.onPrimary else cs.onPrimaryContainer,
                         modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
                     )
+                }
+                Row(Modifier.padding(horizontal = 10.dp, vertical = 2.dp)) {
+                    val time = MessageTime.format(item.ts)
+                    if (time.isNotBlank()) Text(time, style = MaterialTheme.typography.labelSmall, color = if (ios) cs.onPrimary.copy(alpha = 0.7f) else cs.onPrimaryContainer.copy(alpha = 0.7f), modifier = Modifier.padding(end = 4.dp))
+                    CopyButton(item.text, tint = if (ios) cs.onPrimary else cs.onPrimaryContainer)
                 }
             }
         }
@@ -1064,6 +1090,13 @@ private fun ItemView(item: UiItem, live: Boolean = false) {
                 // Пока текст дописывается, выделение не включаем: оно пересчитывается на каждый кадр и заметно тормозит
                 if (live && !LocalReduceMotion.current) SmoothMarkdown(item.text, modifier = Modifier.fillMaxWidth())
                 else SelectionContainer { MarkdownText(item.text, modifier = Modifier.fillMaxWidth()) }
+                if (!live && item.text.isNotBlank()) {
+                    Row(Modifier.padding(top = 2.dp)) {
+                        val time = MessageTime.format(item.ts)
+                        if (time.isNotBlank()) Text(time, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(end = 4.dp))
+                        CopyButton(item.text)
+                    }
+                }
             }
         }
         is UiItem.Tool -> {
@@ -1113,7 +1146,7 @@ private fun ItemView(item: UiItem, live: Boolean = false) {
                     output.isBlank() -> {}
                     expanded -> SelectionContainer {
                         Text(
-                            if (output.length > 6000) output.take(6000) + "\n… (показано 6000 из ${output.length} символов)" else output,
+                            output,
                             fontFamily = FontFamily.Monospace,
                             fontSize = 11.sp,
                             modifier = Modifier.padding(top = 6.dp),

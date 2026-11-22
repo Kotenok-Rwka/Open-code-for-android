@@ -40,7 +40,7 @@ fun RemoteScreen(vm: ChatController, onBack: () -> Unit) {
     LaunchedEffect(Unit) { vm.refreshRemote() }
     Scaffold(topBar = {
         AppTopBar(
-            title = { Text("Синхронизация и пульт") },
+            title = { Text("Синхронизация устройств") },
             navigationIcon = { androidx.compose.material3.IconButton(onClick = onBack) { androidx.compose.material3.Icon(com.pocketcode.ui.backIcon(), contentDescription = "Назад") } },
             actions = { TextButton(onClick = { vm.refreshRemote() }, enabled = !vm.syncBusy) { Text("Обновить") } },
         )

@@ -52,11 +52,22 @@ fun LinuxScreen(vm: ChatController, onBack: () -> Unit) = Page("Среда Linux
         Text("На этом телефоне Linux-среда недоступна (нужен 64- или 32-битный ARM).", style = MaterialTheme.typography.bodyMedium)
         return@Page
     }
+    Text("Какую систему использовать", style = MaterialTheme.typography.titleSmall)
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        com.pocketcode.linux.RootFsChoice.entries.forEach { choice ->
+            FilterChip(
+                selected = vm.rootFsChoice == choice.name,
+                onClick = { vm.chooseRootFs(choice.name) },
+                label = { Text(choice.label) },
+            )
+        }
+    }
+    Text(vm.rootFsDescription, style = MaterialTheme.typography.bodySmall)
     Text(
         if (vm.linuxInstalled) {
-            "Alpine Linux установлен. Агент выполняет bash внутри него: настоящий sh, apk, свои пакеты. Папка проекта доступна как /work."
+            "Linux установлен. Агент выполняет bash внутри него: настоящий sh, свои пакеты. Папка проекта доступна как /work."
         } else {
-            "Скачает Alpine Linux (около 4 МБ) и запустит его через proot. Тогда в bash можно ставить python, git, node, gcc командой apk add."
+            "Скачает выбранный образ и запустит его через proot. Alpine вшит в приложение и весит ≈4 МБ; Ubuntu скачивается отдельно и занимает больше места."
         },
         style = MaterialTheme.typography.bodyMedium,
     )
@@ -87,6 +98,12 @@ fun LinuxScreen(vm: ChatController, onBack: () -> Unit) = Page("Среда Linux
             enabled = !vm.linuxBusy && !vm.running,
             modifier = Modifier.fillMaxWidth(),
         ) { Text(if (vm.linuxBusy) "Подожди…" else "Поставить python, git, node") }
+        OutlinedButton(
+            onClick = { vm.installLinuxExtras() },
+            enabled = !vm.linuxBusy && !vm.running,
+            modifier = Modifier.fillMaxWidth(),
+        ) { Text("Установить CodeGraph, Caveman, 9Router") }
+        Text("Caveman уже встроен в приложение (короткие ответы и 5 навыков); кнопка готовит файлы в Linux, CodeGraph индексирует код через инструмент codegraph, а адрес 9Router задаётся на экране «Роли моделей».", style = MaterialTheme.typography.bodySmall)
         TextButton(onClick = { vm.removeLinux() }, enabled = !vm.linuxBusy && !vm.running) { Text("Удалить Linux") }
     }
     vm.linuxStatus?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
