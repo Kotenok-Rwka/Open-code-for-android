@@ -37,8 +37,9 @@ class ConnectionsLogicTest {
     fun rootfsCatalogBuildsUbuntuUrls() {
         assertEquals("arm64", RootFsCatalog.arch(arrayOf("arm64-v8a")))
         assertEquals("armhf", RootFsCatalog.arch(arrayOf("armeabi-v7a")))
-        assertTrue(RootFsCatalog.ubuntuUrl("arm64").contains("noble"))
+        assertTrue(RootFsCatalog.ubuntuUrl("arm64").contains("22.04"))
         assertTrue(RootFsCatalog.ubuntuUrl("arm64").contains("arm64"))
+        assertTrue(RootFsCatalog.ubuntuUrls("arm64").all { it.startsWith("https://cdimage.ubuntu.com/") })
         assertTrue(RootFsCatalog.validateUrl("http://example.com")!!.contains("HTTPS"))
     }
 }
