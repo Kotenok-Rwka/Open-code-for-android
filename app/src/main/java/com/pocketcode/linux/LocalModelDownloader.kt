@@ -101,6 +101,17 @@ class LocalModelDownloader(private val context: Context) {
         }
     }
 
+    /** Call прерывает текущее соединение; следующий вызов download начнётся заново. */
+    @Volatile
+    private var currentCall: okhttp3.Call? = null
+
+    val isDownloading: Boolean get() = currentCall != null
+
+    fun cancel() {
+        currentCall?.cancel()
+        currentCall = null
+    }
+
     suspend fun download(url: String, target: File, onProgress: (String) -> Unit): Result<File> = withContext(Dispatchers.IO) {
         runCatching {
             require(url.startsWith("https://")) { "Нужен HTTPS-адрес модели" }
@@ -108,7 +119,9 @@ class LocalModelDownloader(private val context: Context) {
             val client = OkHttpClient.Builder().connectTimeout(30, TimeUnit.SECONDS)
                 .readTimeout(180, TimeUnit.SECONDS).build()
             val tmp = File(dir, "." + target.name + ".part")
-            client.newCall(Request.Builder().url(url).header("User-Agent", "PocketCode").build()).execute().use { resp ->
+            val call = client.newCall(Request.Builder().url(url).header("User-Agent", "PocketCode").build())
+            currentCall = call
+            call.execute().use { resp ->
                 if (!resp.isSuccessful) error("HTTP ${resp.code}")
                 val body = resp.body ?: error("Пустой ответ")
                 val total = body.contentLength()
@@ -118,6 +131,7 @@ class LocalModelDownloader(private val context: Context) {
                     tmp.outputStream().use { out ->
                         val buf = ByteArray(64 * 1024)
                         while (true) {
+                            if (call.isCanceled()) error("Скачивание отменено")
                             val n = input.read(buf); if (n < 0) break
                             out.write(buf, 0, n); done += n
                             if (done - last > 1024 * 1024) {
@@ -133,5 +147,6 @@ class LocalModelDownloader(private val context: Context) {
             require(tmp.renameTo(target)) { "Не удалось переименовать файл модели" }
             target
         }.onFailure { runCatching { File(dir, "." + target.name + ".part").delete() } }
+            .also { currentCall = null }
     }
 }
