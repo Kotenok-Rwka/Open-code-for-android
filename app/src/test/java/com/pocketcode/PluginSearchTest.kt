@@ -28,7 +28,7 @@ class PluginSearchTest {
         assertTrue(url.contains("sort=stars"))
         assertTrue(url.contains("in%3Aname%2Cdescription%2Creadme"))
         assertTrue(url.contains("claude"))
-        assertTrue(url.contains("per_page=20"))
+        assertTrue(url.contains("per_page=50"))
     }
 
     @Test
