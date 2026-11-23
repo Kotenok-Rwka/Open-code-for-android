@@ -5,14 +5,14 @@
 ## Windows 10/11 (portable EXE)
 
 1. Установи Python 3.10+ (https://python.org), если планируешь собирать самому.
-2. Готовый вариант: распакуй `PocketCodeDesktop-windows.zip`, запусти `PocketCodeDesktop.exe`.
+2. Готовый вариант: распакуй `PocketCodeDesktop-<версия>-windows.zip`, запусти `PocketCodeDesktop.exe`.
 3. Браузер откроется сам (http://127.0.0.1:8765/). Окно консоли не закрывай — это работающий компаньон. Если Windows SmartScreen ругается — «Подробнее → Выполнить в любом случае».
 4. Сборка: `powershell -ExecutionPolicy Bypass -File build_windows.ps1`.
 
 ## Linux (Debian/Ubuntu, .deb)
 
 ```sh
-sudo apt install ./pocketcode-desktop_4.0.6_amd64.deb
+sudo apt install ./pocketcode-desktop_<версия>_amd64.deb
 pocketcode-desktop
 # открой http://127.0.0.1:8765/
 ```

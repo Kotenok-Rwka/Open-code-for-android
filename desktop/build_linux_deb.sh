@@ -5,10 +5,10 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 NAME=pocketcode-desktop
-VER=$(tr -d '[:space:]' < VERSION 2>/dev/null || true)
-[ -z "$VER" ] && VER=$(sed -n 's/^VERSION_BASE=//p' ../version.properties | head -1 | tr -d '[:space:]' || true)
-[ -z "$VER" ] && VER=4.0
-[ -z "${PC_PATCH:-}" ] || VER="$VER.$PC_PATCH"
+# Версия — из version.properties и числа коммитов (та же, что у APK), не из ручного файла.
+VER=$(python3 version.py | tr -d '[:space:]')
+[ -n "$VER" ] || { echo "Не удалось определить версию (desktop/version.py)" >&2; exit 1; }
+[ -z "${PC_VERSION:-}" ] || echo "Версия (PC_VERSION): $VER"
 ARCH=${PC_ARCH:-amd64}  # для Debian/Ubuntu: amd64 или arm64; переопредели через PC_ARCH
 ROOT=$(mktemp -d)
 # dpkg-deb требует, чтобы каталоги package/DEBIAN были не уже 0700

@@ -15,8 +15,10 @@ python3 pocketcode_desktop.py
 
 ## Установка пакетами
 
-- Windows: `powershell -ExecutionPolicy Bypass -File build_windows.ps1` → PocketCodeDesktop-windows.zip
+- Windows: `powershell -ExecutionPolicy Bypass -File build_windows.ps1` → PocketCodeDesktop-<версия>-windows.zip
 - Debian/Ubuntu: `bash build_linux_deb.sh` → pocketcode-desktop_<версия>_<арх>.deb
+
+Версию пакетов не нужно вписывать руками: `version.py` берёт мажор.минор из `../version.properties`, а патч — как CI, по числу коммитов с последней правки этого файла. Поэтому ПК-пакеты и APK выходят с одной версией.
 
 Подробности — INSTALL.md.
 

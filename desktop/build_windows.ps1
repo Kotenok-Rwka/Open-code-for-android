@@ -11,7 +11,12 @@ python -m PyInstaller --noconfirm --onefile --windowed `
   --add-data "pocketcode_desktop.py;." `
   pocketcode_desktop.py
 
+# Версия — из version.properties и числа коммитов (та же, что у APK), не из ручного файла.
+$ver = (& python (Join-Path $PSScriptRoot "version.py")).Trim()
+if (-not $ver) { throw "Не удалось определить версию (desktop/version.py)" }
+Write-Host "Версия: $ver"
+
 $dist = Join-Path $PSScriptRoot "dist"
-$zip = Join-Path $PSScriptRoot "PocketCodeDesktop-windows.zip"
+$zip = Join-Path $PSScriptRoot "PocketCodeDesktop-$ver-windows.zip"
 Compress-Archive -Path (Join-Path $dist "PocketCodeDesktop.exe"), (Join-Path $PSScriptRoot "INSTALL.md") -DestinationPath $zip -Force
 Write-Host "Готово: $zip"
