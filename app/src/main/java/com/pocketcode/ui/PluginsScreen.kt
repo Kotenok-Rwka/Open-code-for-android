@@ -126,7 +126,7 @@ fun PluginsScreen(vm: ChatController, onBack: () -> Unit) {
                     OutlinedButton(onClick = { vm.installCatalogItem(item, global) }, enabled = !have) { Text(if (have) "Есть" else "Поставить") }
                 }
             }
-            if (tab == 0) {
+            }
             Text("Навыки (${vm.skillList.size})", style = MaterialTheme.typography.titleMedium)
             val skillScroll = rememberScrollState()
             val manySkills = vm.skillList.size > 20
@@ -143,7 +143,7 @@ fun PluginsScreen(vm: ChatController, onBack: () -> Unit) {
             }
             val shownSkills = if (manySkills && !skillsExpanded) vm.skillList.take(20) else vm.skillList
             Column(Modifier.fillMaxWidth().then(if (manySkills && skillsExpanded) Modifier.height(520.dp).verticalScroll(skillScroll) else Modifier)) {
-            shownSkills.forEach { sk ->
+                shownSkills.forEach { sk ->
                 val on = vm.skillEnabled(sk.name)
                 AppCard(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -164,7 +164,6 @@ fun PluginsScreen(vm: ChatController, onBack: () -> Unit) {
                 }
             }
             }
-
             if (tab == 0) {
             Text("Команды (${vm.commandList.size})", style = MaterialTheme.typography.titleMedium)
             if (vm.commandList.isEmpty()) Text("Пока нет.", style = MaterialTheme.typography.bodySmall)
