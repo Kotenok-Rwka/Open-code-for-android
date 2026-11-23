@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""PocketCode Desktop — лёгкий компаньон для Linux.
+"""PocketCode Desktop — лёгкий компаньон для Linux и Windows.
 
 Не порт Compose-интерфейса, а рабочий мост: чат с теми же OpenAI-совместимыми
 провайдерами, проекты, а также импорт/экспорт задач с телефона.
 
-Запуск: python3 pocketcode_desktop.py  (открой http://127.0.0.1:8765)
+Запуск: python3 pocketcode_desktop.py  (браузер откроется сам: http://127.0.0.1:8765)
 Зависимостей нет: только стандартная библиотека Python 3.
 """
 
@@ -35,7 +35,7 @@ PAGE = """<!doctype html><html lang="ru"><meta charset="utf-8"><title>PocketCode
  textarea{width:100%;min-height:120px;box-sizing:border-box} button{background:#395bd6;border:0;cursor:pointer;padding:10px 16px}
  .row{display:flex;gap:8px;margin:8px 0} .row>*{flex:1} .msg{padding:10px;border-radius:9px;margin:6px 0;background:#1b1e24;white-space:pre-wrap}
  small{color:#9aa3b2} nav button{background:#262b36}
-</style><h1>PocketCode Desktop · Linux</h1>
+</style><h1>PocketCode Desktop</h1>
 <nav class="row"><button onclick="tab('chat')">Чат</button><button onclick="tab('profiles')">Провайдеры</button><button onclick="tab('sync')">Обмен с телефоном</button><button onclick="tab('agents')">Агенты и роли</button><button onclick="tab('autosync')">Автосинхронизация</button></nav>
 <div id="chat"><div id="log"></div><textarea id="q" placeholder="Задача или сообщение"></textarea><div class="row"><button onclick="send()">Отправить</button><button onclick="clearChat()">Очистить чат</button></div></div>
 <div id="profiles" hidden><div class="row"><input id="pname" placeholder="Имя"><input id="purl" placeholder="http://localhost:1234/v1"><input id="pmodel" placeholder="local-model"></div>
@@ -52,14 +52,14 @@ PAGE = """<!doctype html><html lang="ru"><meta charset="utf-8"><title>PocketCode
 <pre id="syncStatus"></pre></div>
 <script>
 let profiles={};
-function tab(t){for(const x of ['chat','profiles','sync'])document.getElementById(x).hidden=x!==t;if(t==='profiles')loadProfiles();if(t==='sync')loadTasks();if(t==='agents')loadAgents()}
+function tab(t){for(const x of ['chat','profiles','sync','agents','autosync'])document.getElementById(x).hidden=x!==t;if(t==='chat')load();if(t==='profiles')loadProfiles();if(t==='sync')loadTasks();if(t==='agents')loadAgents();if(t==='autosync')loadSyncStatus()}
 async function get(u){return (await fetch(u)).json()}
 async function post(u,b){return (await fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)})).json()}
 async function load(){const m=await get('/api/messages');document.getElementById('log').innerHTML=m.map(x=>'<div class="msg"><b>'+x.role+'</b>: '+esc(x.text)+'</div>').join('')}
-function esc(s){return s.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}
+function esc(s){return String(s==null?'':s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}
 async function send(){const q=document.getElementById('q');if(!q.value.trim())return;const r=await post('/api/chat',{text:q.value});q.value='';await load();if(r.error)alert(r.error)}
 async function clearChat(){await post('/api/clear',{});await load()}
-async function loadProfiles(){profiles=await get('/api/profiles');document.getElementById('plist').innerHTML=Object.entries(profiles).map(([k,v])=>'<div class="msg">'+esc(k)+' · '+esc(v.base_url)+' · '+esc(v.model)+' <button onclick="useProfile(\\''+k+'\\')">Выбрать</button></div>').join('')}
+async function loadProfiles(){profiles=await get('/api/profiles');document.getElementById('plist').innerHTML=Object.entries(profiles).filter(([k,v])=>k!=='_active'&&v&&typeof v==='object').map(([k,v])=>'<div class="msg">'+esc(k)+' · '+esc(v.base_url)+' · '+esc(v.model)+' <button onclick="useProfile(decodeURIComponent(\\''+encodeURIComponent(k)+'\\'))">'+(k===profiles._active?'Выбран':'Выбрать')+'</button></div>').join('')}
 async function saveProfile(){const n=document.getElementById('pname').value.trim();if(!n)return;await post('/api/profiles',{name:n,base_url:document.getElementById('purl').value.trim(),model:document.getElementById('pmodel').value.trim(),api_key:document.getElementById('pkey').value.trim()});loadProfiles()}
 async function useProfile(n){await post('/api/use',{name:n});alert('Выбран профиль '+n)}
 async function loadTasks(){document.getElementById('tasks').textContent=JSON.stringify(await get('/api/tasks'),null,2)}
@@ -76,15 +76,23 @@ load();loadSyncStatus();
 </script></html>"""
 
 
+def read_lines(path):
+    """Непустые строки файла (UTF-8), без пустых хвостов."""
+    try:
+        return [x for x in path.read_text(encoding="utf-8").splitlines() if x.strip()]
+    except OSError:
+        return []
+
+
 def load_json(path, default):
     try:
-        return json.loads(path.read_text())
+        return json.loads(path.read_text(encoding="utf-8"))
     except Exception:
         return default
 
 
 def save_json(path, value):
-    path.write_text(json.dumps(value, ensure_ascii=False, indent=2))
+    path.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def call_llm(profile, messages):
@@ -96,7 +104,7 @@ def call_llm(profile, messages):
     }).encode()
     req = urllib.request.Request(url, data=body, headers={
         "Content-Type": "application/json",
-        "Authorization": "Bearer " + profile.get("api_key", "lm-studio"),
+        "Authorization": "Bearer " + (profile.get("api_key") or "lm-studio"),
     })
     with urllib.request.urlopen(req, timeout=180) as resp:
         data = json.loads(resp.read().decode())
@@ -109,8 +117,8 @@ TOKEN_FILE = SYNC / "token.txt"
 def access_token():
     """Токен для удалённого доступа: создаётся автоматически при первом запуске."""
     if not TOKEN_FILE.exists():
-        TOKEN_FILE.write_text(__import__("secrets").token_urlsafe(24))
-    return TOKEN_FILE.read_text().strip()
+        TOKEN_FILE.write_text(__import__("secrets").token_urlsafe(24), encoding="utf-8")
+    return TOKEN_FILE.read_text(encoding="utf-8").strip()
 
 
 
@@ -153,7 +161,16 @@ class Handler(BaseHTTPRequestHandler):
     def body(self):
         return json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))).decode() or "{}")
 
+    def local_or_token(self):
+        """Всё, кроме синхронизации, доступно только с этого ПК (или с токеном)."""
+        if self.token_ok():
+            return True
+        self.send({"error": "token required"}, 401)
+        return False
+
     def do_GET(self):
+        if not self.local_or_token():
+            return
         if self.path == "/" or self.path.startswith("/index"):
             raw = PAGE.encode()
             self.send_response(200)
@@ -162,7 +179,7 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(raw)
         elif self.path == "/api/messages":
-            self.send([json.loads(x) for x in CHAT.read_text().splitlines()] if CHAT.exists() else [])
+            self.send([json.loads(x) for x in read_lines(CHAT)] if CHAT.exists() else [])
         elif self.path == "/api/profiles":
             self.send(load_json(PROFILES, {}))
         elif self.path == "/api/tasks":
@@ -181,25 +198,27 @@ class Handler(BaseHTTPRequestHandler):
             if not self.token_ok():
                 self.send({"error": "token required"}, 401); return
             state = load_json(SYNC_STATE, {"last_seq": 0, "last_ts": 0, "events": 0, "fulls": 0})
-            self.send({**state, "pending": len(SYNC_EVENTS.read_text().splitlines()) if SYNC_EVENTS.exists() else 0})
+            self.send({**state, "pending": len(read_lines(SYNC_EVENTS)) if SYNC_EVENTS.exists() else 0})
         elif self.path.startswith("/api/sync/pull"):
             if not self.token_ok():
                 self.send({"error": "token required"}, 401); return
             from urllib.parse import parse_qs, urlparse
             q = parse_qs(urlparse(self.path).query)
             since = int(q.get("since", ["0"])[0])
-            lines = SYNC_EVENTS.read_text().splitlines() if SYNC_EVENTS.exists() else []
+            lines = read_lines(SYNC_EVENTS) if SYNC_EVENTS.exists() else []
             self.send([json.loads(x) for x in lines if json.loads(x).get("seq", 0) > since][-200:])
         elif self.path == "/api/messages/full":
-            msgs = [json.loads(x) for x in CHAT.read_text().splitlines()] if CHAT.exists() else []
+            msgs = [json.loads(x) for x in read_lines(CHAT)] if CHAT.exists() else []
             self.send({"version": 1, "items": msgs, "project": "desktop"})
         elif self.path == "/api/sync/pack":
-            msgs = [json.loads(x) for x in CHAT.read_text().splitlines()] if CHAT.exists() else []
+            msgs = [json.loads(x) for x in read_lines(CHAT)] if CHAT.exists() else []
             self.send({"version": 1, "items": msgs, "project": load_json(HOME / "roles.json", {}).get("project", "")})
         else:
             self.send({"error": "not found"}, 404)
 
     def do_POST(self):
+        if not self.local_or_token():
+            return
         try:
             b = self.body()
             if self.path == "/api/chat":
@@ -208,18 +227,18 @@ class Handler(BaseHTTPRequestHandler):
                 if name not in profiles:
                     self.send({"error": "Сначала сохрани и выбери провайдера"}, 400)
                     return
-                history = [json.loads(x) for x in CHAT.read_text().splitlines()] if CHAT.exists() else []
+                history = [json.loads(x) for x in read_lines(CHAT)] if CHAT.exists() else []
                 history.append({"role": "user", "text": b["text"]})
                 answer = call_llm(profiles[name], history[-20:])
                 history.append({"role": "assistant", "text": answer})
-                CHAT.write_text("\n".join(json.dumps(m, ensure_ascii=False) for m in history[-200:]))
+                CHAT.write_text("".join(json.dumps(m, ensure_ascii=False) + "\n" for m in history[-200:]), encoding="utf-8")
                 self.send({"ok": True})
             elif self.path == "/api/clear":
-                CHAT.write_text("")
+                CHAT.write_text("", encoding="utf-8")
                 self.send({"ok": True})
             elif self.path == "/api/profiles":
                 profiles = load_json(PROFILES, {})
-                profiles[b["name"]] = {"base_url": b["base_url"], "model": b["model"], "api_key": b["api_key"]}
+                profiles[b["name"]] = {"base_url": b["base_url"], "model": b["model"], "api_key": b.get("api_key", "")}
                 profiles.setdefault("_active", b["name"])
                 save_json(PROFILES, profiles)
                 self.send({"ok": True})
@@ -238,7 +257,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.send({"ok": True})
             elif self.path == "/api/sync/import":
                 items = b.get("items", [])
-                with CHAT.open("a") as f:
+                with CHAT.open("a", encoding="utf-8") as f:
                     for m in items:
                         f.write(json.dumps({"role": m.get("role", "user"), "text": m.get("text", "")}, ensure_ascii=False) + "\n")
                 self.send({"ok": True, "imported": len(items)})
@@ -255,7 +274,7 @@ class Handler(BaseHTTPRequestHandler):
                         self.send({"error": "bad encrypted payload"}, 400); return
                 seq = int(b.get("seq", 0) or 0)
                 typ = b.get("type", "event")
-                with SYNC_EVENTS.open("a") as f:
+                with SYNC_EVENTS.open("a", encoding="utf-8") as f:
                     f.write(json.dumps(b, ensure_ascii=False) + "\n")
                 state = load_json(SYNC_STATE, {"last_seq": 0, "last_ts": 0, "events": 0, "fulls": 0})
                 state["last_seq"] = max(state.get("last_seq", 0), seq)
@@ -265,10 +284,11 @@ class Handler(BaseHTTPRequestHandler):
                 save_json(SYNC_STATE, state)
                 if typ == "full":
                     for fp in b.get("files", []):
-                        path = (SYNC_FILES / str(fp.get("path", "")).replace("..", "_")).resolve()
-                        if str(path).startswith(str(SYNC_FILES.resolve())):
+                        root = SYNC_FILES.resolve()
+                        path = (root / str(fp.get("path", "")).lstrip("/\\").replace("..", "_")).resolve()
+                        if root in path.parents:
                             path.parent.mkdir(parents=True, exist_ok=True)
-                            path.write_text(str(fp.get("text", "")))
+                            path.write_text(str(fp.get("text", "")), encoding="utf-8")
                 self.send({"ok": True, "seq": seq})
             elif self.path == "/api/tasks/import":
                 incoming = b if isinstance(b, list) else [b]
@@ -285,9 +305,22 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=8765)
     ap.add_argument("--host", default="127.0.0.1")
+    ap.add_argument("--no-browser", action="store_true", help="не открывать браузер")
     a = ap.parse_args()
+    try:
+        server = ThreadingHTTPServer((a.host, a.port), Handler)
+    except OSError as e:
+        print(f"Не удалось занять порт {a.port}: {e}. Возможно, компаньон уже запущен — открой http://127.0.0.1:{a.port}/")
+        sys.exit(1)
+    url = f"http://127.0.0.1:{a.port}/"
     print(f"PocketCode Desktop: http://{a.host}:{a.port}/  (Ctrl+C — выход)")
-    ThreadingHTTPServer((a.host, a.port), Handler).serve_forever()
+    if not a.no_browser:
+        import threading, webbrowser
+        threading.Timer(0.8, lambda: webbrowser.open(url)).start()
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
 
 
 if __name__ == "__main__":

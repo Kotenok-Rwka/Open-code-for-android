@@ -5,8 +5,8 @@
 ## Windows 10/11 (portable EXE)
 
 1. Установи Python 3.10+ (https://python.org), если планируешь собирать самому.
-2. Готовый вариант: распакуй `PocketCodeDesktop-windows-4.0.6.zip`, запусти `PocketCodeDesktop.exe`.
-3. Открой http://127.0.0.1:8765/ в браузере.
+2. Готовый вариант: распакуй `PocketCodeDesktop-windows.zip`, запусти `PocketCodeDesktop.exe`.
+3. Браузер откроется сам (http://127.0.0.1:8765/). Окно консоли не закрывай — это работающий компаньон. Если Windows SmartScreen ругается — «Подробнее → Выполнить в любом случае».
 4. Сборка: `powershell -ExecutionPolicy Bypass -File build_windows.ps1`.
 
 ## Linux (Debian/Ubuntu, .deb)

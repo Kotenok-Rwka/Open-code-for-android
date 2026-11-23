@@ -37,7 +37,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path == "/api/queue":
-            self.send([json.loads(x) for x in QUEUE.read_text().splitlines()] if QUEUE.exists() else [])
+            self.send([json.loads(x) for x in [l for l in QUEUE.read_text(encoding="utf-8").splitlines() if l.strip()]] if QUEUE.exists() else [])
         else:
             self.send({"error": "not found"}, 404)
 
@@ -50,7 +50,7 @@ class Handler(BaseHTTPRequestHandler):
                 "file": body.get("file", ""),
                 "project": body.get("project", ""),
             }
-            with QUEUE.open("a") as f:
+            with QUEUE.open("a", encoding="utf-8") as f:
                 f.write(json.dumps(task, ensure_ascii=False) + "\n")
             # Best effort: notify desktop if it is running
             try:
