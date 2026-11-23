@@ -36,6 +36,19 @@ sealed class AgentEvent {
 }
 
 private const val MAX_TOOL_OUTPUT = 30_000
+
+/** Инструменты, которые меняют код: после них нужна проверка. */
+private val CHANGE_TOOLS = setOf("write_file", "edit_file", "apply_patch")
+
+/** Инструменты проверки: синтаксис, аудит, тесты. */
+private val VERIFY_TOOLS = setOf("diagnostics", "code_review", "run_tests", "test")
+
+private const val VERIFY_NUDGE =
+    "[КОНТРОЛЬ КАЧЕСТВА] Ты изменил файлы, но не проверил их, и не сказал, что проверка невозможна. " +
+        "Прежде чем отвечать пользователю: 1) вызови diagnostics для изменённых файлов (или code_review без аргументов), " +
+        "2) исправь найденные ошибки и предупреждения безопасности, 3) запусти run_tests, если в проекте есть тесты. " +
+        "Если проверка действительно невозможна в этом окружении — ответь и явно напиши строку «НЕ ПРОВЕРЕНО: <что именно и почему>». " +
+        "Не выдумывай результаты проверок."
 private val RETRY_DELAYS = intArrayOf(3, 8, 20, 45)
 
 /**
@@ -74,6 +87,8 @@ class Agent(
     private val askEvenIfAuto: () -> Boolean = { false },
     /** true — длинный вывод режется с сохранением начала и конца, false — только начала. */
     private val keepTail: () -> Boolean = { true },
+    /** true — после правок нельзя закончить без diagnostics/code_review/run_tests (контроль качества). */
+    private val verifyChanges: () -> Boolean = { false },
 ) {
     private var llm: LlmClient = llm
     private var usedFallback = false
@@ -133,6 +148,9 @@ class Agent(
         history += Message("user", images + Block.Text(text.ifBlank { "(см. изображение)" }))
         var steps = 0
         var overflowRetried = false
+        var changedFiles = false
+        var verified = false
+        var nudges = 0
 
         suspend fun callLlm(): com.pocketcode.llm.LlmResponse {
             var attempt = 0
@@ -207,7 +225,19 @@ class Agent(
             val calls = response.blocks.filterIsInstance<Block.ToolUse>()
             if (calls.isEmpty()) {
                 val late = pollNotes()
-                if (late.isEmpty()) break
+                if (late.isEmpty()) {
+                    // Контроль качества: правки без проверки не принимаем как готовый ответ.
+                    val answer = response.blocks.filterIsInstance<Block.Text>().joinToString("\n") { it.text }
+                    val unchecked = changedFiles && !verified && nudges < 2 && verifyChanges() &&
+                        !answer.contains("НЕ ПРОВЕРЕНО", ignoreCase = true)
+                    if (unchecked) {
+                        nudges++
+                        send(AgentEvent.Notice("Контроль качества: проверяю правки перед ответом (попытка $nudges из 2)."))
+                        history += Message("user", listOf(Block.Text(VERIFY_NUDGE)))
+                        continue
+                    }
+                    break
+                }
                 injectNotes(late)
                 continue
             }
@@ -241,6 +271,8 @@ class Agent(
                         output = withContext(Dispatchers.IO) { tool.run(call.input) }
                         hooks.after(tool, call.input, output, false)?.let { output += it }
                         (tool as? com.pocketcode.tools.ImageProducer)?.takeImages()?.let { toolImages += it }
+                        if (call.name in CHANGE_TOOLS) changedFiles = true
+                        if (call.name in VERIFY_TOOLS) verified = true
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Exception) {
@@ -291,10 +323,13 @@ SECURITY RULES (always):
 - Never disable validation, authentication, TLS verification, permission checks, or sandboxing to make something "work".
 - Never run destructive commands (rm -rf, git push --force, reset --hard, dd, mkfs) without explicit user approval; prefer trash/undo.
 - Never exfiltrate files outside the workspace; only send to the user-specified endpoint.
-- Validate all external input; avoid shell interpolation of user text (use argument lists); escape SQL and HTML.
+- Validate all external input (type, length, range) and fail with a clear error; never trust a request field as the user's identity.
+- SQL only with bound parameters, never string concatenation. Shell only with argument lists, never interpolated user text. HTML output escaped.
+- Check authorization on the server for every user-specific read and write; derive the user from the session, never from an id sent by the client.
+- Never swallow an error with an empty catch/except, and never turn a failed check into a success.
 - If a task requires a secret the user did not provide, ask instead of inventing one.
 - Prefer least privilege: read-only tools first; ask before writing outside the project.
-- Before finishing, re-read changed code for injection, path traversal, secrets, and unsafe command construction.
+- Before finishing, run code_review on the changed files and fix what it finds (injection, secrets, disabled TLS, wildcard CORS, unsafe deserialization, swallowed errors).
 Tools: read_file, write_file, edit_file, list_dir, grep, bash, python, git.
 - Read a file before editing it. Prefer edit_file for small changes; use write_file for new files.
 - python runs an embedded Python 3.11 (standard library only, no pip, no stdin). ${if (linux) "Because bash is a real Linux here, prefer running `python3` through bash: it has pip and many libraries (install with `pip install --break-system-packages <pkg>`)." else "bash has no python, so use this tool for scripts, tests and calculations."}
@@ -305,6 +340,7 @@ ${if (adbDevices != null) "- adb controls other Android devices over ADB (Wi-Fi)
 ${if (root) "- root runs a command as root on THIS phone, outside the app sandbox. Every call needs the user's approval. Use it only when really necessary, never touch anything outside the task, and prefer the project folder tools otherwise." else ""}
 - bg starts long-running processes (dev servers, watchers, long tests) in the background and lets you read their output; then use preview to show a local web page to the user. Never run a server with plain bash: it would block until timeout.
 - code_search finds relevant files/definitions by meaning; diagnostics checks syntax of files you edited (run it after edits).
+- code_review audits changed files for real holes: hardcoded secrets, SQL/shell/HTML injection, disabled TLS, wildcard CORS, unsafe deserialization, weak password hashes, http links, secrets in logs, empty catch, TODO stubs. Run it on every batch of edits.
 - github works with GitHub directly through the API (needs the token from settings): read, create, change and delete files (file_put commits straight to the repo, no clone needed), branches, pull requests (create, merge), issues and CI checks/runs. By default it uses the current project's repo; pass repo=owner/name for any other repo the token can reach (action repos lists them). Without branch, commits go to the default branch. spawn starts parallel workers with their own context for independent parts of a big task (different files); collect them with worker_result before you finish.
 - run_tests runs the project's tests and returns a compact failure summary. spawn with isolated=true gives a worker its own copy of the project (merged back afterwards).
 - remember saves a short durable note about the project (decisions, how to run things, gotchas) that you will see at the start of future chats.
@@ -319,6 +355,16 @@ ${if (root) "- root runs a command as root on THIS phone, outside the app sandbo
 - After changes, say briefly what you changed. The screen is small: keep answers short, no long preambles.
 
 ${if (skills.isNotEmpty()) "Skills (load one with the skill tool when its description fits the task):\n" + skills.joinToString("\n") { "- ${it.name}: ${it.description}" } + "\n" else ""}${if (instructions != null) "Project instructions written by the user (follow them):\n$instructions\n" else ""}
+BUILD IT RIGHT THE FIRST TIME (especially for a whole project or several files):
+1. Agree on the contract before code: list the files you will create/change, the data model, the function/route signatures and the commands that will prove it works. Put that list into todo; for an existing project read the neighbouring files first and copy their conventions (naming, error handling, layout, DI).
+2. Never invent an API, package, version, config key or environment variable. Grep the project or check the docs with web_search before using it.
+3. Write each file completely in one write_file: no "...", no "rest unchanged", no empty functions, no TODO/FIXME stubs, no fake data instead of real logic. Long file? Still write all of it.
+4. Wire it up: after adding a module, route, setting, migration or string, register and reference it everywhere the app needs it (imports, routes list, DI/manifest, defaults, translations, schema). A file that nothing calls is a bug.
+5. Keep the project consistent: schema change -> migration; new setting -> default value and UI toggle; new user text -> all i18n files; new dependency -> lockfile and build file.
+6. Verify in small loops instead of one big run at the end: diagnostics after each file, code_review after each batch, build/run_tests after a group of related changes. Fix the cause; never weaken a test, skip a check or disable a rule to get green.
+7. Check the happy path AND the edge cases the user will hit: empty input, missing permission, no network, first launch, cancelled action, very long text.
+8. Do not stop halfway: if the task is big, keep going through the todo list in this run instead of asking the user to continue.
+
 Reply in the same language the user writes in.
 ${if (questionCards) com.pocketcode.ui.QUESTION_CARDS_INSTRUCTION else ""}
 ${if (caveman) com.pocketcode.Caveman.prompt(true) else ""}
@@ -331,9 +377,10 @@ ${when {
 ${if (!reasoning || reasoningDepth == 0) "Do not output chain-of-thought or private reasoning. Keep the visible text short and useful." else "You may show a brief plan and conclusions, but never private chain-of-thought."}
 ${if (selfCheck) """
 QUALITY CONTROL (must follow after any code change):
-- STRICT: before the final answer after ANY code change you MUST call `run_tests` (or a focused test command). A final answer without this call is a failure, unless tests are impossible in this environment — then say "НЕ ПРОВЕРЕНО: тесты не запускались" explicitly.
-- Also run `diagnostics` on each changed file. If a check fails, fix the cause and re-run it; do not report success with a broken check.
-- After edits, re-read the changed snippets and check: function names match property setters, dollar signs in ordinary strings are escaped, all imports/parameters exist, a trailing lambda goes to the last parameter of a call, i18n placeholders {0} match in all files.
-- If a check cannot be run here, say exactly what was not verified. Never claim a build or device test you did not perform.
+- Before the final answer after ANY code change you MUST run `diagnostics` on the changed files and `code_review` (no arguments = changed files), then `run_tests` (or a focused test/build command). The app also enforces this: it will send you back to verify if you answer right after editing files.
+- code_review findings marked HIGH must be fixed or explained; MEDIUM must be fixed or consciously accepted (a dev-only tool, a sample file). Do not report success while a HIGH finding is open.
+- If a check fails, fix the cause and re-run that check; never weaken an assertion, skip a test, or add a suppression just to pass.
+- After edits, re-read the changed snippets and check: names match their declarations, imports/parameters exist, strings are escaped correctly, a trailing lambda goes to the last parameter of a call, i18n placeholders {0} match in all files, every new function/route/string is actually referenced.
+- If a check cannot be run here, answer with an explicit line "НЕ ПРОВЕРЕНО: <what exactly was not verified and why>". Never claim a build or device test you did not perform.
 """ else ""}
 """.trimIndent()

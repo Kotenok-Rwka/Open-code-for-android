@@ -5982,6 +5982,7 @@ class ChatController(
             PreviewTool { url -> lastPreview = url; previewUrl = url },
             CodeSearchTool(workspace),
             DiagnosticsTool(workspace, python, shell) { changes.map { it.path } },
+            com.pocketcode.tools.ReviewTool(workspace) { changes.map { it.path } },
             TestTool(workspace, shell, python),
             NotesTool(extensions),
             RecallTool(workspace),
@@ -6010,7 +6011,7 @@ class ChatController(
             com.pocketcode.tools.CodeGraphTool(workspace, shell) { settingsStore.rawGet("codegraphInstalled") == "1" },
         )
         // Пользователь решает, какие инструменты видит модель: отключённые не попадают в запрос.
-        val chatOnlyAllowed = setOf("web_search", "web_fetch", "web_evidence", "remember", "recall", "todo", "present_plan")
+        val chatOnlyAllowed = setOf("web_search", "web_fetch", "web_evidence", "remember", "recall", "todo", "present_plan", "code_review")
         val activeTools = tools.filter { toolAvailable(it.name) && (!chatOnlyMode || it.name in chatOnlyAllowed) }
         val sysPrompt = systemPrompt(
             workspace.root.absolutePath, shell.info, linuxActive,
@@ -6080,6 +6081,7 @@ class ChatController(
             eco = s.ecoMode,
             askEvenIfAuto = { rootAuto },
             keepTail = { smart.smartTrim },
+            verifyChanges = { toolsConfig.selfCheck },
             approve = ::requestApproval,
             history = history,
             pollNotes = { generateSequence { notes.poll() }.toList() },

@@ -84,7 +84,7 @@ fun ToolsScreen(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text("Контроль качества после правок")
-                        Text("Агент сам запускает diagnostics и тесты, перечитывает правки и сообщает, что не проверил.", style = MaterialTheme.typography.bodySmall)
+                        Text("Агент не может закончить задачу после правок без diagnostics, code_review и тестов; если проверка невозможна, он пишет «НЕ ПРОВЕРЕНО».", style = MaterialTheme.typography.bodySmall)
                     }
                     Switch(checked = c.selfCheck, onCheckedChange = { v -> update { it.copy(selfCheck = v) } })
                 }
