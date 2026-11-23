@@ -1193,6 +1193,8 @@ private fun EmptyHint(workspacePath: String, welcome: (@Composable () -> Unit)?,
                 Text("Включи службу доступности (и, по желанию, помощника) — нажми сюда.", style = MaterialTheme.typography.bodySmall, color = cs.onErrorContainer)
             }
         }
+        // На фоне у плиток тонкая обводка: стеклянные карточки без неё теряются на градиенте.
+        val tileBorder = if (LocalBackdropActive.current) Modifier.border(1.dp, cs.outlineVariant.copy(alpha = 0.55f), RoundedCornerShape(20.dp)) else Modifier
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             (if (phone != null) listOf(
                 Triple(AppIcons.Phone, "Версия Android", "Открой Настройки и скажи, какая версия Android и сколько свободно памяти."),
@@ -1220,6 +1222,7 @@ private fun EmptyHint(workspacePath: String, welcome: (@Composable () -> Unit)?,
                                 .heightIn(min = 104.dp)
                                 .clip(RoundedCornerShape(20.dp))
                                 .background(cs.surfaceContainer)
+                                .then(tileBorder)
                                 .clickable { onPick(text) }
                                 .padding(14.dp),
                             verticalArrangement = Arrangement.spacedBy(10.dp),

@@ -50,6 +50,7 @@ fun ColorScheme.withCardAlpha(alpha: Float): ColorScheme {
         surfaceContainer = surfaceContainer.copy(alpha = a),
         surfaceContainerHigh = surfaceContainerHigh.copy(alpha = a),
         surfaceContainerHighest = surfaceContainerHighest.copy(alpha = a),
+        surfaceVariant = surfaceVariant.copy(alpha = a),
     )
 }
 

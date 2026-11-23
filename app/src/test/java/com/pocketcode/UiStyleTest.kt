@@ -20,8 +20,8 @@ import java.io.File
 class UiStyleTest {
     @Test
     fun defaultStyleIsMaterial3() {
-        assertEquals(UiStyle.MD3, DEFAULT_UI_STYLE)
-        assertEquals(UiStyle.MD3, uiStyleById(null))
+        assertEquals(UiStyle.AURORA, DEFAULT_UI_STYLE)
+        assertEquals(UiStyle.AURORA, uiStyleById(null))
     }
 
     @Test

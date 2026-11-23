@@ -141,7 +141,7 @@ data class AppearanceConfig(
     val backgroundCustomColor: String = "#111318",
     val backgroundImage: String = "",
     /** Насколько подложка прозрачная: 0 — фон не видно, 0.85 — почти открытый фон. */
-    val backgroundScrim: Float = 0.4f,
+    val backgroundScrim: Float = 0.55f,
     /** crop | fit | fill — как вписать картинку фона. */
     val backgroundFit: String = "crop",
     /** Размытие картинки фона в dp, 0 — без размытия. */
@@ -150,8 +150,8 @@ data class AppearanceConfig(
     val baseTint: String = "",
     /** Насколько сильно тепло подложки смешивается с темой, 0..1. */
     val baseTintStrength: Float = 0.35f,
-    /** Прозрачность карточек (стекло), 0.35..1. */
-    val cardOpacity: Float = 1f,
+    /** Прозрачность карточек (стекло), 0.35..1. При включённом фоне по умолчанию стекло, а не чёрные плиты. */
+    val cardOpacity: Float = 0.55f,
     val cornerRadius: Int = 20,
     val strokeWidth: Int = 1,
     val readingMode: Boolean = false,

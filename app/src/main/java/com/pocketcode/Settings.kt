@@ -296,7 +296,10 @@ class SettingsStore(context: Context) {
             ?: com.pocketcode.ui.AppearanceConfig()
         // Перенос: раньше цвет акцента хранился отдельно («palette»). Если в новой настройке его ещё нет — берём прежний выбор.
         val legacy = rawGet("palette")
-        return if (legacy != null && (raw == null || !raw.contains("\"accentId\""))) c.copy(accentId = legacy) else c
+        val withAccent = if (legacy != null && (raw == null || !raw.contains("\"accentId\""))) c.copy(accentId = legacy) else c
+        // Перенос: старое значение 1.0 («карточки плотные») поверх фона выглядело чёрными плитами. Делаем из него стекло,
+        // плотность по-прежнему можно вернуть ползунком в «Оформлении».
+        return if (withAccent.background != "none" && withAccent.cardOpacity >= 0.999f) withAccent.copy(cardOpacity = 0.55f) else withAccent
     }
 
     fun saveAppearance(c: com.pocketcode.ui.AppearanceConfig) { rawPut("appearance", Json.encodeToString(c)) }

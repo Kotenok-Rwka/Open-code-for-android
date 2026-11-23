@@ -16,8 +16,8 @@ enum class UiStyle(val id: String, val title: String, val about: String) {
     ),
 }
 
-/** Стиль по умолчанию, пока пользователь не выбрал другой. */
-val DEFAULT_UI_STYLE = UiStyle.MD3
+/** Стиль по умолчанию, пока пользователь не выбрал другой: новым установкам достаётся Aurora. */
+val DEFAULT_UI_STYLE = UiStyle.AURORA
 
 /** Стиль по сохранённому коду; пустое или незнакомое значение даёт стиль по умолчанию. */
 fun uiStyleById(id: String?): UiStyle = UiStyle.values().firstOrNull { it.id == id } ?: DEFAULT_UI_STYLE

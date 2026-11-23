@@ -117,12 +117,13 @@ fun AppTopBar(
     val glass = LocalBackdropActive.current
     val colors = TopAppBarDefaults.topAppBarColors(
         containerColor = when {
-            glass -> cs.surface.copy(alpha = 0.9f)
+            // Стекло, а не чёрная полоса: сквозь шапку видно фон.
+            glass -> cs.surface.copy(alpha = 0.5f)
             aurora -> cs.surfaceContainerLow
             else -> cs.background
         },
         scrolledContainerColor = when {
-            glass -> cs.surface.copy(alpha = 0.96f)
+            glass -> cs.surface.copy(alpha = 0.78f)
             aurora -> cs.surfaceContainerHigh
             else -> cs.background
         },
