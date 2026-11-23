@@ -29,7 +29,7 @@ class ProjectSearchTool(private val ws: Workspace) : Tool {
         val results = mutableListOf<Pair<String, Int>>()
         ws.root.walkTopDown().maxDepth(6).forEach { f ->
             if (!f.isFile || f.length() > 1_000_000 || f.extension.lowercase() !in exts) return@forEach
-            if (f.absolutePath.pathSegments().any { it in skip }) return@forEach
+            if (f.pathSegments().any { it in skip }) return@forEach
             val text = runCatching { f.readText(Charsets.UTF_8) }.getOrNull() ?: return@forEach
             val score = words.count { text.contains(it, ignoreCase = true) }
             if (score > 0) {

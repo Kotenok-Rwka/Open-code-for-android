@@ -116,7 +116,7 @@ fun AutoSyncScreen(
                     val payload = kotlinx.serialization.json.buildJsonObject {
                         put("version", kotlinx.serialization.json.JsonPrimitive(2))
                         put("device", kotlinx.serialization.json.JsonPrimitive(android.os.Build.MODEL))
-                        put("text", kotlinx.serialization.json.JsonPrimitive(vm.lastUserText()))
+                        put("text", kotlinx.serialization.json.JsonPrimitive(vm.lastUserText().orEmpty().take(2000)))
                     }.toString()
                     val r = com.pocketcode.P2PSync.send(peer.trim(), payload)
                     vm.setSyncCheck(r.fold({ "P2P: $it" }, { "P2P ошибка: ${it.message}" }))

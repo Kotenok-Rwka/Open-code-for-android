@@ -26,6 +26,11 @@ import kotlinx.serialization.encodeToString
 import com.pocketcode.CatalogItem
 import com.pocketcode.PROJECT_TEMPLATES
 import com.pocketcode.tools.NotesTool
+import com.pocketcode.tools.ApplyPatchTool
+import com.pocketcode.tools.RecallTool
+import com.pocketcode.tools.ProjectSearchTool
+import com.pocketcode.tools.RequestLogTool
+import com.pocketcode.tools.WebCiteTool
 import com.pocketcode.tools.TestTool
 import com.pocketcode.tools.Shell
 import com.pocketcode.AppLog
@@ -4539,7 +4544,6 @@ class ChatController(
     var capabilityInfo by mutableStateOf("")
         private set
     fun setCapabilityInfo(s: String) { capabilityInfo = s }
-    fun lastUserText(): String = (items.lastOrNull { it is UiItem.User } as? UiItem.User)?.text?.take(2000).orEmpty()
 
     fun checkSyncServer(url: String, token: String) {
         val base = url.trim().trimEnd('/')

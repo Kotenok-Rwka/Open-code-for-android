@@ -482,9 +482,9 @@ fun FilesScreen(
                                 }
                                 TextButton(onClick = {
                                     com.pocketcode.tools.SafeFiles.restore(f, v.file)
-                                    text = f.readText(Charsets.UTF_8)
-                                    editorValue = TextFieldValue(text)
-                                    original = text
+                                    val restored = f.readText(Charsets.UTF_8)
+                                    editorValue = TextFieldValue(restored)
+                                    original = restored
                                     showVersions = false
                                     message = "Версия восстановлена"
                                 }) { Text("Вернуть") }
