@@ -926,7 +926,7 @@ fun ChatScreen(
                             TextButton(onClick = { vm.loadBranch(b.id); dlg = "" }, modifier = Modifier.weight(1f)) {
                                 Text("🌿 ${b.title}", style = MaterialTheme.typography.bodySmall)
                             }
-                            TextButton(onClick = { vm.deleteSession(b.id); vm.refreshBranches() }) { Text("✕") }
+                            TextButton(onClick = { vm.deleteSession(b.id) }) { Text("✕") }
                         }
                     }
                 }

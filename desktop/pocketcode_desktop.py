@@ -12,6 +12,7 @@ import argparse
 import json
 import os
 import sys
+import threading
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -48,7 +49,8 @@ PAGE = """<!doctype html><html lang="ru"><meta charset="utf-8"><title>PocketCode
 <div id="autosync" hidden><h2>Автосинхронизация с телефоном</h2>
 <p>Телефон отправляет события и снимки на этот адрес: <code>http://&lt;IP ПК&gt;:8765/api/sync/push</code>. Запустите компаньон с <code>--host 0.0.0.0</code>, чтобы телефон в той же сети мог подключиться.</p>
 <div class="row"><label>Интервал (мин) <input id="syncInterval" type="number" min="1" value="15"></label><button onclick="saveSyncConfig()">Сохранить</button></div>
-<div class="row"><button onclick="loadSyncStatus()">Обновить статус</button><button onclick="syncNow()">Отправить сейчас</button></div>
+<div class="row"><button onclick="loadSyncStatus()">Обновить статус</button><button onclick="syncNow()">Отправить сейчас</button><button onclick="showToken()">Показать токен</button></div>
+<pre id="tokenBox"></pre>
 <pre id="syncStatus"></pre></div>
 <script>
 let profiles={};
@@ -56,14 +58,14 @@ function tab(t){for(const x of ['chat','profiles','sync','agents','autosync'])do
 async function get(u){return (await fetch(u)).json()}
 async function post(u,b){return (await fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)})).json()}
 async function load(){const m=await get('/api/messages');document.getElementById('log').innerHTML=m.map(x=>'<div class="msg"><b>'+x.role+'</b>: '+esc(x.text)+'</div>').join('')}
-function esc(s){return String(s==null?'':s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}
-async function send(){const q=document.getElementById('q');if(!q.value.trim())return;const r=await post('/api/chat',{text:q.value});q.value='';await load();if(r.error)alert(r.error)}
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+async function send(){const q=document.getElementById('q');if(!q.value.trim())return;const text=q.value;q.value='';const r=await post('/api/chat',{text});await load();if(r.error){alert(r.error);q.value=text}}
 async function clearChat(){await post('/api/clear',{});await load()}
 async function loadProfiles(){profiles=await get('/api/profiles');document.getElementById('plist').innerHTML=Object.entries(profiles).filter(([k,v])=>k!=='_active'&&v&&typeof v==='object').map(([k,v])=>'<div class="msg">'+esc(k)+' · '+esc(v.base_url)+' · '+esc(v.model)+' <button onclick="useProfile(decodeURIComponent(\\''+encodeURIComponent(k)+'\\'))">'+(k===profiles._active?'Выбран':'Выбрать')+'</button></div>').join('')}
 async function saveProfile(){const n=document.getElementById('pname').value.trim();if(!n)return;await post('/api/profiles',{name:n,base_url:document.getElementById('purl').value.trim(),model:document.getElementById('pmodel').value.trim(),api_key:document.getElementById('pkey').value.trim()});loadProfiles()}
 async function useProfile(n){await post('/api/use',{name:n});alert('Выбран профиль '+n)}
 async function loadTasks(){document.getElementById('tasks').textContent=JSON.stringify(await get('/api/tasks'),null,2)}
-async function importTasks(){await post('/api/tasks/import',JSON.parse(document.getElementById('imp').value));loadTasks()}
+async function importTasks(){let v;try{v=JSON.parse(document.getElementById('imp').value)}catch(e){alert('Это не JSON: '+e.message);return}const r=await post('/api/tasks/import',v);if(r.error)alert(r.error);loadTasks()}
 async function exportTasks(){document.getElementById('imp').value=JSON.stringify(await get('/api/tasks'))}
 async function loadAgents(){const a=await get('/api/agents');document.getElementById('agentsList').innerHTML=a.map(x=>'<div class="msg"><b>'+esc(x.name)+'</b> '+esc(x.goal)+'</div>').join('');const r=await get('/api/roles');document.getElementById('aplan').value=r.planning||'';document.getElementById('aexec').value=r.execution||'';const w=await get('/api/widgets');document.getElementById('widgets').innerHTML=w.map(x=>'<div class="msg"><a href="'+esc(x.url)+'" target="_blank">'+esc(x.name)+'</a> <small>'+esc(x.note)+'</small></div>').join('')}
 async function saveAgent(){await post('/api/agents',{name:document.getElementById('aname').value,goal:document.getElementById('agoal').value});loadAgents()}
@@ -72,33 +74,61 @@ async function syncStatus(){return await get('/api/sync/status')}
 async function loadSyncStatus(){const x=await syncStatus();document.getElementById('syncStatus').textContent=JSON.stringify(x,null,2)}
 async function saveSyncConfig(){const n=document.getElementById('syncInterval').value;await post('/api/sync/config',{interval_min:parseInt(n||'15')});loadSyncStatus()}
 async function syncNow(){await post('/api/sync/push',{v:2,type:'status',seq:0,device:'desktop',project:'',ts:Date.now(),kind:'status',data:{text:'sync requested'}});loadSyncStatus()}
+async function showToken(){const r=await get('/api/sync/token');document.getElementById('tokenBox').textContent=r.token?('Токен для телефона (X-PocketCode-Token): '+r.token):('Недоступно: '+(r.error||'только с этого ПК'))}
 load();loadSyncStatus();
 </script></html>"""
+
+
+# Один сервер обслуживает несколько потоков: записи в файлы идут под замком,
+# иначе одновременные запросы теряют сообщения и портят JSON.
+LOCK = threading.RLock()
 
 
 def read_lines(path):
     """Непустые строки файла (UTF-8), без пустых хвостов."""
     try:
         return [x for x in path.read_text(encoding="utf-8").splitlines() if x.strip()]
-    except OSError:
+    except (OSError, UnicodeDecodeError):
         return []
+
+
+def read_jsonl(path):
+    """Строки JSONL; битая или обрезанная строка пропускается, а не роняет ответ."""
+    out = []
+    for line in read_lines(path):
+        try:
+            value = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(value, dict):
+            out.append(value)
+    return out
 
 
 def load_json(path, default):
     try:
         return json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
+    except (OSError, ValueError, UnicodeDecodeError):
         return default
 
 
 def save_json(path, value):
-    path.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8")
+    """Атомарная запись: обрыв процесса не оставит половину файла настроек."""
+    data = json.dumps(value, ensure_ascii=False, indent=2)
+    with LOCK:
+        tmp = path.with_name(path.name + ".tmp")
+        tmp.write_text(data, encoding="utf-8")
+        os.replace(tmp, path)
 
 
 def call_llm(profile, messages):
-    url = profile["base_url"].rstrip("/") + "/chat/completions"
+    base = str(profile.get("base_url") or "").rstrip("/")
+    model = str(profile.get("model") or "")
+    if not base or not model:
+        raise ValueError("в профиле не заданы адрес сервера или модель")
+    url = base + "/chat/completions"
     body = json.dumps({
-        "model": profile["model"],
+        "model": model,
         "messages": [{"role": m["role"], "content": m["text"]} for m in messages],
         "temperature": 0.4,
     }).encode()
@@ -118,6 +148,10 @@ def access_token():
     """Токен для удалённого доступа: создаётся автоматически при первом запуске."""
     if not TOKEN_FILE.exists():
         TOKEN_FILE.write_text(__import__("secrets").token_urlsafe(24), encoding="utf-8")
+        try:
+            os.chmod(TOKEN_FILE, 0o600)  # токен не должен быть читаем другим пользователям
+        except OSError:
+            pass
     return TOKEN_FILE.read_text(encoding="utf-8").strip()
 
 
@@ -159,7 +193,10 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(raw)
 
     def body(self):
-        return json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))).decode() or "{}")
+        raw = self.rfile.read(int(self.headers.get("Content-Length", 0) or 0))
+        if len(raw) > 32 * 1024 * 1024:
+            raise ValueError("слишком большое тело запроса")
+        return json.loads(raw.decode("utf-8", "replace") or "{}")
 
     def local_or_token(self):
         """Всё, кроме синхронизации, доступно только с этого ПК (или с токеном)."""
@@ -179,7 +216,7 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(raw)
         elif self.path == "/api/messages":
-            self.send([json.loads(x) for x in read_lines(CHAT)] if CHAT.exists() else [])
+            self.send(read_jsonl(CHAT))
         elif self.path == "/api/profiles":
             self.send(load_json(PROFILES, {}))
         elif self.path == "/api/tasks":
@@ -204,14 +241,16 @@ class Handler(BaseHTTPRequestHandler):
                 self.send({"error": "token required"}, 401); return
             from urllib.parse import parse_qs, urlparse
             q = parse_qs(urlparse(self.path).query)
-            since = int(q.get("since", ["0"])[0])
-            lines = read_lines(SYNC_EVENTS) if SYNC_EVENTS.exists() else []
-            self.send([json.loads(x) for x in lines if json.loads(x).get("seq", 0) > since][-200:])
+            try:
+                since = int(q.get("since", ["0"])[0])
+            except (TypeError, ValueError):
+                since = 0
+            events = read_jsonl(SYNC_EVENTS)
+            self.send([x for x in events if x.get("seq", 0) > since][-200:])
         elif self.path == "/api/messages/full":
-            msgs = [json.loads(x) for x in read_lines(CHAT)] if CHAT.exists() else []
-            self.send({"version": 1, "items": msgs, "project": "desktop"})
+            self.send({"version": 1, "items": read_jsonl(CHAT), "project": "desktop"})
         elif self.path == "/api/sync/pack":
-            msgs = [json.loads(x) for x in read_lines(CHAT)] if CHAT.exists() else []
+            msgs = read_jsonl(CHAT)
             self.send({"version": 1, "items": msgs, "project": load_json(HOME / "roles.json", {}).get("project", "")})
         else:
             self.send({"error": "not found"}, 404)
@@ -222,29 +261,53 @@ class Handler(BaseHTTPRequestHandler):
         try:
             b = self.body()
             if self.path == "/api/chat":
+                text = (b.get("text") or "").strip() if isinstance(b, dict) else ""
+                if not text:
+                    self.send({"error": "Пустое сообщение"}, 400)
+                    return
                 profiles = load_json(PROFILES, {})
-                name = profiles.get("_active", "")
-                if name not in profiles:
+                profile = profiles.get(profiles.get("_active", ""))
+                if not isinstance(profile, dict):
                     self.send({"error": "Сначала сохрани и выбери провайдера"}, 400)
                     return
-                history = [json.loads(x) for x in read_lines(CHAT)] if CHAT.exists() else []
-                history.append({"role": "user", "text": b["text"]})
-                answer = call_llm(profiles[name], history[-20:])
+                history = read_jsonl(CHAT)
+                history.append({"role": "user", "text": text})
+                try:
+                    answer = call_llm(profile, history[-20:])
+                except Exception as e:
+                    # Причину показываем в чате, а не молчаливой ошибкой сервера.
+                    self.send({"error": "Модель не ответила: " + str(e)}, 502)
+                    return
                 history.append({"role": "assistant", "text": answer})
-                CHAT.write_text("".join(json.dumps(m, ensure_ascii=False) + "\n" for m in history[-200:]), encoding="utf-8")
-                self.send({"ok": True})
+                with LOCK:
+                    CHAT.write_text("".join(json.dumps(m, ensure_ascii=False) + "\n" for m in history[-200:]), encoding="utf-8")
+                self.send({"ok": True, "text": answer})
             elif self.path == "/api/clear":
-                CHAT.write_text("", encoding="utf-8")
+                with LOCK:
+                    CHAT.write_text("", encoding="utf-8")
                 self.send({"ok": True})
             elif self.path == "/api/profiles":
+                name = (b.get("name") or "").strip() if isinstance(b, dict) else ""
+                base_url = (b.get("base_url") or "").strip() if isinstance(b, dict) else ""
+                model = (b.get("model") or "").strip() if isinstance(b, dict) else ""
+                if not name or not base_url or not model:
+                    self.send({"error": "Нужны имя, адрес сервера и модель"}, 400)
+                    return
+                if not base_url.startswith(("http://", "https://")):
+                    self.send({"error": "Адрес должен начинаться с http:// или https://"}, 400)
+                    return
                 profiles = load_json(PROFILES, {})
-                profiles[b["name"]] = {"base_url": b["base_url"], "model": b["model"], "api_key": b.get("api_key", "")}
-                profiles.setdefault("_active", b["name"])
+                profiles[name] = {"base_url": base_url, "model": model, "api_key": b.get("api_key", "")}
+                profiles.setdefault("_active", name)
                 save_json(PROFILES, profiles)
                 self.send({"ok": True})
             elif self.path == "/api/use":
+                name = b.get("name") if isinstance(b, dict) else None
                 profiles = load_json(PROFILES, {})
-                profiles["_active"] = b["name"]
+                if not isinstance(profiles.get(name), dict):
+                    self.send({"error": "Нет такого профиля"}, 404)
+                    return
+                profiles["_active"] = name
                 save_json(PROFILES, profiles)
                 self.send({"ok": True})
             elif self.path == "/api/agents":
@@ -272,18 +335,27 @@ class Handler(BaseHTTPRequestHandler):
                     b, encrypted = decrypt_payload(b, cfg.get("password", ""))
                     if not isinstance(b, dict):
                         self.send({"error": "bad encrypted payload"}, 400); return
-                seq = int(b.get("seq", 0) or 0)
+                if not isinstance(b, dict):
+                    self.send({"error": "bad payload"}, 400); return
+                try:
+                    seq = int(b.get("seq", 0) or 0)
+                except (TypeError, ValueError):
+                    self.send({"error": "bad seq"}, 400); return
                 typ = b.get("type", "event")
-                with SYNC_EVENTS.open("a", encoding="utf-8") as f:
-                    f.write(json.dumps(b, ensure_ascii=False) + "\n")
-                state = load_json(SYNC_STATE, {"last_seq": 0, "last_ts": 0, "events": 0, "fulls": 0})
-                state["last_seq"] = max(state.get("last_seq", 0), seq)
-                state["last_ts"] = b.get("ts", 0)
-                state["events"] = state.get("events", 0) + 1
-                if typ == "full": state["fulls"] = state.get("fulls", 0) + 1
-                save_json(SYNC_STATE, state)
+                with LOCK:
+                    with SYNC_EVENTS.open("a", encoding="utf-8") as f:
+                        f.write(json.dumps(b, ensure_ascii=False) + "\n")
+                    state = load_json(SYNC_STATE, {"last_seq": 0, "last_ts": 0, "events": 0, "fulls": 0})
+                    state["last_seq"] = max(state.get("last_seq", 0), seq)
+                    state["last_ts"] = b.get("ts", 0)
+                    state["events"] = state.get("events", 0) + 1
+                    if typ == "full": state["fulls"] = state.get("fulls", 0) + 1
+                    save_json(SYNC_STATE, state)
                 if typ == "full":
-                    for fp in b.get("files", []):
+                    files = b.get("files", [])
+                    for fp in files if isinstance(files, list) else []:
+                        if not isinstance(fp, dict):
+                            continue
                         root = SYNC_FILES.resolve()
                         path = (root / str(fp.get("path", "")).lstrip("/\\").replace("..", "_")).resolve()
                         if root in path.parents:

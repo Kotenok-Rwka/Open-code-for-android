@@ -1118,15 +1118,11 @@ class ChatController(
     private var runId = 0
     private var streamingIndex: Int? = null
 
-    init {
-        if (!isTab) scope.launch { runCatching { cleanupOld(cleanupDays) } }
-        refreshProjects()
-        sessionList = sessions.list()
-        refreshBranches()
-        if (!settings.freshOnStart && !isTab) {
-            sessionList.firstOrNull { projectOf(it) == currentProject }?.let { loadInto(it.id) }
-        }
-    }
+    // Стартовая загрузка намеренно вынесена в конец класса (см. init перед startService):
+    // в Kotlin инициализаторы свойств и init-блоки выполняются сверху вниз, а здесь
+    // используются branches, contextUsed и cleanupDays, объявленные ниже. Пока вызовы
+    // стояли в этом месте, приложение падало на старте с NullPointerException
+    // в MutableState.setValue (делегат ещё null).
 
     private fun projectOf(meta: SessionMeta) = meta.project.ifBlank { DEFAULT_PROJECT }
 
@@ -2005,7 +2001,9 @@ class ChatController(
         if (id == currentId) newChat()
         scope.launch {
             sessions.delete(id)
+            // Сначала обновляем список сессий и веток, потом экран перерисуется.
             sessionList = sessions.list()
+            refreshBranches()
         }
     }
 
@@ -6117,6 +6115,17 @@ class ChatController(
             release = { videoHold = false; if (!running) stopService() },
             proxy = { netProxy },
         )
+    }
+
+    init {
+        // Все свойства класса уже инициализированы: можно трогать состояние Compose.
+        if (!isTab) scope.launch { runCatching { cleanupOld(cleanupDays) } }
+        refreshProjects()
+        sessionList = sessions.list()
+        refreshBranches()
+        if (!settings.freshOnStart && !isTab) {
+            sessionList.firstOrNull { projectOf(it) == currentProject }?.let { loadInto(it.id) }
+        }
     }
 
     private fun startService() {
