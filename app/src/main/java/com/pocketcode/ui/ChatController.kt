@@ -4539,11 +4539,7 @@ class ChatController(
 
     /** Легкая настройка: проверить адрес компаньона и подставить IP сети автоматически. */
     var syncCheck by mutableStateOf("")
-        private set
-    fun setSyncCheck(s: String) { syncCheck = s }
     var capabilityInfo by mutableStateOf("")
-        private set
-    fun setCapabilityInfo(s: String) { capabilityInfo = s }
 
     fun checkSyncServer(url: String, token: String) {
         val base = url.trim().trimEnd('/')

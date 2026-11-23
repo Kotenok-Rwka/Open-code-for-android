@@ -897,7 +897,7 @@ fun ChatScreen(
                                 val info = com.pocketcode.llm.ModelCapabilityProbe.probe(
                                     vm.settings.baseUrl, vm.settings.apiKey, vm.settings.model,
                                 )
-                                vm.setCapabilityInfo(info.summary + if (info.raw.isNotBlank() && info.reasoning == null) " · ${info.raw.take(120)}" else "")
+                                vm.capabilityInfo = info.summary + if (info.raw.isNotBlank() && info.reasoning == null) " · ${info.raw.take(120)}" else ""
                             }
                         }) { Text("Узнать у провайдера") }
                         Text("Глубина: ${vm.toolsConfig.reasoningDepth} (0 — кратко, 3 — вдумчиво)")

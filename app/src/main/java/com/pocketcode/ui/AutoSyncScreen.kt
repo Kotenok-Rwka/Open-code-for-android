@@ -109,8 +109,8 @@ fun AutoSyncScreen(
         Text("IP этого телефона: ${p2pIp.ifBlank { "нет Wi-Fi" }} · порт ${com.pocketcode.P2PSync.PORT}", style = MaterialTheme.typography.bodySmall)
         OutlinedTextField(peer, { peer = it }, label = { Text("IP второго телефона") }, singleLine = true, modifier = Modifier.fillMaxWidth())
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(onClick = { com.pocketcode.P2PSync.start(); vm.setSyncCheck("P2P-приём включён") }) { Text("Включить приём") }
-            OutlinedButton(onClick = { com.pocketcode.P2PSync.stop(); vm.setSyncCheck("P2P-приём выключен") }) { Text("Выключить") }
+            Button(onClick = { com.pocketcode.P2PSync.start(); vm.syncCheck = "P2P-приём включён" }) { Text("Включить приём") }
+            OutlinedButton(onClick = { com.pocketcode.P2PSync.stop(); vm.syncCheck = "P2P-приём выключен" }) { Text("Выключить") }
             Button(onClick = {
                 kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch {
                     val payload = kotlinx.serialization.json.buildJsonObject {
@@ -119,7 +119,7 @@ fun AutoSyncScreen(
                         put("text", kotlinx.serialization.json.JsonPrimitive(vm.lastUserText().orEmpty().take(2000)))
                     }.toString()
                     val r = com.pocketcode.P2PSync.send(peer.trim(), payload)
-                    vm.setSyncCheck(r.fold({ "P2P: $it" }, { "P2P ошибка: ${it.message}" }))
+                    vm.syncCheck = r.fold({ "P2P: $it" }, { "P2P ошибка: ${it.message}" })
                 }
             }, enabled = peer.isNotBlank()) { Text("Отправить") }
         }
