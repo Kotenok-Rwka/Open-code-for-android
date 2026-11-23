@@ -912,7 +912,10 @@ private fun AppTheme(content: @Composable () -> Unit) {
     val customBg = com.pocketcode.ui.AppearanceCodec.parseColor(appearance.backgroundCustomColor)
     // Каждый экран — Scaffold, и он заливает весь экран цветом background. Поэтому при включённом фоне
     // подложка становится полупрозрачной, иначе картинка или градиент просто не видны за ней.
-    val scheme = baseScheme.withCardAlpha(appearance.cardOpacity).let { s ->
+    // Стекло включается только вместе с фоном: без фона прозрачные карточки и нижняя панель просто выглядят
+    // грязно-серыми поверх подложки темы.
+    val cardAlpha = if (backdropOn) appearance.cardOpacity else 1f
+    val scheme = baseScheme.withCardAlpha(cardAlpha).let { s ->
         when {
             appearance.background == "color" && customBg != null -> s.copy(background = customBg)
             backdropOn -> s.copy(background = s.background.copy(alpha = (1f - scrim).coerceIn(0.15f, 1f)))
