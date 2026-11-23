@@ -126,6 +126,7 @@ fun PluginsScreen(vm: ChatController, onBack: () -> Unit) {
                     OutlinedButton(onClick = { vm.installCatalogItem(item, global) }, enabled = !have) { Text(if (have) "Есть" else "Поставить") }
                 }
             }
+            if (tab == 0) {
             Text("Навыки (${vm.skillList.size})", style = MaterialTheme.typography.titleMedium)
             val skillScroll = rememberScrollState()
             val manySkills = vm.skillList.size > 20
