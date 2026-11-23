@@ -207,12 +207,13 @@ fun AppSwitch(
  * Пункты рисует AppNavItem.
  */
 @Composable
-fun AppNavigationBar(content: @Composable RowScope.() -> Unit) {
+fun AppNavigationBar(compact: Boolean = false, content: @Composable RowScope.() -> Unit) {
     val cs = MaterialTheme.colorScheme
     val style = LocalUiStyle.current
     val ios = style == UiStyle.IOS
     val aurora = style == UiStyle.AURORA
-    Box(Modifier.fillMaxWidth().navigationBarsPadding().padding(start = 14.dp, end = 14.dp, top = 6.dp, bottom = 10.dp)) {
+    val side = if (compact) 8.dp else 14.dp
+    Box(Modifier.fillMaxWidth().navigationBarsPadding().padding(start = side, end = side, top = if (compact) 2.dp else 6.dp, bottom = if (compact) 2.dp else 10.dp)) {
         Surface(
             shape = RoundedCornerShape(if (ios) 34.dp else if (aurora) 28.dp else 30.dp),
             color = cs.surfaceContainerHigh,
@@ -222,7 +223,7 @@ fun AppNavigationBar(content: @Composable RowScope.() -> Unit) {
             modifier = Modifier.fillMaxWidth(),
         ) {
             Row(
-                Modifier.fillMaxWidth().height(if (ios) 68.dp else if (aurora) 66.dp else 64.dp).padding(horizontal = 8.dp),
+                Modifier.fillMaxWidth().height(if (compact) 44.dp else if (ios) 68.dp else if (aurora) 66.dp else 64.dp).padding(horizontal = if (compact) 4.dp else 8.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically,
                 content = content,
