@@ -81,6 +81,10 @@ fun SmartScreen(vm: ChatController, onBack: () -> Unit, onOpenRoot: () -> Unit) 
                     FilterChip(selected = false, onClick = { presetNote = vm.applyPreset("eco") }, label = { Text("Экономно") })
                     FilterChip(selected = false, onClick = { presetNote = vm.applyPreset("max") }, label = { Text("Максимум") })
                     FilterChip(selected = false, onClick = { presetNote = vm.applyPreset("free") }, label = { Text("Бесплатно") })
+                    FilterChip(selected = vm.smart.leanCalls, onClick = {
+                        vm.smart.changeLeanCalls(!vm.smart.leanCalls)
+                        presetNote = if (vm.smart.leanCalls) I18n.t("Меньше запросов: фоновые вызовы модели выключены, основной ответ остаётся прежним.") else I18n.t("Фоновые вызовы модели снова разрешены.")
+                    }, label = { Text("Меньше запросов") })
                 }
                 presetNote?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
             }
