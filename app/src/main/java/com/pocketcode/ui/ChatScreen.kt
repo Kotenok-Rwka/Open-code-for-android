@@ -1249,7 +1249,7 @@ private fun EmptyHint(workspacePath: String, welcome: (@Composable () -> Unit)?,
 private fun ItemView(item: UiItem, live: Boolean = false, projectRoot: java.io.File? = null) {
     when (item) {
         is UiItem.Questions -> QuestionCardView(item, onAnswer = { answers -> /* ответ обрабатывается в списке чата */ })
-        is UiItem.User -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+        is UiItem.User -> Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.End) {
             val ios = LocalUiStyle.current == UiStyle.IOS
             val cs = MaterialTheme.colorScheme
             Box(
@@ -1257,7 +1257,7 @@ private fun ItemView(item: UiItem, live: Boolean = false, projectRoot: java.io.F
                     .clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp, bottomStart = 20.dp, bottomEnd = 6.dp))
                     .background(if (ios) cs.primary else cs.primaryContainer),
             ) {
-                Column {
+                Column(Modifier.fillMaxWidth()) {
                     SelectionContainer {
                         Text(
                             (if (item.images > 0) "🖼 ×${item.images}\n" else "") + item.text,
@@ -1265,15 +1265,17 @@ private fun ItemView(item: UiItem, live: Boolean = false, projectRoot: java.io.F
                             modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
                         )
                     }
-                    Row(
-                        Modifier.padding(horizontal = 10.dp, vertical = 2.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        val time = MessageTime.format(item.ts)
-                        if (time.isNotBlank()) Text(time, style = MaterialTheme.typography.labelSmall, color = if (ios) cs.onPrimary.copy(alpha = 0.7f) else cs.onPrimaryContainer.copy(alpha = 0.7f), modifier = Modifier.padding(end = 4.dp))
-                        CopyButton(item.text, tint = if (ios) cs.onPrimary else cs.onPrimaryContainer)
-                    }
                 }
+            }
+            // Время и копирование — отдельной строкой под пузырём: внутри него они наезжали на текст сообщения.
+            Row(
+                Modifier.fillMaxWidth().padding(top = 2.dp, end = 2.dp),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                val time = MessageTime.format(item.ts)
+                if (time.isNotBlank()) Text(time, style = MaterialTheme.typography.labelSmall, color = cs.onSurfaceVariant, modifier = Modifier.padding(end = 4.dp))
+                CopyButton(item.text)
             }
         }
         is UiItem.Assistant -> {

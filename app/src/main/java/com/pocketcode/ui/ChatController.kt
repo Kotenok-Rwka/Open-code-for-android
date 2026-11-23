@@ -1822,6 +1822,28 @@ class ChatController(
         private set
     fun dismissUpdatePrompt() { updatePrompt = false }
 
+    /** Обновление найдено, пока агент работал: предложим его, когда задача закончится. */
+    private var updatePending = false
+
+    /** Проверка во время активности идёт не чаще раза в 3 часа (в пределах 2–6 часов). */
+    private val updateCheckInterval = 3 * 3_600_000L
+
+    /** Вызывается, когда приложение снова активно: проверяет обновления по расписанию. */
+    fun periodicUpdateCheck() {
+        if (!autoUpdate || updateBusy) return
+        val last = settingsStore.rawGet("updCheckedAt")?.toLongOrNull() ?: 0L
+        if (System.currentTimeMillis() - last < updateCheckInterval) return
+        checkUpdate(silent = true)
+    }
+
+    /** Задача закончилась: если обновление уже найдено, предлагаем его сейчас. */
+    private fun offerPendingUpdate() {
+        if (updatePending && !running) {
+            updatePending = false
+            updatePrompt = true
+        }
+    }
+
     var autoUpdate by mutableStateOf(settingsStore.rawGet("autoUpd") != "0")
         private set
     fun setAutoUpdateValue(v: Boolean) { autoUpdate = v; settingsStore.rawPut("autoUpd", if (v) "1" else "0") }
@@ -1832,12 +1854,15 @@ class ChatController(
         updateBusy = true
         if (!silent) updateStatus = "Проверяю…"
         scope.launch {
+            settingsStore.rawPut("updCheckedAt", System.currentTimeMillis().toString())
             try {
                 val info = updater.latest(settings.githubToken)
                 if (info != null && info.build > updater.currentBuild()) {
                     updateInfo = info
                     updateStatus = "Доступна версия ${info.label}: ${info.notes.take(150)}"
-                    if (silent) updatePrompt = true
+                    if (silent) {
+                        if (running) updatePending = true else updatePrompt = true
+                    }
                 } else {
                     updateInfo = null
                     if (!silent) updateStatus = "У тебя последняя версия."
@@ -5686,6 +5711,7 @@ class ChatController(
         }
         editsAllowedThisRun = false
         running = false
+        offerPendingUpdate()
         runCatching { com.pocketcode.QuickStatusWidget.refresh(app) }
         streamingIndex = null
         approval = null
@@ -5700,6 +5726,7 @@ class ChatController(
         job?.cancel()
         job = null
         running = false
+        offerPendingUpdate()
         streamingIndex = null
         approval?.result?.complete(false)
         approval = null

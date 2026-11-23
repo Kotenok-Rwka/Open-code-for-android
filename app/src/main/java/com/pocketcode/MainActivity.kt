@@ -824,6 +824,8 @@ class MainActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         pocketApp.tabs.forEach { it.appVisible = true }
+        // Пока приложением пользуются, обновления проверяются раз в несколько часов.
+        controller.periodicUpdateCheck()
         if (stopAt > 0 && System.currentTimeMillis() - stopAt > 60_000 && lockAvailable()) locked = true
     }
 

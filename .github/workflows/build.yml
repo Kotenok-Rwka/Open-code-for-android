@@ -21,8 +21,14 @@ jobs:
         run: |
           BASE=$(sed -n 's/^VERSION_BASE=//p' version.properties | head -1 | tr -d '[:space:]')
           echo "$BASE" | grep -Eq '^[0-9]+\.[0-9]+$' || { echo "::error title=Версия::в version.properties нет VERSION_BASE вида 4.0"; exit 1; }
-          FIRST=$(git log -1 --format=%H -- version.properties)
-          PATCH=$(( $(git rev-list --count "$FIRST"..HEAD) + 1 ))
+          # Явный VERSION_PATCH в файле главнее счётчика коммитов (нужен, когда версию задают руками)
+          FIXED=$(sed -n 's/^VERSION_PATCH=//p' version.properties | head -1 | tr -d '[:space:]')
+          if echo "$FIXED" | grep -Eq '^[0-9]+$'; then
+            PATCH="$FIXED"
+          else
+            FIRST=$(git log -1 --format=%H -- version.properties)
+            PATCH=$(( $(git rev-list --count "$FIRST"..HEAD) + 1 ))
+          fi
           echo "APP_VERSION=$BASE.$PATCH" >> "$GITHUB_ENV"
           echo "PC_PATCH=$PATCH" >> "$GITHUB_ENV"
           echo "::notice title=Версия::$BASE.$PATCH"
