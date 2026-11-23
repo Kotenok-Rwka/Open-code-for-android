@@ -28,7 +28,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: desktop-linux
-          path: pocketcode-desktop_*.deb
+          path: desktop/pocketcode-desktop_*.deb
 
   windows-exe:
     runs-on: windows-latest
