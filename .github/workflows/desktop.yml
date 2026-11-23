@@ -15,38 +15,58 @@ permissions:
   contents: write
 
 jobs:
-  build:
+  linux-deb:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
       - name: Install build tools
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq dpkg-dev
-          python -m pip install --upgrade pyinstaller
       - name: Build Linux .deb
         run: bash desktop/build_linux_deb.sh
-      - name: Build Windows portable ZIP
-        run: |
-          python -m PyInstaller --noconfirm --onefile --name PocketCodeDesktop desktop/pocketcode_desktop.py
-          mkdir -p winout
-          cp dist/PocketCodeDesktop.exe winout/
-          cp desktop/INSTALL.md desktop/EDITOR_INTEGRATION.md desktop/README.md winout/
-          cd winout && zip -r ../PocketCodeDesktop-windows.zip .
       - uses: actions/upload-artifact@v4
         with:
-          name: desktop-packages
-          path: |
-            pocketcode-desktop_*.deb
-            PocketCodeDesktop-windows.zip
+          name: desktop-linux
+          path: pocketcode-desktop_*.deb
+
+  windows-exe:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install PyInstaller
+        run: python -m pip install --upgrade pyinstaller
+      - name: Build EXE
+        run: python -m PyInstaller --noconfirm --onefile --name PocketCodeDesktop --paths desktop --hidden-import ide_bridge desktop/pocketcode_desktop.py
+      - name: Zip
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force winout | Out-Null
+          Copy-Item dist/PocketCodeDesktop.exe winout/
+          Copy-Item desktop/INSTALL.md, desktop/EDITOR_INTEGRATION.md, desktop/README.md winout/
+          Compress-Archive -Path winout/* -DestinationPath PocketCodeDesktop-windows.zip -Force
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-windows
+          path: PocketCodeDesktop-windows.zip
+
+  publish:
+    needs: [linux-deb, windows-exe]
+    if: startsWith(github.ref, 'refs/tags/v') || github.event.inputs.tag != ''
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          merge-multiple: true
       - name: Publish to Release
-        if: startsWith(github.ref, 'refs/tags/v') || github.event.inputs.tag != ''
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           TAG_INPUT: ${{ github.event.inputs.tag }}
         run: |
           TAG="${TAG_INPUT:-$GITHUB_REF_NAME}"
-          gh release upload "$TAG" pocketcode-desktop_*.deb PocketCodeDesktop-windows.zip --clobber
+          gh release upload "$TAG" out/pocketcode-desktop_*.deb out/PocketCodeDesktop-windows.zip --clobber
