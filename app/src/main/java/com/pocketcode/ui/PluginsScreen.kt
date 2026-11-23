@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -24,7 +25,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -34,9 +37,12 @@ import java.io.File
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PluginsScreen(vm: ChatController, onBack: () -> Unit) {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val ioScope = rememberCoroutineScope()
+    val prefs = remember { com.pocketcode.SettingsStore(ctx) }
     var url by remember { mutableStateOf("") }
     var newName by remember { mutableStateOf("") }
-    var global by remember { mutableStateOf(false) }
+    var global by remember { mutableStateOf(prefs.rawGet("skillsInstallGlobal") == "1") }
     var schedPrompt by remember { mutableStateOf("") }
     var schedInterval by remember { mutableStateOf(1440) }
     var mcpName by remember { mutableStateOf("") }
@@ -47,6 +53,7 @@ fun PluginsScreen(vm: ChatController, onBack: () -> Unit) {
     var kind by remember { mutableStateOf(0) }
     var viewing by remember { mutableStateOf<com.pocketcode.agent.Skill?>(null) }
     var confirmNode by remember { mutableStateOf(false) }
+    var nodeTool by remember { mutableStateOf("jevgrep") }
     var ghQuery by remember { mutableStateOf("claude code skills") }
     var ghSort by remember { mutableStateOf("stars") }
     var ghCategory by remember { mutableStateOf("Все") }
@@ -104,7 +111,7 @@ fun PluginsScreen(vm: ChatController, onBack: () -> Unit) {
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Ставить для всех проектов", Modifier.weight(1f))
-                AppSwitch(checked = global, onCheckedChange = { global = it })
+                AppSwitch(checked = global, onCheckedChange = { global = it; prefs.rawPut("skillsInstallGlobal", if (it) "1" else "0") })
             }
             val q = query.trim().lowercase()
             val items = com.pocketcode.SKILL_CATALOG.filter { (kind == 0 || (kind == 1) == it.isSkill) && (q.isEmpty() || (it.title + " " + it.about + " " + it.name).lowercase().contains(q)) }
@@ -119,12 +126,23 @@ fun PluginsScreen(vm: ChatController, onBack: () -> Unit) {
                     OutlinedButton(onClick = { vm.installCatalogItem(item, global) }, enabled = !have) { Text(if (have) "Есть" else "Поставить") }
                 }
             }
-            }
-
-            if (tab == 0) {
             Text("Навыки (${vm.skillList.size})", style = MaterialTheme.typography.titleMedium)
-            if (vm.skillList.isEmpty()) Text("Пока нет. Поставь что-нибудь из каталога выше.", style = MaterialTheme.typography.bodySmall)
-            vm.skillList.forEach { sk ->
+            val skillScroll = rememberScrollState()
+            val manySkills = vm.skillList.size > 20
+            var skillsExpanded by remember { mutableStateOf(false) }
+            if (manySkills) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Список длинный — свернут. Нажми, чтобы раскрыть.", Modifier.weight(1f), style = MaterialTheme.typography.labelSmall)
+                    AppSwitch(checked = skillsExpanded, onCheckedChange = { skillsExpanded = it })
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { ioScope.launch { skillScroll.animateScrollTo(0) } }) { Text("Наверх") }
+                    OutlinedButton(onClick = { ioScope.launch { skillScroll.animateScrollTo(skillScroll.maxValue) } }) { Text("Вниз") }
+                }
+            }
+            val shownSkills = if (manySkills && !skillsExpanded) vm.skillList.take(20) else vm.skillList
+            Column(Modifier.fillMaxWidth().then(if (manySkills && skillsExpanded) Modifier.height(520.dp).verticalScroll(skillScroll) else Modifier)) {
+            shownSkills.forEach { sk ->
                 val on = vm.skillEnabled(sk.name)
                 AppCard(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -163,7 +181,7 @@ fun PluginsScreen(vm: ChatController, onBack: () -> Unit) {
             )
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Для всех проектов", Modifier.weight(1f))
-                AppSwitch(checked = global, onCheckedChange = { global = it })
+                AppSwitch(checked = global, onCheckedChange = { global = it; prefs.rawPut("skillsInstallGlobal", if (it) "1" else "0") })
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = { vm.createSample("skill", newName, global) }, enabled = newName.isNotBlank()) { Text("Навык") }
@@ -216,8 +234,8 @@ fun PluginsScreen(vm: ChatController, onBack: () -> Unit) {
                         if (t.id == "trail" && vm.toolInstalled(t.id)) {
                             OutlinedButton(onClick = { vm.toolAction("trail", "init") }, enabled = vm.toolBusy == null, modifier = Modifier.fillMaxWidth()) { Text("Подключить к текущему проекту (trail init)") }
                         }
-                        if (t.id == "jevgrep") {
-                            OutlinedButton(onClick = { confirmNode = true }, enabled = vm.toolBusy == null, modifier = Modifier.fillMaxWidth()) { Text("Поставить Node 22 (обновит Linux до Alpine 3.21)") }
+                        if (t.id == "jevgrep" || t.id == "trail") {
+                            OutlinedButton(onClick = { nodeTool = t.id; confirmNode = true }, enabled = vm.toolBusy == null, modifier = Modifier.fillMaxWidth()) { Text("Поставить Node 22 (обновит Linux до Alpine 3.21)") }
                         }
                     }
                 }
@@ -385,6 +403,13 @@ fun PluginsScreen(vm: ChatController, onBack: () -> Unit) {
                 }
                 val shown = vm.pluginSearchResults.let { list -> if (ghSort == "name") list.sortedBy { it.fullName.lowercase() } else list }
                 if (shown.isNotEmpty()) Text("Найдено: ${shown.size}", style = MaterialTheme.typography.labelMedium)
+                var translateHits by remember(shown) { mutableStateOf(false) }
+                if (shown.isNotEmpty() && I18n.code != "ru") {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Переводить описания", Modifier.weight(1f), style = MaterialTheme.typography.labelMedium)
+                        AppSwitch(checked = translateHits, onCheckedChange = { translateHits = it })
+                    }
+                }
                 shown.forEach { hit ->
                     AppCard(Modifier.fillMaxWidth()) {
                         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -395,8 +420,13 @@ fun PluginsScreen(vm: ChatController, onBack: () -> Unit) {
                                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                             )
                             if (hit.description.isNotBlank()) {
+                                val translated = if (translateHits) {
+                                    androidx.compose.runtime.remember(hit.description, I18n.code) {
+                                        com.pocketcode.ui.GitHubText.translate(hit.description, I18n.code)
+                                    }
+                                } else null
                                 Text(
-                                    hit.description,
+                                    translated ?: hit.description,
                                     style = MaterialTheme.typography.bodySmall,
                                     maxLines = 5,
                                     overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
@@ -443,7 +473,7 @@ fun PluginsScreen(vm: ChatController, onBack: () -> Unit) {
             onDismissRequest = { confirmNode = false },
             title = { Text("Обновить Linux до Alpine 3.21?") },
             text = { Text("Нужно для Node 22. Скачается около 100–150 МБ, займёт 5–10 минут. Это меняет систему внутри приложения. Если что-то пойдёт не так, Linux можно удалить и поставить заново (Ещё → Среда Linux), проекты не пострадают.") },
-            confirmButton = { TextButton(onClick = { confirmNode = false; vm.toolAction("jevgrep", "node22") }) { Text("Обновить") } },
+            confirmButton = { TextButton(onClick = { confirmNode = false; vm.toolAction(nodeTool, "node22") }) { Text("Обновить") } },
             dismissButton = { TextButton(onClick = { confirmNode = false }) { Text("Отмена") } },
         )
     }
