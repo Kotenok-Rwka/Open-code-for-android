@@ -9,7 +9,7 @@ import java.io.File
  */
 object BundledLlama {
     fun assetName(): String? = when {
-        android.os.Build.SUPPORTED_ABIS.any { it.equals("arm64-v8a", true) } -> "native/arm64-v8a/llama-server"
+        (android.os.Build.SUPPORTED_ABIS as Array<String>?)?.any { it.equals("arm64-v8a", true) } == true -> "native/arm64-v8a/llama-server"
         else -> null
     }
 
