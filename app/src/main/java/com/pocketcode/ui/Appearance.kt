@@ -88,10 +88,42 @@ object BackgroundCatalog {
         BackgroundPreset("mint", "Мята", listOf(0xFF00B09B, 0xFF96C93D)),
         BackgroundPreset("plum", "Слива", listOf(0xFF2B1055, 0xFF7597DE)),
         BackgroundPreset("coffee", "Кофе", listOf(0xFF3E2723, 0xFF8D6E63)),
+        BackgroundPreset("sunrise", "Восход", listOf(0xFFFF9A8B, 0xFFFF6A88, 0xFFFF99AC)),
+        BackgroundPreset("night", "Ночь", listOf(0xFF0F0C29, 0xFF302B63, 0xFF24243E)),
+        BackgroundPreset("clouds", "Облака", listOf(0xFFE8F0FE, 0xFFD7E4F7)),
+        BackgroundPreset("peach", "Персик", listOf(0xFFFFD3A5, 0xFFFD6585)),
+        BackgroundPreset("steel", "Сталь", listOf(0xFF485563, 0xFF29323C)),
+        BackgroundPreset("neon", "Неон", listOf(0xFF00F5A0, 0xFF00D9F5)),
+        BackgroundPreset("candy", "Карамель", listOf(0xFFFBD3E9, 0xFFBB377D)),
+        BackgroundPreset("lilac", "Сирень", listOf(0xFFD3CCE3, 0xFFE9E4F0)),
     )
 
     fun byId(id: String): BackgroundPreset = presets.firstOrNull { it.id == id } ?: presets.first()
 }
+
+/** true — выбран любой фон, отличный от «без фона»: тогда подложка экранов становится прозрачной. */
+fun hasBackdrop(id: String): Boolean = id.isNotBlank() && id != "none"
+
+/** Цвет «тепла» подложки: смешивается с родным фоном темы, чтобы светлая тема не была чисто белой. */
+data class BaseTintPreset(val id: String, val title: String, val hex: String)
+
+object BaseTints {
+    val presets = listOf(
+        BaseTintPreset("default", "Родной", ""),
+        BaseTintPreset("warm", "Тёплый", "#F7E8D2"),
+        BaseTintPreset("beige", "Бежевый", "#EFE2CB"),
+        BaseTintPreset("cool", "Холодный", "#E4ECFA"),
+        BaseTintPreset("mint", "Мятный", "#E2F3E7"),
+        BaseTintPreset("rose", "Розовый", "#F9E6EC"),
+        BaseTintPreset("lavender", "Лаванда", "#ECE4F8"),
+        BaseTintPreset("slate", "Графит", "#E1E5EA"),
+    )
+
+    fun byId(id: String): BaseTintPreset = presets.firstOrNull { it.id == id } ?: presets.first()
+}
+
+/** Варианты вписывания фонового изображения. */
+val BACKGROUND_FITS = listOf("crop" to "Заполнить", "fit" to "Вписать", "fill" to "Растянуть")
 
 /** Настройки внешнего вида, которые не дублируются в Settings.kt. */
 @kotlinx.serialization.Serializable
@@ -108,6 +140,18 @@ data class AppearanceConfig(
     val background: String = "none",
     val backgroundCustomColor: String = "#111318",
     val backgroundImage: String = "",
+    /** Насколько подложка прозрачная: 0 — фон не видно, 0.85 — почти открытый фон. */
+    val backgroundScrim: Float = 0.4f,
+    /** crop | fit | fill — как вписать картинку фона. */
+    val backgroundFit: String = "crop",
+    /** Размытие картинки фона в dp, 0 — без размытия. */
+    val backgroundBlur: Float = 0f,
+    /** Цвет «тепла» подложки, #RRGGBB; пусто — родной цвет темы. */
+    val baseTint: String = "",
+    /** Насколько сильно тепло подложки смешивается с темой, 0..1. */
+    val baseTintStrength: Float = 0.35f,
+    /** Прозрачность карточек (стекло), 0.35..1. */
+    val cardOpacity: Float = 1f,
     val cornerRadius: Int = 20,
     val strokeWidth: Int = 1,
     val readingMode: Boolean = false,

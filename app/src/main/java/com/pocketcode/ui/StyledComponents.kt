@@ -48,6 +48,9 @@ val LocalUiStyle = compositionLocalOf { DEFAULT_UI_STYLE }
 /** true: анимации выключены (настройка приложения или системная шкала анимации 0). */
 val LocalReduceMotion = compositionLocalOf { false }
 
+/** true: включён фон (градиент, свой цвет или картинка) и подложка экранов полупрозрачная. */
+val LocalBackdropActive = compositionLocalOf { false }
+
 /** Скругления по спецификации Material 3 или как у элементов iOS. */
 fun appShapes(style: UiStyle): Shapes = when (style) {
     UiStyle.MD3 -> Shapes(
@@ -110,9 +113,19 @@ fun AppTopBar(
 ) {
     val cs = MaterialTheme.colorScheme
     val aurora = LocalUiStyle.current == UiStyle.AURORA
+    // При включённом фоне некрасиво, когда контент проезжает под прозрачной шапкой: делаем её стеклянной.
+    val glass = LocalBackdropActive.current
     val colors = TopAppBarDefaults.topAppBarColors(
-        containerColor = if (aurora) cs.surfaceContainerLow else cs.background,
-        scrolledContainerColor = if (aurora) cs.surfaceContainerHigh else cs.background,
+        containerColor = when {
+            glass -> cs.surface.copy(alpha = 0.9f)
+            aurora -> cs.surfaceContainerLow
+            else -> cs.background
+        },
+        scrolledContainerColor = when {
+            glass -> cs.surface.copy(alpha = 0.96f)
+            aurora -> cs.surfaceContainerHigh
+            else -> cs.background
+        },
     )
     if (LocalUiStyle.current == UiStyle.IOS) {
         CenterAlignedTopAppBar(

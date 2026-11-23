@@ -187,25 +187,33 @@ fun AppearanceScreen(
         toggleRow("Анимации списков", c.animations.listAnimations) { v -> update { cfg -> cfg.copy(animations = cfg.animations.copy(listAnimations = v)) } }
         toggleRow("Пульсация индикаторов", c.animations.pulseIndicators) { v -> update { cfg -> cfg.copy(animations = cfg.animations.copy(pulseIndicators = v)) } }
 
-        SectionHeader("Фон", "Можно поставить встроенный градиент, свой цвет или изображение")
+        SectionHeader("Фон", "Градиент, свой цвет или картинка. Подложка экранов станет прозрачной, и фон будет видно.")
         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             BackgroundCatalog.presets.forEach { b ->
                 val selected = c.background == b.id
                 Column(
-                    Modifier.width(76.dp).clip(RoundedCornerShape(14.dp))
-                        .border(1.dp, if (selected) MaterialTheme.colorScheme.primary else Color.Transparent, RoundedCornerShape(14.dp))
+                    Modifier.width(88.dp).clip(RoundedCornerShape(16.dp))
+                        .background(if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerLow)
+                        .border(1.dp, if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(16.dp))
                         .clickable { update { it.copy(background = b.id) } }
-                        .padding(4.dp),
+                        .padding(6.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
                     Box(
-                        Modifier.size(44.dp).clip(RoundedCornerShape(10.dp))
+                        Modifier.fillMaxWidth().height(48.dp).clip(RoundedCornerShape(10.dp))
                             .then(
                                 if (b.colors.size > 1) Modifier.background(Brush.linearGradient(b.colors.map { Color(it) }))
-                                else Modifier.background(Color(b.colors.firstOrNull() ?: 0xFF000000)),
+                                else Modifier.background(Color(b.colors.firstOrNull() ?: 0xFF111318)),
                             ),
                     )
-                    Text(b.title, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(
+                        b.title,
+                        style = MaterialTheme.typography.labelSmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        textAlign = TextAlign.Center,
+                    )
                 }
             }
         }
@@ -216,14 +224,29 @@ fun AppearanceScreen(
         }
         if (c.background == "image" && c.backgroundImage.isNotBlank()) {
             Text("Сейчас стоит изображение: ${c.backgroundImage}", style = MaterialTheme.typography.bodySmall)
+            ChipRow {
+                BACKGROUND_FITS.forEach { (id, label) ->
+                    FilterChip(selected = c.backgroundFit == id, onClick = { update { it.copy(backgroundFit = id) } }, label = { Text(label, maxLines = 1) })
+                }
+            }
+            sliderRow("Размытие картинки", c.backgroundBlur, 0f..40f) { v -> update { cfg -> cfg.copy(backgroundBlur = v) } }
+        }
+        if (hasBackdrop(c.background) && c.background != "color") {
+            sliderRow("Видимость фона", c.backgroundScrim, 0f..0.85f, percent = true) { v -> update { cfg -> cfg.copy(backgroundScrim = v) } }
+            Text(
+                "0% — фон полностью закрыт подложкой темы, 85% — виден почти как есть. Если текст плохо читается, уменьши значение.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
         if (c.background == "color") {
-            var bgHex by remember { mutableStateOf(c.backgroundCustomColor) }
+            var bgHex by remember(c.backgroundCustomColor) { mutableStateOf(c.backgroundCustomColor) }
             OutlinedTextField(
                 bgHex, { bgHex = it },
                 label = { Text("Цвет фона #RRGGBB") },
                 singleLine = true,
                 isError = AppearanceCodec.parseColor(bgHex) == null,
+                supportingText = { Text("Для светлой темы выбирай светлый цвет, для тёмной — тёмный: текст берётся из темы.") },
                 modifier = Modifier.fillMaxWidth(),
             )
             ActionRow {
@@ -236,12 +259,49 @@ fun AppearanceScreen(
             }
         }
 
-        SectionHeader("Дополнительно", "Тонкая настройка внешнего вида")
+        SectionHeader("Тепло подложки", "Светлая тема не обязана быть белой: тёплая, бежевая, холодная или свой цвет")
+        ChipRow {
+            BaseTints.presets.forEach { t ->
+                val chipColor = AppearanceCodec.parseColor(t.hex)
+                FilterChip(
+                    selected = c.baseTint == t.hex,
+                    onClick = { update { it.copy(baseTint = t.hex) } },
+                    leadingIcon = { Box(Modifier.size(12.dp).clip(RoundedCornerShape(4.dp)).background(chipColor ?: Color.Transparent)) },
+                    label = { Text(t.title, maxLines = 1) },
+                )
+            }
+        }
+        var tintHex by remember(c.baseTint) { mutableStateOf(c.baseTint) }
+        OutlinedTextField(
+            tintHex, { tintHex = it },
+            label = { Text("Свой цвет подложки #RRGGBB") },
+            singleLine = true,
+            isError = tintHex.isNotBlank() && AppearanceCodec.parseColor(tintHex) == null,
+            supportingText = { if (tintHex.isNotBlank() && AppearanceCodec.parseColor(tintHex) == null) Text("Нужен формат #RRGGBB") },
+            modifier = Modifier.fillMaxWidth(),
+        )
+        ActionRow {
+            Button(
+                onClick = { update { it.copy(baseTint = tintHex.trim()) } },
+                enabled = tintHex.isBlank() || AppearanceCodec.parseColor(tintHex) != null,
+            ) { Text("Применить") }
+            OutlinedButton(onClick = { tintHex = ""; update { it.copy(baseTint = "") } }) { Text("Родной цвет") }
+            AppearanceCodec.parseColor(tintHex)?.let { col ->
+                Box(Modifier.size(40.dp).clip(RoundedCornerShape(12.dp)).background(col))
+            }
+        }
+        sliderRow("Сила тепла", c.baseTintStrength, 0f..1f, percent = true) { v -> update { cfg -> cfg.copy(baseTintStrength = v) } }
+
+        SectionHeader("Карточки", "Стекло, скругления и обводки")
+        sliderRow("Прозрачность карточек", c.cardOpacity, 0.35f..1f, percent = true) { v -> update { cfg -> cfg.copy(cardOpacity = v) } }
         sliderRow("Скругление карточек", c.cornerRadius.toFloat(), 0f..28f) { v -> update { cfg -> cfg.copy(cornerRadius = v.toInt()) } }
         sliderRow("Толщина обводки", c.strokeWidth.toFloat(), 0f..4f) { v -> update { cfg -> cfg.copy(strokeWidth = v.toInt()) } }
+
+        SectionHeader("Дополнительно", "Тонкая настройка внешнего вида")
         toggleRow("Режим чтения", c.readingMode) { v -> update { cfg -> cfg.copy(readingMode = v) } }
         ActionRow {
             OutlinedButton(onClick = { update { it.copy(themeId = ThemeCatalog.presets.random().id) } }) { Text("Случайная тема") }
+            OutlinedButton(onClick = { update { AppearanceConfig() } }) { Text("Сбросить оформление") }
             OutlinedButton(onClick = {
                 update { it.copy(themeJson = kotlinx.serialization.json.Json.encodeToString(AppearanceConfig.serializer(), it)) }
             }) { Text("Экспорт настроек") }
@@ -304,8 +364,14 @@ private fun SettingRow(title: String, description: String, control: @Composable 
 fun fontLabel(value: String): String = if (value.isBlank() || value == "system") "системный" else value.substringAfterLast('/')
 
 @Composable
-private fun sliderRow(label: String, value: Float, range: ClosedFloatingPointRange<Float> = 0.5f..2f, onChange: (Float) -> Unit) {
-    Text("$label: ${"%.2f".format(value)}", style = MaterialTheme.typography.bodySmall)
+private fun sliderRow(
+    label: String,
+    value: Float,
+    range: ClosedFloatingPointRange<Float> = 0.5f..2f,
+    percent: Boolean = false,
+    onChange: (Float) -> Unit,
+) {
+    Text("$label: " + if (percent) "${Math.round(value * 100)}%" else "%.2f".format(value), style = MaterialTheme.typography.bodySmall)
     Slider(value = value, onValueChange = onChange, valueRange = range, modifier = Modifier.fillMaxWidth())
 }
 

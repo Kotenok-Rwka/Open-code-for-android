@@ -43,6 +43,9 @@ import kotlinx.coroutines.launch
 import androidx.compose.foundation.verticalScroll
 import com.pocketcode.ui.Text
 import androidx.compose.ui.graphics.toArgb
+import com.pocketcode.ui.withCardAlpha
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.BlurredEdgeTreatment
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -887,24 +890,38 @@ private fun AppTheme(content: @Composable () -> Unit) {
     val reduceMotion = ctl.reduceMotion || systemNoAnim || appearance.animations.level == com.pocketcode.ui.AnimationLevel.NONE
     val ios = style == com.pocketcode.ui.UiStyle.IOS
     val aurora = style == com.pocketcode.ui.UiStyle.AURORA
-    val scheme = when {
+    val tint = com.pocketcode.ui.AppearanceCodec.parseColor(appearance.baseTint)
+    val tintStrength = appearance.baseTintStrength.coerceIn(0f, 1f)
+    val backdropOn = com.pocketcode.ui.hasBackdrop(appearance.background)
+    val baseScheme = when {
         accent == null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
             val dyn = if (dark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
             when {
-                ios -> com.pocketcode.ui.buildIosScheme(dark, dark && ctl.amoled, com.pocketcode.ui.Accent("system", "Из обоев", dyn.primary, dyn.primary))
-                aurora -> com.pocketcode.ui.buildAuroraScheme(dark, dark && ctl.amoled, com.pocketcode.ui.Accent("system", "Из обоев", dyn.primary, dyn.primary))
+                ios -> com.pocketcode.ui.buildIosScheme(dark, dark && ctl.amoled, com.pocketcode.ui.Accent("system", "Из обоев", dyn.primary, dyn.primary), tint, tintStrength)
+                aurora -> com.pocketcode.ui.buildAuroraScheme(dark, dark && ctl.amoled, com.pocketcode.ui.Accent("system", "Из обоев", dyn.primary, dyn.primary), tint, tintStrength)
                 else -> if (dark && ctl.amoled) com.pocketcode.ui.amoledize(dyn) else dyn
             }
         }
-        ios -> com.pocketcode.ui.buildIosScheme(dark, dark && ctl.amoled, accent ?: com.pocketcode.ui.ACCENTS.first())
-        aurora -> com.pocketcode.ui.buildAuroraScheme(dark, dark && ctl.amoled, accent ?: com.pocketcode.ui.ACCENTS.first())
-        else -> com.pocketcode.ui.buildScheme(dark, dark && ctl.amoled, accent ?: com.pocketcode.ui.ACCENTS.first())
+        ios -> com.pocketcode.ui.buildIosScheme(dark, dark && ctl.amoled, accent ?: com.pocketcode.ui.ACCENTS.first(), tint, tintStrength)
+        aurora -> com.pocketcode.ui.buildAuroraScheme(dark, dark && ctl.amoled, accent ?: com.pocketcode.ui.ACCENTS.first(), tint, tintStrength)
+        else -> com.pocketcode.ui.buildScheme(dark, dark && ctl.amoled, accent ?: com.pocketcode.ui.ACCENTS.first(), tint, tintStrength)
+    }
+    val scrim = appearance.backgroundScrim.coerceIn(0f, 0.85f)
+    val customBg = com.pocketcode.ui.AppearanceCodec.parseColor(appearance.backgroundCustomColor)
+    // Каждый экран — Scaffold, и он заливает весь экран цветом background. Поэтому при включённом фоне
+    // подложка становится полупрозрачной, иначе картинка или градиент просто не видны за ней.
+    val scheme = baseScheme.withCardAlpha(appearance.cardOpacity).let { s ->
+        when {
+            appearance.background == "color" && customBg != null -> s.copy(background = customBg)
+            backdropOn -> s.copy(background = s.background.copy(alpha = (1f - scrim).coerceIn(0.15f, 1f)))
+            else -> s
+        }
     }
     // Цвета системных панелей и подложки окна берём из темы приложения: без серой полосы сверху и белой снизу
     androidx.compose.runtime.SideEffect {
         val w = (context as? android.app.Activity)?.window
         if (w != null) {
-            val bg = scheme.background.toArgb()
+            val bg = baseScheme.background.toArgb()
             w.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(bg))
             w.statusBarColor = bg
             w.navigationBarColor = bg
@@ -924,37 +941,42 @@ private fun AppTheme(content: @Composable () -> Unit) {
         androidx.compose.ui.platform.LocalLayoutDirection provides if (com.pocketcode.ui.I18n.isRtl) androidx.compose.ui.unit.LayoutDirection.Rtl else androidx.compose.ui.unit.LayoutDirection.Ltr,
         com.pocketcode.ui.LocalUiStyle provides style,
         com.pocketcode.ui.LocalReduceMotion provides reduceMotion,
+        com.pocketcode.ui.LocalBackdropActive provides backdropOn,
     ) {
         val bgPreset = com.pocketcode.ui.BackgroundCatalog.byId(appearance.background)
         val bgCustom = com.pocketcode.ui.AppearanceCodec.parseColor(appearance.backgroundCustomColor)
-        val bgColor = if (appearance.background == "color" && bgCustom != null) bgCustom
-            else if (bgPreset.colors.isNotEmpty()) androidx.compose.ui.graphics.Color(bgPreset.colors.last()) else scheme.background
-        androidx.compose.foundation.layout.Box(modifier = Modifier.fillMaxSize()) {
-            // Фон: картинка поверх однотонного/градиентного фона; картинка сильнее всего.
+        // Картинка декодируется один раз на выбор фона, а не на каждом кадре: иначе лаги и OOM на фото с камеры.
+        val bgImage = androidx.compose.runtime.remember(appearance.background, appearance.backgroundImage) {
             if (appearance.background == "image" && appearance.backgroundImage.isNotBlank()) {
-                val bgFile = java.io.File(context.filesDir, "backgrounds/" + appearance.backgroundImage)
-                val bitmap = runCatching {
-                    android.graphics.BitmapFactory.decodeFile(bgFile.absolutePath)
-                }.getOrNull()
-                if (bitmap != null) {
-                    androidx.compose.foundation.Image(
-                        bitmap = bitmap.asImageBitmap(),
-                        contentDescription = null,
-                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                }
-            }
-            if (appearance.background != "image" && bgPreset.colors.size > 1) {
-                androidx.compose.foundation.layout.Box(
+                decodeSampledBackground(java.io.File(context.filesDir, "backgrounds/" + appearance.backgroundImage))
+            } else null
+        }
+        val bgScale = when (appearance.backgroundFit) {
+            "fit" -> androidx.compose.ui.layout.ContentScale.Fit
+            "fill" -> androidx.compose.ui.layout.ContentScale.FillBounds
+            else -> androidx.compose.ui.layout.ContentScale.Crop
+        }
+        val bgBlur = appearance.backgroundBlur.coerceIn(0f, 40f)
+        androidx.compose.foundation.layout.Box(modifier = Modifier.fillMaxSize()) {
+            // Порядок: картинка, затем свой цвет, затем встроенный градиент, затем подложка темы.
+            when {
+                bgImage != null -> androidx.compose.foundation.Image(
+                    bitmap = bgImage.asImageBitmap(),
+                    contentDescription = null,
+                    contentScale = bgScale,
+                    modifier = if (bgBlur > 0f) Modifier.fillMaxSize().blur(bgBlur.dp, BlurredEdgeTreatment.Unbounded) else Modifier.fillMaxSize(),
+                )
+                backdropOn && appearance.background == "color" && bgCustom != null ->
+                    androidx.compose.foundation.layout.Box(Modifier.fillMaxSize().background(bgCustom))
+                backdropOn && bgPreset.colors.size > 1 -> androidx.compose.foundation.layout.Box(
                     Modifier.fillMaxSize().background(
-                        androidx.compose.ui.graphics.Brush.linearGradient(
-                            bgPreset.colors.map { androidx.compose.ui.graphics.Color(it) },
-                        ),
+                        androidx.compose.ui.graphics.Brush.linearGradient(bgPreset.colors.map { androidx.compose.ui.graphics.Color(it) }),
                     ),
                 )
-            } else if (bgColor != scheme.background) {
-                androidx.compose.foundation.layout.Box(Modifier.fillMaxSize().background(bgColor))
+                backdropOn && bgPreset.colors.size == 1 ->
+                    androidx.compose.foundation.layout.Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color(bgPreset.colors.first())))
+                // Фон выбран, но картинка не открылась — не оставляем прозрачную дыру, красим подложкой темы.
+                backdropOn -> androidx.compose.foundation.layout.Box(Modifier.fillMaxSize().background(baseScheme.background))
             }
             MaterialTheme(
                 colorScheme = scheme,
@@ -964,6 +986,18 @@ private fun AppTheme(content: @Composable () -> Unit) {
             )
         }
     }
+}
+
+/** Картинка фона с уменьшением размера: фото с камеры иначе не влезает в память телефона. */
+private fun decodeSampledBackground(file: java.io.File): android.graphics.Bitmap? {
+    if (!file.isFile) return null
+    val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    android.graphics.BitmapFactory.decodeFile(file.absolutePath, bounds)
+    var scale = 1
+    val largest = maxOf(bounds.outWidth, bounds.outHeight)
+    while (largest / scale > 2048) scale *= 2
+    val opts = android.graphics.BitmapFactory.Options().apply { inSampleSize = scale }
+    return runCatching { android.graphics.BitmapFactory.decodeFile(file.absolutePath, opts) }.getOrNull()
 }
 
 @androidx.compose.runtime.Composable

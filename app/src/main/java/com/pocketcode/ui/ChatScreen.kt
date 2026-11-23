@@ -590,14 +590,21 @@ fun ChatScreen(
                 shadowElevation = 0.dp,
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp).tourAnchor("input"),
             ) {
-                Row(Modifier.padding(start = 4.dp, end = 4.dp, top = 2.dp, bottom = 2.dp), verticalAlignment = Alignment.Bottom) {
-                    Column {
-                        IconButton(onClick = { pickImage.launch("image/*") }, enabled = !vm.running) { Icon(AppIcons.Image, contentDescription = "Прикрепить картинку", tint = MaterialTheme.colorScheme.onSurfaceVariant) }
-                    }
+                Row(
+                    Modifier.padding(start = 4.dp, end = 4.dp, top = 2.dp, bottom = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    // Все кнопки одного размера (44dp) и на одной оси с полем ввода: раньше кнопка фото была 48dp,
+                    // а отправка 40dp, из-за чего они выглядели съехавшими.
+                    IconButton(
+                        onClick = { pickImage.launch("image/*") },
+                        enabled = !vm.running,
+                        modifier = Modifier.size(44.dp),
+                    ) { Icon(AppIcons.Image, contentDescription = "Прикрепить картинку", modifier = Modifier.size(22.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant) }
                     androidx.compose.material3.TextField(
                         value = input,
                         onValueChange = { input = it },
-                        modifier = Modifier.weight(1f).heightIn(min = if (vm.bigInput) 72.dp else 0.dp),
+                        modifier = Modifier.weight(1f).heightIn(min = if (vm.bigInput) 72.dp else 48.dp),
                         textStyle = androidx.compose.material3.LocalTextStyle.current.copy(fontSize = if (vm.bigInput) 18.sp else 16.sp),
                         placeholder = { Text("Опиши задачу…") },
                         maxLines = 6,
@@ -609,8 +616,8 @@ fun ChatScreen(
                         ),
                     )
                     if (vm.running && input.isBlank()) {
-                        androidx.compose.material3.FilledIconButton(onClick = { tick(); confirmStop = true }) {
-                            Icon(AppIcons.Stop, contentDescription = "Остановить")
+                        androidx.compose.material3.FilledIconButton(onClick = { tick(); confirmStop = true }, modifier = Modifier.size(44.dp)) {
+                            Icon(AppIcons.Stop, contentDescription = "Остановить", modifier = Modifier.size(22.dp))
                         }
                     } else if (input.isBlank() && vm.pendingImages.isEmpty()) {
                         IconButton(onClick = {
@@ -621,7 +628,7 @@ fun ChatScreen(
                             try { voice.launch(i) } catch (e: Exception) {
                                 android.widget.Toast.makeText(ctx, "На телефоне нет сервиса распознавания речи", android.widget.Toast.LENGTH_LONG).show()
                             }
-                        }) { Icon(AppIcons.Mic, contentDescription = "Голосовой ввод", tint = MaterialTheme.colorScheme.onSurfaceVariant) }
+                        }, modifier = Modifier.size(44.dp)) { Icon(AppIcons.Mic, contentDescription = "Голосовой ввод", modifier = Modifier.size(22.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant) }
                     } else {
                         androidx.compose.material3.FilledIconButton(
                             onClick = {
@@ -630,8 +637,9 @@ fun ChatScreen(
                                 input = ""
                             },
                             enabled = input.isNotBlank() || (!vm.running && vm.pendingImages.isNotEmpty()),
+                            modifier = Modifier.size(44.dp),
                         ) {
-                            Icon(AppIcons.ArrowUp, contentDescription = if (vm.running) "В очередь" else "Отправить")
+                            Icon(AppIcons.ArrowUp, contentDescription = if (vm.running) "В очередь" else "Отправить", modifier = Modifier.size(22.dp))
                         }
                     }
                 }
@@ -1270,15 +1278,22 @@ private fun ItemView(item: UiItem, live: Boolean = false, projectRoot: java.io.F
         }
         is UiItem.Assistant -> {
             val ios = LocalUiStyle.current == UiStyle.IOS
+            // На фоне сообщения получают стеклянную подложку: текст остаётся читаемым на любой картинке.
+            val glass = LocalBackdropActive.current && !ios
             Box(
                 Modifier.fillMaxWidth()
                     .then(
-                        if (ios) Modifier
-                            .clip(RoundedCornerShape(topStart = 6.dp, topEnd = 20.dp, bottomStart = 20.dp, bottomEnd = 20.dp))
-                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                        else Modifier,
+                        when {
+                            ios -> Modifier
+                                .clip(RoundedCornerShape(topStart = 6.dp, topEnd = 20.dp, bottomStart = 20.dp, bottomEnd = 20.dp))
+                                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                            glass -> Modifier
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.72f))
+                            else -> Modifier
+                        },
                     )
-                    .padding(horizontal = if (ios) 14.dp else 4.dp, vertical = if (ios) 10.dp else 4.dp),
+                    .padding(horizontal = if (ios || glass) 12.dp else 4.dp, vertical = if (ios || glass) 10.dp else 4.dp),
             ) {
                 // Пока текст дописывается, выделение не включаем: оно пересчитывается на каждый кадр и заметно тормозит
                 if (live && !LocalReduceMotion.current) SmoothMarkdown(item.text, modifier = Modifier.fillMaxWidth())

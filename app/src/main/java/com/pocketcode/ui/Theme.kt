@@ -36,12 +36,30 @@ fun accentById(id: String): Accent? = ACCENTS.firstOrNull { it.id == id } ?: EXT
 fun visibleAccents(unlocked: Boolean, selected: String): List<Accent> =
     ACCENTS + EXTRA_ACCENTS.filter { unlocked || it.id == selected }
 
-/** Своя палитра: одинакова на всех телефонах. amoled — чистый чёрный фон. */
-fun buildScheme(dark: Boolean, amoled: Boolean, a: Accent): ColorScheme {
+/** Смешивает родной цвет подложки с «теплом» пользователя; без тепла возвращает цвет как есть. */
+fun tintedColor(base: Color, tint: Color?, strength: Float): Color =
+    if (tint == null || strength <= 0.001f) base else lerp(base, tint, strength.coerceIn(0f, 1f))
+
+/** Прозрачные карточки («стекло»): фон просвечивает сквозь поверхности, но не сквозь текст. */
+fun ColorScheme.withCardAlpha(alpha: Float): ColorScheme {
+    val a = alpha.coerceIn(0.35f, 1f)
+    if (a >= 0.999f) return this
+    return copy(
+        surfaceContainerLowest = surfaceContainerLowest.copy(alpha = a),
+        surfaceContainerLow = surfaceContainerLow.copy(alpha = a),
+        surfaceContainer = surfaceContainer.copy(alpha = a),
+        surfaceContainerHigh = surfaceContainerHigh.copy(alpha = a),
+        surfaceContainerHighest = surfaceContainerHighest.copy(alpha = a),
+    )
+}
+
+/** Своя палитра: одинакова на всех телефонах. amoled — чистый чёрный фон, tint — «тепло» подложки. */
+fun buildScheme(dark: Boolean, amoled: Boolean, a: Accent, tint: Color? = null, tintStrength: Float = 0.35f): ColorScheme {
     val white = Color.White
     val black = Color.Black
+    val cardWhite = tintedColor(white, tint, tintStrength * 0.6f)
     return if (dark) {
-        val base = if (amoled) black else Color(0xFF111318)
+        val base = tintedColor(if (amoled) black else Color(0xFF111318), tint, tintStrength)
         val c = a.dark
         darkColorScheme(
             primary = c,
@@ -57,27 +75,27 @@ fun buildScheme(dark: Boolean, amoled: Boolean, a: Accent): ColorScheme {
             onBackground = Color(0xFFE6E7EB),
             surface = base,
             onSurface = Color(0xFFE6E7EB),
-            surfaceVariant = lerp(base, white, if (amoled) 0.12f else 0.13f),
+            surfaceVariant = lerp(base, cardWhite, if (amoled) 0.12f else 0.13f),
             onSurfaceVariant = Color(0xFFABB1BD),
             // Слои без обводок: карточка (Container) заметно светлее фона, поля ввода и чипы (High) ещё светлее.
             surfaceContainerLowest = lerp(base, black, 0.4f),
-            surfaceContainerLow = lerp(base, white, 0.045f),
-            surfaceContainer = lerp(base, white, 0.075f),
-            surfaceContainerHigh = lerp(base, white, 0.11f),
-            surfaceContainerHighest = lerp(base, white, 0.15f),
+            surfaceContainerLow = lerp(base, cardWhite, 0.045f),
+            surfaceContainer = lerp(base, cardWhite, 0.075f),
+            surfaceContainerHigh = lerp(base, cardWhite, 0.11f),
+            surfaceContainerHighest = lerp(base, cardWhite, 0.15f),
             outline = Color(0xFF666D7A),
             outlineVariant = lerp(base, white, 0.10f),
         )
     } else {
-        val base = Color(0xFFF4F6F9)
+        val base = tintedColor(Color(0xFFF4F6F9), tint, tintStrength)
         val c = a.light
         lightColorScheme(
             primary = c,
             onPrimary = white,
-            primaryContainer = lerp(white, c, 0.16f),
+            primaryContainer = lerp(cardWhite, c, 0.16f),
             onPrimaryContainer = lerp(c, black, 0.45f),
             secondary = lerp(c, black, 0.1f),
-            secondaryContainer = lerp(white, c, 0.10f),
+            secondaryContainer = lerp(cardWhite, c, 0.10f),
             onSecondaryContainer = lerp(c, black, 0.4f),
             tertiary = c,
             background = base,
@@ -85,10 +103,10 @@ fun buildScheme(dark: Boolean, amoled: Boolean, a: Accent): ColorScheme {
             onSurface = Color(0xFF1A1C20),
             surfaceVariant = lerp(base, black, 0.07f),
             onSurfaceVariant = Color(0xFF4A505C),
-            // Карточки белые на сером фоне, поля ввода и чипы чуть темнее фона.
-            surfaceContainerLowest = white,
-            surfaceContainerLow = lerp(base, white, 0.6f),
-            surfaceContainer = white,
+            // Карточки чуть светлее фона (с учётом тепла), поля ввода и чипы темнее фона.
+            surfaceContainerLowest = cardWhite,
+            surfaceContainerLow = lerp(base, cardWhite, 0.6f),
+            surfaceContainer = cardWhite,
             surfaceContainerHigh = lerp(base, black, 0.045f),
             surfaceContainerHighest = lerp(base, black, 0.08f),
             outline = Color(0xFF8A909C),
@@ -101,11 +119,12 @@ fun buildScheme(dark: Boolean, amoled: Boolean, a: Accent): ColorScheme {
  * Палитра в стиле iOS: светлая сгруппированная подложка и белые карточки, в тёмной теме почти чёрный фон
  * и карточки цвета 1C1C1E. Синий акцент заменяется системным синим iOS, остальные акценты берутся как есть.
  */
-fun buildIosScheme(dark: Boolean, amoled: Boolean, a: Accent): ColorScheme {
+fun buildIosScheme(dark: Boolean, amoled: Boolean, a: Accent, tint: Color? = null, tintStrength: Float = 0.35f): ColorScheme {
     val white = Color.White
     val black = Color.Black
+    val cardWhite = tintedColor(white, tint, tintStrength * 0.6f)
     return if (dark) {
-        val base = if (amoled) black else Color(0xFF0D0D0F)
+        val base = tintedColor(if (amoled) black else Color(0xFF0D0D0F), tint, tintStrength)
         val c = if (a.id == "blue") Color(0xFF0A84FF) else a.dark
         val onC = if (a.id == "blue") white else Color(0xFF0B0F14)
         darkColorScheme(
@@ -133,29 +152,29 @@ fun buildIosScheme(dark: Boolean, amoled: Boolean, a: Accent): ColorScheme {
             outlineVariant = Color(0xFF38383A),
         )
     } else {
-        val base = Color(0xFFF2F2F7)
+        val base = tintedColor(Color(0xFFF2F2F7), tint, tintStrength)
         val c = if (a.id == "blue") Color(0xFF007AFF) else a.light
         lightColorScheme(
             primary = c,
             onPrimary = white,
-            primaryContainer = lerp(white, c, 0.14f),
+            primaryContainer = lerp(cardWhite, c, 0.14f),
             onPrimaryContainer = lerp(c, black, 0.45f),
             secondary = c,
             onSecondary = white,
-            secondaryContainer = Color(0xFFE9E9EB),
+            secondaryContainer = lerp(base, black, 0.06f),
             onSecondaryContainer = Color(0xFF1C1C1E),
             tertiary = c,
             background = base,
             onBackground = black,
             surface = base,
             onSurface = black,
-            surfaceVariant = Color(0xFFE9E9EB),
+            surfaceVariant = lerp(base, black, 0.06f),
             onSurfaceVariant = Color(0xFF6E6E73),
-            surfaceContainerLowest = white,
-            surfaceContainerLow = Color(0xFFF9F9F9),
-            surfaceContainer = white,
-            surfaceContainerHigh = white,
-            surfaceContainerHighest = Color(0xFFE9E9EB),
+            surfaceContainerLowest = cardWhite,
+            surfaceContainerLow = lerp(base, cardWhite, 0.7f),
+            surfaceContainer = cardWhite,
+            surfaceContainerHigh = cardWhite,
+            surfaceContainerHighest = lerp(base, black, 0.08f),
             outline = Color(0xFFC6C6C8),
             outlineVariant = Color(0xFFD1D1D6),
         )
@@ -166,11 +185,12 @@ fun buildIosScheme(dark: Boolean, amoled: Boolean, a: Accent): ColorScheme {
  * Палитра стиля Aurora: глубокий фон, слоистые поверхности с тонкой обводкой и насыщенный акцент.
  * Отличается от Material 3 более контрастными границами и мягкими, но заметными карточками.
  */
-fun buildAuroraScheme(dark: Boolean, amoled: Boolean, a: Accent): ColorScheme {
+fun buildAuroraScheme(dark: Boolean, amoled: Boolean, a: Accent, tint: Color? = null, tintStrength: Float = 0.35f): ColorScheme {
     val white = Color.White
     val black = Color.Black
+    val cardWhite = tintedColor(white, tint, tintStrength * 0.6f)
     return if (dark) {
-        val base = if (amoled) black else Color(0xFF0B0E14)
+        val base = tintedColor(if (amoled) black else Color(0xFF0B0E14), tint, tintStrength)
         val c = a.dark
         darkColorScheme(
             primary = c,
@@ -186,18 +206,18 @@ fun buildAuroraScheme(dark: Boolean, amoled: Boolean, a: Accent): ColorScheme {
             onBackground = Color(0xFFE8EBF2),
             surface = base,
             onSurface = Color(0xFFE8EBF2),
-            surfaceVariant = lerp(base, white, 0.10f),
+            surfaceVariant = lerp(base, cardWhite, 0.10f),
             onSurfaceVariant = Color(0xFFA8B0C0),
             surfaceContainerLowest = lerp(base, black, 0.35f),
-            surfaceContainerLow = lerp(base, white, 0.035f),
-            surfaceContainer = lerp(base, white, 0.055f),
-            surfaceContainerHigh = lerp(base, white, 0.085f),
-            surfaceContainerHighest = lerp(base, white, 0.115f),
+            surfaceContainerLow = lerp(base, cardWhite, 0.035f),
+            surfaceContainer = lerp(base, cardWhite, 0.055f),
+            surfaceContainerHigh = lerp(base, cardWhite, 0.085f),
+            surfaceContainerHighest = lerp(base, cardWhite, 0.115f),
             outline = Color(0xFF5C6472),
             outlineVariant = lerp(base, white, 0.09f),
         )
     } else {
-        val base = Color(0xFFF6F7FB)
+        val base = tintedColor(Color(0xFFF6F7FB), tint, tintStrength)
         val c = a.light
         lightColorScheme(
             primary = c,
@@ -215,9 +235,9 @@ fun buildAuroraScheme(dark: Boolean, amoled: Boolean, a: Accent): ColorScheme {
             onSurface = Color(0xFF14161B),
             surfaceVariant = lerp(base, black, 0.06f),
             onSurfaceVariant = Color(0xFF4C5361),
-            surfaceContainerLowest = white,
-            surfaceContainerLow = lerp(base, white, 0.7f),
-            surfaceContainer = white,
+            surfaceContainerLowest = cardWhite,
+            surfaceContainerLow = lerp(base, cardWhite, 0.7f),
+            surfaceContainer = cardWhite,
             surfaceContainerHigh = lerp(base, black, 0.035f),
             surfaceContainerHighest = lerp(base, black, 0.07f),
             outline = Color(0xFF9AA1AE),

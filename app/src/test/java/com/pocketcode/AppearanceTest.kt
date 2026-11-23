@@ -1,6 +1,8 @@
 package com.pocketcode.ui
 
+import androidx.compose.ui.graphics.Color
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -54,6 +56,65 @@ class AppearanceTest {
         val old = """{"themeId":"default","customColor":"","background":"none","cornerRadius":20}"""
         val c = kotlinx.serialization.json.Json.decodeFromString<AppearanceConfig>(old)
         assertEquals("blue", c.accentId)
+    }
+
+    @Test
+    fun backdropDetection() {
+        assertFalse(hasBackdrop("none"))
+        assertFalse(hasBackdrop(""))
+        assertTrue(hasBackdrop("aurora"))
+        assertTrue(hasBackdrop("image"))
+    }
+
+    @Test
+    fun lightThemeCanBeWarmInsteadOfPureWhite() {
+        val plain = buildScheme(false, false, ACCENTS.first())
+        val warm = buildScheme(false, false, ACCENTS.first(), Color(0xFFF7E8D2), 0.6f)
+        assertTrue(plain.background != warm.background)
+        // Карточки тоже тёплые, а не чисто белые.
+        assertTrue(plain.surfaceContainer != warm.surfaceContainer)
+    }
+
+    @Test
+    fun zeroTintStrengthKeepsThemeAsIs() {
+        val plain = buildScheme(false, false, ACCENTS.first())
+        val same = buildScheme(false, false, ACCENTS.first(), Color(0xFFF7E8D2), 0f)
+        assertEquals(plain.background, same.background)
+    }
+
+    @Test
+    fun cardOpacityMakesSurfacesTranslucent() {
+        val solid = buildScheme(true, false, ACCENTS.first())
+        val glass = solid.withCardAlpha(0.5f)
+        assertEquals(1f, solid.surfaceContainer.alpha, 0.001f)
+        assertTrue(glass.surfaceContainer.alpha < 0.6f)
+        assertEquals(solid.primary, glass.primary)
+    }
+
+    @Test
+    fun newAppearanceFieldsSurviveRoundTrip() {
+        val c = AppearanceConfig(
+            background = "image",
+            backgroundImage = "wall.jpg",
+            backgroundScrim = 0.7f,
+            backgroundFit = "fit",
+            backgroundBlur = 12f,
+            baseTint = "#F7E8D2",
+            baseTintStrength = 0.5f,
+            cardOpacity = 0.8f,
+        )
+        val json = kotlinx.serialization.json.Json.encodeToString(AppearanceConfig.serializer(), c)
+        val back = kotlinx.serialization.json.Json.decodeFromString<AppearanceConfig>(json)
+        assertEquals(c, back)
+        assertEquals("fit", back.backgroundFit)
+        assertEquals(0.8f, back.cardOpacity, 0.001f)
+    }
+
+    @Test
+    fun baseTintsAreAvailable() {
+        assertTrue(BaseTints.presets.size >= 6)
+        assertTrue(BaseTints.presets.any { it.hex.isNotBlank() })
+        assertEquals("", BaseTints.byId("unknown").hex)
     }
 
     @Test
