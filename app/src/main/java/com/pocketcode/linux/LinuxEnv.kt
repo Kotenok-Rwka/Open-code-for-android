@@ -181,7 +181,7 @@ class LinuxEnv(private val context: Context) {
         }
         val imageUrls = if (ubuntu) {
             val a = when (arch) { "aarch64" -> "arm64"; "armv7" -> "armhf"; else -> arch }
-            listOf(RootFsCatalog.ubuntuUrl(a), RootFsCatalog.ubuntuUrl(a, "jammy"))
+            RootFsCatalog.ubuntuUrls(a)
         } else urls(arch)
         for (url in imageUrls) {
             if (ok) break
