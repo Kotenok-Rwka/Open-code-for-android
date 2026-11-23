@@ -5,10 +5,11 @@
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
 
-python -m pip install --upgrade pyinstaller
+python -m pip install --upgrade pyinstaller cryptography
 python -m PyInstaller --noconfirm --onefile --windowed `
   --name PocketCodeDesktop `
   --add-data "pocketcode_desktop.py;." `
+  --add-data "aurora.html;." `
   pocketcode_desktop.py
 
 # Версия — из version.properties и числа коммитов (та же, что у APK), не из ручного файла.
