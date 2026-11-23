@@ -59,9 +59,24 @@ class CodeReviewTest {
     }
 
     @Test
-    fun todoStubIsFound() {
-        assertTrue("placeholder" in rulesOf("// TODO: implement login", "src/Auth.kt"))
+    fun stubsAreFoundButOrdinaryTodoIsNot() {
         assertTrue("placeholder" in rulesOf("raise NotImplementedError"))
+        assertTrue("placeholder" in rulesOf("TODO()", "src/Auth.kt"))
+        // Обычные заметки в комментариях не должны считаться ошибкой и гонять агента по кругу.
+        assertTrue("placeholder" !in rulesOf("// TODO: implement login later", "src/Auth.kt"))
+        assertTrue("placeholder" !in rulesOf("// FIXME: slow query", "src/db.py"))
+    }
+
+    @Test
+    fun ordinaryCodeIsNotFlagged() {
+        // Пространства имён XML, схемы и обычные ссылки в документации — не ошибка безопасности.
+        assertEquals(emptySet<String>(), rulesOf("<LinearLayout xmlns:android=\"http://schemas.android.com/apk/res/android\">", "res/layout/main.xml"))
+        // Логирование без значения секрета.
+        assertEquals(emptySet<String>(), rulesOf("Log.d(TAG, \"token missing, re-login\")", "src/Auth.kt"))
+        // Отладочный флаг в локальном конфиге разработчика.
+        assertEquals(emptySet<String>(), rulesOf("DEBUG = True", "settings/dev.py"))
+        // Обычный текст с SQL-словом, но без склейки.
+        assertEquals(emptySet<String>(), rulesOf("print(f\"Delete {count} items\")"))
     }
 
     @Test
@@ -96,8 +111,11 @@ class CodeReviewTest {
     fun highSeverityComesFirst() {
         val findings = CodeReview.scanText(
             "src/a.py",
-            "x = 1  # TODO\nrequests.get(url, verify=False)",
+            "x = 1  # your code here\nrequests.get(url, verify=False)",
         )
-        assertEquals(CodeReview.Severity.HIGH, findings.first().severity)
+        assertEquals(2, findings.size)
+        val report = CodeReview.format(findings)
+        // Критичное идёт в отчёт первым, даже если в файле оно ниже.
+        assertTrue(report.indexOf("[HIGH]") in 0 until report.indexOf("[MEDIUM]"))
     }
 }

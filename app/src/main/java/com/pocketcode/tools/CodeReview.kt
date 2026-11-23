@@ -63,12 +63,12 @@ object CodeReview {
         Rule(
             "sql-concat", Severity.HIGH,
             "SQL собирается склейкой — это SQL-инъекция. Используй параметры/плейсхолдеры.",
-            Regex("""(?i)\b(select|insert|update|delete)\b[^"'\n]{0,120}["']\s*(\+|%|\.\s*format\s*\()"""),
+            Regex("""(?i)\b(select|insert|update|delete)\b[^"'\n]{0,120}\b(from|into|set|values|where)\b[^"'\n]{0,120}["']\s*(\+|%|\.\s*format\s*\()"""),
         ),
         Rule(
             "sql-fstring", Severity.HIGH,
             "SQL собирается f-строкой — это SQL-инъекция. Передавай значения параметрами.",
-            Regex("""(?i)[fr]?["'][^"'\n]*\b(select|insert|update|delete)\b[^"'\n]*\{"""),
+            Regex("""(?i)[fr]?["'][^"'\n]*\b(select|insert|update|delete)\b[^"'\n]*\b(from|into|set|values)\b[^"'\n]*\{"""),
         ) { _, ext -> ext == "py" },
         Rule(
             "xss-html", Severity.HIGH,
@@ -96,21 +96,6 @@ object CodeReview {
             Regex("""chmod\s+(-[a-zA-Z]+\s+)?777"""),
         ),
         Rule(
-            "plain-http", Severity.MEDIUM,
-            "Адрес по http без шифрования. Используй https (кроме localhost).",
-            Regex("""["']http://(?!localhost|127\.0\.0\.1|0\.0\.0\.0|10\.|192\.168\.|\[?::1)"""),
-        ),
-        Rule(
-            "secret-in-log", Severity.MEDIUM,
-            "Секрет попадает в лог. Логируй только факт, без значения токена/пароля.",
-            Regex("""(?i)(console\.log|println|print|log\.[a-z]+|Log\.[diewv])\s*\([^)\n]*(token|password|secret|api[_-]?key)"""),
-        ),
-        Rule(
-            "debug-mode", Severity.MEDIUM,
-            "Отладочный режим включён — на сервере он раскрывает лишнее. Отключи перед выпуском.",
-            Regex("""(?i)\bDEBUG\s*=\s*True\b"""),
-        ),
-        Rule(
             "swallowed-error", Severity.MEDIUM,
             "Ошибка проглатывается пустым catch/except — сбой пройдёт незаметно. Обработай или пробрось.",
             Regex("""(?i)catch\s*(\([^)]*\))?\s*\{\s*\}|except[^:\n]*:\s*pass\b"""),
@@ -120,10 +105,12 @@ object CodeReview {
             "Удаление по переменной без проверки пути. Ограничь путь и проверь, что он не пустой.",
             Regex("""rm\s+-[a-zA-Z]*r[a-zA-Z]*f?\s+["']?\$\{?\w+"""),
         ),
+        // Обычные TODO/FIXME в комментариях не считаем ошибкой: их слишком много в любом живом коде
+        // и агент начинал гонять себя по кругу. Ловим только реальные заглушки вместо реализации.
         Rule(
             "placeholder", Severity.MEDIUM,
             "Заглушка вместо кода: допиши реализацию, иначе проект соберётся, но не будет работать.",
-            Regex("""(?i)\b(TODO|FIXME|NotImplementedError|NotImplementedException|your code here|implement me|остальная часть|остальной код)\b"""),
+            Regex("""(?i)\b(NotImplementedError|NotImplementedException|UnsupportedOperationException|your code here|implement me|остальная часть|остальной код)\b|TODO\s*\(\s*\)"""),
         ),
     )
 
@@ -201,22 +188,23 @@ object CodeReview {
         return Report(sorted, problems, scanned)
     }
 
-    /** Готовый текст для модели: коротко, с адресами и подсказками. */
+    /** Готовый текст для модели: критичное всегда сверху, коротко, с адресами и подсказками. */
     fun format(findings: List<Finding>, problems: List<String> = emptyList(), scannedFiles: Int = findings.map { it.path }.distinct().size): String {
-        val high = findings.count { it.severity == Severity.HIGH }
-        val medium = findings.count { it.severity == Severity.MEDIUM }
-        val low = findings.count { it.severity == Severity.LOW }
+        val ordered = findings.sortedWith(compareBy({ it.severity.ordinal }, { it.path }, { it.line }))
+        val high = ordered.count { it.severity == Severity.HIGH }
+        val medium = ordered.count { it.severity == Severity.MEDIUM }
+        val low = ordered.count { it.severity == Severity.LOW }
         val head = "Аудит кода: файлов $scannedFiles, критичных $high, средних $medium, подсказок $low."
-        val body = findings.take(maxFindings).joinToString("\n") {
+        val body = ordered.take(maxFindings).joinToString("\n") {
             "[${it.severity}] ${it.path}:${it.line} ${it.rule} — ${it.hint}\n    ${it.snippet}"
         }
         val tail = buildString {
-            if (findings.size > maxFindings) append("\n... ещё ${findings.size - maxFindings} находок не показаны")
+            if (ordered.size > maxFindings) append("\n... ещё ${ordered.size - maxFindings} находок не показаны")
             if (problems.isNotEmpty()) append("\n").append(problems.take(10).joinToString("\n"))
         }
         return when {
-            findings.isEmpty() && problems.isEmpty() -> "$head Проблем не найдено."
-            findings.isEmpty() -> "$head\n${problems.take(10).joinToString("\n")}"
+            ordered.isEmpty() && problems.isEmpty() -> "$head Проблем не найдено."
+            ordered.isEmpty() -> "$head\n${problems.take(10).joinToString("\n")}"
             else -> "$head\n$body$tail"
         }
     }
@@ -244,7 +232,7 @@ class ReviewTool(
     override val name = "code_review"
     override val description =
         "Аудит кода на типовые дыры и заглушки: секреты в коде, SQL/шелл/HTML-инъекции, отключённый TLS, " +
-            "небезопасная десериализация, слабые хеши паролей, права 777, http, секреты в логах, пустые catch, TODO. " +
+            "небезопасная десериализация, слабые хеши паролей, права 777, пустые catch, заглушки. " +
             "Возвращает список file:line с подсказками. Вызывай после правок (без аргументов проверит изменённые файлы)."
     override val schema = objSchema(
         Prop("paths", "string", "Файлы или папки через запятую (по умолчанию — изменённые в этой сессии)", required = false),
