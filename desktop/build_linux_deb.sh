@@ -24,13 +24,14 @@ Section: utils
 Priority: optional
 Architecture: $ARCH
 Depends: python3 (>= 3.8)
+Recommends: python3-cryptography
 Maintainer: PocketCode <noreply@example.com>
 Description: PocketCode Desktop companion
  Local companion for PocketCode: chat with local and cloud OpenAI-compatible
  models, sync sessions with your phone, and manage tasks from an IDE.
 EOF
 
-cp pocketcode_desktop.py ide_bridge.py "$PKG/usr/lib/pocketcode-desktop/"
+cp pocketcode_desktop.py ide_bridge.py aurora.html "$PKG/usr/lib/pocketcode-desktop/"
 cat > "$PKG/usr/bin/pocketcode-desktop" <<'EOF'
 #!/usr/bin/env bash
 exec python3 /usr/lib/pocketcode-desktop/pocketcode_desktop.py "$@"

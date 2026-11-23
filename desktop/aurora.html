@@ -1,0 +1,191 @@
+<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PocketCode Desktop · Aurora</title>
+<style>
+:root{--bg:#0b1620;--bg2:#0f2027;--panel:#122532;--panel2:#17303f;--line:rgba(147,220,255,.13);--line2:rgba(147,220,255,.26);--txt:#eaf6ff;--dim:#8fb3c7;--accent:#4fd1c5;--accent2:#6aa8ff;--glow:rgba(79,209,197,.16);--danger:#ff7a85;--r:16px}
+*{box-sizing:border-box}html,body{height:100%}
+body{margin:0;color:var(--txt);font:15px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif;background:radial-gradient(1000px 600px at 8% -10%,rgba(79,209,197,.16),transparent 60%),radial-gradient(900px 700px at 105% 10%,rgba(106,168,255,.15),transparent 55%),linear-gradient(160deg,var(--bg),var(--bg2) 55%,#0a141d);background-attachment:fixed}
+#app{display:grid;grid-template-columns:230px 1fr;grid-template-rows:auto 1fr;gap:18px;max-width:1560px;min-height:100vh;margin:auto;padding:18px}
+header{grid-column:1/-1;display:flex;align-items:center;gap:14px;padding:12px 18px;border:1px solid var(--line);border-radius:var(--r);background:linear-gradient(90deg,rgba(18,37,50,.94),rgba(16,31,42,.72));backdrop-filter:blur(14px);box-shadow:0 12px 40px rgba(0,0,0,.25)}
+.logo{width:38px;height:38px;border-radius:12px;display:grid;place-items:center;font-weight:800;color:#06222a;background:linear-gradient(135deg,var(--accent),var(--accent2));box-shadow:0 0 24px var(--glow)}
+header h1{font-size:17px;margin:0}header .sub{color:var(--dim);font-size:12px}
+.status{margin-left:auto;display:flex;align-items:center;gap:8px;color:var(--dim);font-size:12px}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--accent);box-shadow:0 0 12px var(--accent)}
+.dot.off{background:var(--danger);box-shadow:none}
+nav{display:flex;flex-direction:column;gap:5px;position:sticky;top:18px;align-self:start}
+nav button{display:flex;gap:10px;text-align:left;padding:11px 14px;border-radius:12px;border:1px solid transparent;background:transparent;color:var(--dim);cursor:pointer;font:inherit;transition:.18s}
+nav button:hover{background:rgba(79,209,197,.07);color:var(--txt)}
+nav button.on{background:linear-gradient(90deg,rgba(79,209,197,.16),rgba(106,168,255,.08));border-color:var(--line2);color:var(--txt);box-shadow:inset 3px 0 0 var(--accent)}
+main{border:1px solid var(--line);border-radius:var(--r);background:linear-gradient(180deg,rgba(18,37,50,.95),rgba(13,27,37,.93));backdrop-filter:blur(10px);padding:20px;min-width:0;box-shadow:0 20px 60px rgba(0,0,0,.28)}
+section[hidden]{display:none!important}h2{font-size:19px;margin:0 0 10px}h3{font-size:15px;margin:22px 0 8px;color:var(--accent)}
+p,.hint,small{color:var(--dim)}.hint{font-size:12px;margin:4px 0 14px}
+input,select,textarea{width:100%;padding:10px 12px;border-radius:10px;border:1px solid var(--line2);background:rgba(8,20,28,.75);color:var(--txt);font:inherit;outline:none}
+input:focus,textarea:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--glow)}
+textarea{min-height:100px;resize:vertical}
+button.act,button.ghost,button.danger{border-radius:10px;padding:10px 15px;font:inherit;cursor:pointer;transition:.15s;min-height:44px}
+button.act{border:0;color:#06222a;font-weight:700;background:linear-gradient(135deg,var(--accent),var(--accent2));box-shadow:0 6px 22px var(--glow)}
+button.act:hover{filter:brightness(1.1)}button.ghost{background:rgba(79,209,197,.07);border:1px solid var(--line2);color:var(--txt)}
+button.ghost:hover{background:rgba(79,209,197,.14)}button.danger{background:rgba(255,122,133,.12);border:1px solid rgba(255,122,133,.35);color:var(--danger)}
+button:disabled{opacity:.45;cursor:not-allowed}
+.row{display:flex;gap:10px;margin:10px 0;align-items:center}.row>*{flex:1}.row button{flex:0 0 auto}
+.card{border:1px solid var(--line);border-radius:13px;background:linear-gradient(160deg,rgba(23,48,63,.8),rgba(16,34,45,.55));padding:12px 14px;margin:9px 0}
+.msg{white-space:pre-wrap;overflow-wrap:anywhere}.msg b{color:var(--accent)}.msg.user{border-left:3px solid var(--accent2)}.msg.assistant{border-left:3px solid var(--accent)}
+.msg .meta{display:flex;justify-content:flex-end;gap:8px;margin-top:6px}
+.msg .meta button{min-height:28px;padding:2px 8px;font-size:12px}
+#log{max-height:52vh;overflow:auto;padding-right:6px;margin-bottom:12px}#log::-webkit-scrollbar{width:8px}#log::-webkit-scrollbar-thumb{background:var(--line2);border-radius:8px}
+pre{white-space:pre-wrap;overflow-wrap:anywhere;padding:12px;border-radius:10px;background:rgba(6,16,23,.75);border:1px solid var(--line);color:#c9e6f2;max-height:45vh;overflow:auto}
+code{color:var(--accent)}.pill{display:inline-block;padding:3px 9px;border-radius:99px;border:1px solid var(--line2);font-size:11px;color:var(--dim);margin-left:6px}
+.toast{position:fixed;bottom:22px;right:22px;padding:12px 18px;border-radius:12px;background:rgba(18,37,50,.97);border:1px solid var(--line2);box-shadow:0 12px 40px rgba(0,0,0,.4);z-index:99;max-width:420px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
+.chip{padding:5px 11px;border-radius:99px;border:1px solid var(--line2);background:rgba(79,209,197,.06);color:var(--dim);cursor:pointer;font-size:12px}
+.chip.on{background:rgba(79,209,197,.18);color:var(--txt);border-color:var(--accent)}
+.compact #log{max-height:62vh}.compact .hint,.compact #contextbar{display:none}
+@media(max-width:850px){#app{grid-template-columns:1fr;padding:12px;gap:12px}nav{flex-direction:row;overflow:auto;position:static}nav button{white-space:nowrap}main{padding:14px}}
+</style></head><body><div id="app">
+<header><div class="logo">PC</div><div><h1>PocketCode Desktop <span class="pill">Aurora</span></h1><div class="sub">Полноценный компаньон: чат, проекты, агенты, навыки, синхронизация</div></div>
+<div class="status"><span class="dot" id="dot"></span><span id="statusText">загрузка…</span></div></header>
+<nav id="nav">
+<button class="on" data-tab="chat" onclick="go('chat')">◉ Чат</button>
+<button data-tab="projects" onclick="go('projects')">▣ Проекты и файлы</button>
+<button data-tab="agents" onclick="go('agents')">✦ Агенты</button>
+<button data-tab="skills" onclick="go('skills')">⚡ Навыки</button>
+<button data-tab="models" onclick="go('models')">◈ Локальные модели</button>
+<button data-tab="profiles" onclick="go('profiles')">◇ Провайдеры</button>
+<button data-tab="sync" onclick="go('sync')">⇄ Синхронизация</button>
+<button data-tab="settings" onclick="go('settings')">⚙ Настройки</button>
+</nav>
+<main id="main">
+<section id="chat"><h2>Чат</h2><p class="hint">Полные ответы без обрезки. Сообщения сохраняются на ПК и синхронизируются с телефоном.</p>
+<div id="contextbar"></div><div id="log"></div>
+<textarea id="q" placeholder="Задача или сообщение"></textarea>
+<div class="row"><button class="act" onclick="send()">Отправить</button><button class="ghost" onclick="sendLater()">В очередь</button><button class="ghost" id="queueBtn" onclick="go('queue')">Очередь · 0</button><button class="ghost" onclick="clearChat()">Очистить</button></div>
+<div id="queueBox" hidden><h3>Очередь задач</h3><div id="queueList"></div><div class="row"><input id="qtext" placeholder="Новая задача в очередь"><button class="act" onclick="enqueue()">Добавить</button></div></div>
+</section>
+<section id="projects" hidden><h2>Проекты и файлы</h2><div class="row"><input id="newProject" placeholder="Имя нового проекта"><button class="act" onclick="createProject()">Создать</button></div>
+<div class="row"><select id="projectSelect" onchange="loadFiles()"></select></div><div id="fileList"></div>
+<div id="fileEditor" hidden><h3 id="fileName"></h3><textarea id="fileText" style="min-height:260px"></textarea><div class="row"><button class="act" onclick="saveFile()">Сохранить</button><button class="ghost" onclick="hide('fileEditor')">Закрыть</button></div></div>
+</section>
+<section id="agents" hidden><h2>Агенты и роли моделей</h2><div id="agentList"></div>
+<div class="row"><input id="agentName" placeholder="Имя агента"><input id="agentGoal" placeholder="Цель / описание"></div><div class="row"><button class="act" onclick="saveAgent()">Добавить агента</button></div>
+<h3>Роли моделей</h3><div class="row"><input id="planModel" placeholder="Модель планирования"><input id="execModel" placeholder="Модель выполнения"><button class="ghost" onclick="saveRoles()">Сохранить</button></div>
+<h3>Виджеты</h3><div id="widgetList"></div></section>
+<section id="skills" hidden><h2>Навыки и команды</h2><p class="hint">Навыки попадают в контекст модели; выключенные — нет. Список свёрнут при >20.</p>
+<div id="skillControls"></div><div id="skillList"></div><h3>Создать навык</h3>
+<div class="row"><input id="skillName" placeholder="Имя"><input id="skillDesc" placeholder="Когда применять"></div>
+<textarea id="skillBody" placeholder="Инструкция для модели"></textarea><div class="row"><button class="act" onclick="saveSkill()">Сохранить навык</button></div></section>
+<section id="models" hidden><h2>Локальные модели</h2><p class="hint">Укажи адрес OpenAI-совместимого сервера (LM Studio, Ollama, llama.cpp). Кнопка «Использовать» сразу делает его активным.</p>
+<div id="modelList"></div><div class="row"><input id="modelName" placeholder="Имя"><input id="modelUrl" placeholder="http://127.0.0.1:1234/v1"><input id="modelId" placeholder="model id"></div>
+<div class="row"><button class="act" onclick="saveModel()">Добавить</button></div></section>
+<section id="profiles" hidden><h2>Провайдеры моделей</h2><div id="profileList"></div>
+<div class="row"><input id="pName" placeholder="Имя"><input id="pUrl" placeholder="https://api.openai.com/v1"><input id="pModel" placeholder="gpt-4o-mini"></div>
+<div class="row"><input id="pKey" placeholder="API ключ (не отображается в списке)"><input id="pMax" type="number" placeholder="max_tokens"><button class="act" onclick="saveProfile()">Сохранить</button></div></section>
+<section id="sync" hidden><h2>Синхронизация с телефоном</h2><p class="hint">Протокол v2, двусторонний. PC отправляет события на телефон и принимает его пакеты. Секреты в логах маскируются.</p>
+<div class="row"><input id="phoneUrl" placeholder="http://192.168.1.5:8765"><input id="syncToken" placeholder="Токен телефона (если нужен)"><input id="syncPass" type="password" placeholder="E2E пароль"></div>
+<div class="row"><label>Интервал full-пакета, мин <input id="intervalMin" type="number" min="1" value="15"></label><button class="ghost" onclick="saveSyncCfg()">Сохранить</button></div>
+<div class="row"><button class="act" onclick="syncTest()">Проверить связь</button><button class="ghost" onclick="syncNow()">Отправить сейчас</button><button class="ghost" onclick="loadSyncStatus()">Обновить статус</button><button class="ghost" onclick="showToken()">Токен ПК</button></div>
+<pre id="syncStatus"></pre><pre id="tokenBox"></pre>
+<h3>Импорт / экспорт</h3><textarea id="imp" placeholder="JSON чата с телефона"></textarea><div class="row"><button class="ghost" onclick="importTasks()">Импортировать</button><button class="ghost" onclick="exportChat()">Экспортировать чат</button></div></section>
+<section id="settings" hidden><h2>Настройки и экономия токенов</h2>
+<div class="card"><h3>Режим «Меньше запросов»</h3><p class="hint">Убирает фоновые вызовы модели и карту проекта, основной ответ остаётся прежним.</p><button class="ghost" id="leanBtn" onclick="toggleLean()">Включить</button></div>
+<div class="card"><h3>Эко-режим</h3><p class="hint">Ограничивает длину истории и размер ответа.</p><button class="ghost" id="ecoBtn" onclick="toggleEco()">Включить</button></div>
+<div class="card"><h3>О проекте</h3><p>Версия интерфейса: Aurora 3.0. Данные хранятся в <code>~/.pocketcode-desktop</code>. Синхронизация — по протоколу v2.</p></div>
+</section>
+</main></div><div id="toast" class="toast" hidden></div>
+<script>
+"use strict";
+let S={messages:[],profiles:{},tasks:[],agents:[],roles:{},widgets:[],settings:{},skills:[],models:[],queue:[],projects:[],sync:{}};
+const byId=id=>document.getElementById(id);
+function el(tag,cls,text){const e=document.createElement(tag);if(cls)e.className=cls;if(text!==undefined)e.textContent=text;return e}
+function card(){return el('div','card')}
+function toast(text){const t=byId('toast');t.textContent=text;t.hidden=false;clearTimeout(t._h);t._h=setTimeout(()=>t.hidden=true,3500)}
+async function get(u){const r=await fetch(u);if(!r.ok)throw new Error('HTTP '+r.status);return r.json()}
+async function post(u,b){const r=await fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b||{})});if(!r.ok){const e=await r.json().catch(()=>({}));throw new Error(e.error||('HTTP '+r.status))}return r.json()}
+function go(tab){if(tab==='queue'){byId('queueBox').hidden=!byId('queueBox').hidden;tab='chat'}
+ for(const x of ['chat','projects','agents','skills','models','profiles','sync','settings'])byId(x).hidden=x!==tab;
+ document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('on',b.dataset.tab===tab));
+ if(tab==='projects')loadFiles();if(tab==='chat')renderChat()}
+async function boot(){try{S=await get('/api/state');renderChat();renderProfiles();renderQueue();renderAgents();renderSkills();renderModels();renderSync();renderSettings();
+ const u=S.sync&&S.sync.cfg&&S.sync.cfg.phoneUrl;byId('statusText').textContent=u?('связь: '+u):'локальный режим';byId('dot').classList.toggle('off',!u);
+}catch(e){toast('Не удалось загрузить состояние: '+e.message)}}
+function renderChat(){const log=byId('log');log.replaceChildren();
+ if(!S.messages.length){log.append(card('msg','Здесь появятся сообщения. Напиши задачу или включи синхронизацию с телефоном.'));return}
+ S.messages.slice(-200).forEach(m=>{const c=card();c.classList.add('msg',m.role==='user'?'user':'assistant');
+  c.append(el('b','',m.role+': '),document.createTextNode(m.text||''));
+  const meta=el('div','meta');const time=el('small','',m.ts?new Date(m.ts).toLocaleTimeString():'');
+  const cp=el('button','ghost','Копировать');cp.onclick=()=>{navigator.clipboard.writeText(m.text||'');toast('Скопировано')};
+  meta.append(time,cp);c.append(meta);log.append(c)});
+ log.scrollTop=log.scrollHeight;byId('queueBtn').textContent='Очередь · '+S.queue.length;
+ byId('contextbar').textContent=S.messages.length+' сообщений в истории';
+ document.getElementById('main').classList.toggle('compact',!!S.settings&&!!S.settings.leanCalls)}
+async function send(){const q=byId('q');const text=q.value.trim();if(!text)return;q.value='';
+ try{const r=await post('/api/chat',{text});toast('Ответ получен');await boot();if(r.error)toast(r.error)}catch(e){q.value=text;toast('Ошибка: '+e.message)}}
+async function sendLater(){const q=byId('q');const text=q.value.trim();if(!text)return;q.value='';
+ try{await post('/api/message',{role:'user',text});await boot()}catch(e){toast(e.message)}}
+async function clearChat(){if(!confirm('Очистить всю историю чата?'))return;await post('/api/clear',{});await boot()}
+async function enqueue(){const t=byId('qtext');if(!t.value.trim())return;await post('/api/queue',{text:t.value});t.value='';await boot()}
+async function removeQueue(id){await post('/api/queue/remove',{id});await boot()}
+async function runQueue(){const r=await post('/api/queue/run',{});byId('q').value=r.text||'';await boot()}
+function renderQueue(){const box=byId('queueList');if(!box)return;box.replaceChildren();
+ S.queue.forEach(x=>{const c=card();c.append(el('span','',x.text));const b=el('button','ghost','Убрать');b.onclick=()=>removeQueue(x.id);c.append(b);box.append(c)});
+ if(!S.queue.length)box.append(el('p','','Очередь пуста.'))}
+function renderProfiles(){const box=byId('profileList');box.replaceChildren();const names=Object.keys(S.profiles||{}).filter(k=>k!=='_active');
+ if(!names.length)box.append(card('','Провайдеров пока нет. Сохрани первый ниже.'));
+ names.forEach(n=>{const p=S.profiles[n];const c=card();c.append(el('b','',n+(S.profiles._active===n?' · выбран':'')),document.createTextNode(' · '+p.base_url+' · '+p.model));
+ const b=el('button','ghost','Выбрать');b.onclick=async()=>{await post('/api/use',{name:n});await boot()};c.append(b);box.append(c)})}
+async function saveProfile(){const n=byId('pName').value.trim(),u=byId('pUrl').value.trim(),m=byId('pModel').value.trim();if(!n||!u||!m){toast('Заполни имя, адрес и модель');return}
+ try{await post('/api/profiles',{name:n,base_url:u,model:m,api_key:byId('pKey').value,max_tokens:Number(byId('pMax').value||0)});byId('pKey').value='';await boot()}
+ catch(e){toast(e.message)}}
+function renderAgents(){const box=byId('agentList');box.replaceChildren();if(!S.agents.length)box.append(card('','Агентов пока нет.'));
+ S.agents.forEach(a=>{const c=card();c.append(el('b','',a.name),document.createTextNode(' · '+a.goal));const b=el('button','ghost',a.enabled?'Выключить':'Включить');
+ b.onclick=async()=>{await post('/api/agent/toggle',{name:a.name,enabled:!a.enabled});await boot()};c.append(b);box.append(c)});
+ byId('planModel').value=S.roles.planning||'';byId('execModel').value=S.roles.execution||'';
+ const w=byId('widgetList');w.replaceChildren();(S.widgets||[]).forEach(x=>{const c=card();const a=el('a','',x.name);a.href=x.url;a.target='_blank';a.rel='noopener noreferrer';c.append(a,el('small','',' '+x.note));w.append(c)})}
+async function saveAgent(){const n=byId('agentName').value.trim(),g=byId('agentGoal').value.trim();if(!n)return;await post('/api/agents',{name:n,goal:g});await boot()}
+async function saveRoles(){await post('/api/roles',{planning:byId('planModel').value,execution:byId('execModel').value,project:(byId('projectSelect').value||'desktop')});toast('Роли сохранены')}
+function renderSkills(){const box=byId('skillList');box.replaceChildren();const controls=byId('skillControls');controls.replaceChildren();
+ const many=S.skills.length>20;let shown=S.skills,expanded=false;
+ if(many){const sw=el('button','chip','Показать все ('+S.skills.length+')');sw.onclick=()=>{expanded=!expanded;renderSkills()};controls.append(sw);
+  const up=el('button','chip','Наверх'),down=el('button','chip','Вниз');
+  up.onclick=()=>box.scrollIntoView({behavior:'smooth',block:'start'});down.onclick=()=>box.scrollIntoView({behavior:'smooth',block:'end'});
+  controls.append(up,down);shown=expanded?S.skills:S.skills.slice(0,20)}
+ if(!shown.length)box.append(card('','Навыков пока нет.'));
+ shown.forEach(s=>{const c=card();c.append(el('b','',s.name+(s.enabled===false?' · выключен':'')),el('small','',' '+(s.description||'')));
+ const b=el('button','ghost',s.enabled===false?'Включить':'Выключить');b.onclick=async()=>{await post('/api/skill/toggle',{name:s.name,enabled:s.enabled===false});await boot()};c.append(b);box.append(c)})}
+async function saveSkill(){const n=byId('skillName').value.trim(),b=byId('skillBody').value.trim();if(!n||!b){toast('Нужны имя и текст');return}
+ await post('/api/skills',{name:n,description:byId('skillDesc').value,body:b});byId('skillName').value='';byId('skillBody').value='';await boot()}
+function renderModels(){const box=byId('modelList');box.replaceChildren();if(!S.models.length)box.append(card('','Локальных моделей пока нет.'));
+ S.models.forEach(m=>{const c=card();c.append(el('b','',m.name),document.createTextNode(' · '+m.url+' · '+(m.model||'')));
+ const b=el('button','act','Использовать');b.onclick=async()=>{await post('/api/models/use',{name:m.name});toast('Модель '+m.name+' активна');await boot()};c.append(b);box.append(c)})}
+async function saveModel(){const n=byId('modelName').value.trim(),u=byId('modelUrl').value.trim();if(!n||!u){toast('Нужны имя и адрес');return}
+ try{await post('/api/models',{name:n,url:u,model:byId('modelId').value.trim()});await boot()}catch(e){toast(e.message)}}
+async function loadFiles(){const sel=byId('projectSelect'),cur=sel.value;sel.replaceChildren();
+ S.projects.forEach(p=>{const o=el('option','',p.name);o.value=p.name;sel.append(o)});if(cur&&[...sel.options].some(o=>o.value===cur))sel.value=cur;
+ if(!sel.value)return;const files=await get('/api/files?project='+encodeURIComponent(sel.value));const box=byId('fileList');box.replaceChildren();
+ files.forEach(f=>{const c=card();c.append(el('span','',f.path+' · '+f.size+' Б'));const b=el('button','ghost','Открыть');
+ b.onclick=async()=>{const d=await get('/api/file?project='+encodeURIComponent(sel.value)+'&path='+encodeURIComponent(f.path));byId('fileName').textContent=f.path;byId('fileText').value=d.text;byId('fileEditor').hidden=false};c.append(b);box.append(c)});
+ if(!files.length)box.append(card('','В проекте нет текстовых файлов.'))}
+async function createProject(){const n=byId('newProject').value.trim();if(!n)return;await post('/api/project',{name:n});byId('newProject').value='';await boot();await loadFiles()}
+async function saveFile(){const p=byId('projectSelect').value,f=byId('fileName').textContent;if(!p||!f)return;
+ await post('/api/file',{project:p,path:f,text:byId('fileText').value});toast('Файл сохранён и отправлен в очередь синхронизации')}
+function hide(id){byId(id).hidden=true}
+function renderSync(){const cfg=(S.sync&&S.sync.cfg)||{};byId('phoneUrl').value=cfg.phoneUrl||'';byId('syncToken').value=cfg.token||'';
+ byId('syncPass').value='';byId('intervalMin').value=cfg.intervalMin||15;byId('syncStatus').textContent=JSON.stringify({...S.sync,events:'принято пакетов (уникальные события дедуплицируются)'},null,2)}
+async function saveSyncCfg(){const b={phoneUrl:byId('phoneUrl').value.trim(),token:byId('syncToken').value.trim(),intervalMin:Number(byId('intervalMin').value||15),enabled:true,applyRemote:true,full:true};
+ const pass=byId('syncPass').value;if(pass)b.password=pass;await post('/api/sync/config',b);await boot();toast('Настройки синхронизации сохранены')}
+async function syncTest(){try{const r=await post('/api/sync/test',{});toast(r.ok?'Связь есть':'Нет связи: '+r.detail)}catch(e){toast(e.message)}}
+async function syncNow(){try{const r=await post('/api/sync/test',{});toast(r.ok?'Отправлено':'Ошибка: '+r.detail)}catch(e){toast(e.message)}await loadSyncStatus()}
+async function loadSyncStatus(){const s=await get('/api/sync/status');byId('syncStatus').textContent=JSON.stringify(s,null,2)}
+async function showToken(){const r=await get('/api/sync/token');byId('tokenBox').textContent=r.token?('Токен ПК для телефона: '+r.token):'Недоступно'}
+async function importTasks(){let v;try{v=JSON.parse(byId('imp').value)}catch(e){toast('Это не JSON: '+e.message);return}
+ try{await post('/api/sync/import',{items:Array.isArray(v)?v:(v.items||[])});await boot();toast('Импортировано')}catch(e){toast(e.message)}}
+function exportChat(){byId('imp').value=JSON.stringify({version:1,items:S.messages},null,2)}
+function renderSettings(){byId('leanBtn').textContent=S.settings.leanCalls?'Выключить':'Включить';byId('ecoBtn').textContent=S.settings.ecoMode?'Выключить':'Включить'}
+async function toggleLean(){await post('/api/settings',{leanCalls:!S.settings.leanCalls});await boot()}
+async function toggleEco(){await post('/api/settings',{ecoMode:!S.settings.ecoMode});await boot()}
+// long-poll: обновляем состояние только когда на телефоне появились новые события
+let lastSeq=0;
+let pollFails=0;
+async function poll(){try{const r=await get('/api/events?since='+lastSeq);pollFails=0;if(r.length){lastSeq=Math.max(lastSeq,...r.map(x=>x.seq||0));await boot();toast('Пришли данные с телефона')}}
+ catch(e){pollFails++;if(pollFails===3)toast('Синхронизация недоступна: '+e.message);if(pollFails>30){pollFails=0;byId('dot').classList.add('off')}}
+ setTimeout(poll,4000)}
+boot().then(()=>{poll()});
+</script></body></html>
