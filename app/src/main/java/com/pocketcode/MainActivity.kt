@@ -258,7 +258,7 @@ class MainActivity : ComponentActivity() {
                 androidx.compose.material3.Scaffold(
                     containerColor = MaterialTheme.colorScheme.background,
                     bottomBar = {
-                        if (pv == null && !imeOn) com.pocketcode.ui.AppNavigationBar {
+                        if (pv == null) com.pocketcode.ui.AppNavigationBar(compact = imeOn) {
                             listOf(
                                 Triple("Чат", com.pocketcode.ui.AppIcons.Chat, Screen.CHAT),
                                 Triple("Проект", com.pocketcode.ui.AppIcons.Folder, Screen.HUB_PROJECT),
@@ -559,10 +559,7 @@ class MainActivity : ComponentActivity() {
                         BackHandler { screen = backTo }
                         com.pocketcode.ui.LocalModelsCatalogScreen(
                             vm = controller,
-                            onUse = { m ->
-                                controller.useLocalModel(m.id)
-                                screen = Screen.MODELS
-                            },
+                            onUse = { m -> controller.useLocalModel(m.id) },
                             onInstall = { m -> controller.guideLocalModel(m) },
                             onBack = { screen = backTo },
                         )
