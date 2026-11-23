@@ -30,6 +30,8 @@ jobs:
           VER=$(python3 desktop/version.py)
           echo "PC_VERSION=$VER" >> "$GITHUB_ENV"
           echo "::notice title=Версия ПК::$VER"
+      - name: Desktop unit tests
+        run: python3 -m unittest discover -s desktop -p 'test_*.py'
       - name: Build Linux .deb
         run: bash desktop/build_linux_deb.sh
       - uses: actions/upload-artifact@v4
@@ -52,6 +54,8 @@ jobs:
           $ver = (& python desktop/version.py).Trim()
           "PC_VERSION=$ver" >> $env:GITHUB_ENV
           Write-Host "::notice title=Версия ПК::$ver"
+      - name: Desktop unit tests
+        run: python -m unittest discover -s desktop -p 'test_*.py'
       - name: Install PyInstaller
         run: python -m pip install --upgrade pyinstaller cryptography
       - name: Build EXE
