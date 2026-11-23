@@ -51,6 +51,7 @@ fun RemindersScreen(onBack: () -> Unit) {
             Text("Уведомление придёт, даже если PocketCode закрыт. Время считается от текущего момента.", style = MaterialTheme.typography.bodySmall)
             OutlinedTextField(text, { text = it }, label = { Text("О чём напомнить") }, modifier = Modifier.fillMaxWidth())
             var phrase by remember { mutableStateOf("") }
+            Text("Можно написать фразу — время разберётся само:", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             OutlinedTextField(phrase, { phrase = it }, label = { Text("Или напиши: через 2 часа проверить сборку") }, modifier = Modifier.fillMaxWidth())
             TextButton(onClick = {
                 com.pocketcode.Reminders.parseNatural(phrase)?.let { (what, at) ->
@@ -67,17 +68,23 @@ fun RemindersScreen(onBack: () -> Unit) {
                 },
                 modifier = Modifier.fillMaxWidth(),
             ) { Text("Добавить напоминание") }
+            if (list.isEmpty()) {
+                Text("Напоминаний пока нет. Напиши, о чём напомнить, и выбери время.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
             for (r in list.sortedBy { it.at }) {
-                Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text(r.text, style = MaterialTheme.typography.bodyMedium)
-                        Text(
-                            java.text.SimpleDateFormat("dd.MM HH:mm", java.util.Locale.getDefault()).format(java.util.Date(r.at)) +
-                                if (r.done) " · выполнено" else "",
-                            style = MaterialTheme.typography.labelSmall,
-                        )
+                AppCard(Modifier.fillMaxWidth()) {
+                    Row(Modifier.fillMaxWidth().padding(start = 14.dp, end = 4.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f), Arrangement.spacedBy(2.dp)) {
+                            Text(r.text, style = MaterialTheme.typography.bodyMedium)
+                            Text(
+                                java.text.SimpleDateFormat("dd.MM HH:mm", java.util.Locale.getDefault()).format(java.util.Date(r.at)) +
+                                    if (r.done) " · выполнено" else "",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        TextButton(onClick = { Reminders.remove(ctx, r.id); refresh() }) { Text("Удалить") }
                     }
-                    TextButton(onClick = { Reminders.remove(ctx, r.id); refresh() }) { Text("✕") }
                 }
             }
         }

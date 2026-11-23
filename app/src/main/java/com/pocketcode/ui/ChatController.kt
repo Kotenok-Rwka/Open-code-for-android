@@ -397,12 +397,12 @@ class ChatController(
     fun installedLocalModels(): List<String> = localModelsDir.listFiles { f -> f.isFile && f.name.endsWith(".gguf") }
         ?.map { it.name }.orEmpty().sorted()
 
-    /** Показывает в чате понятную инструкцию: само скачивание GGUF требует внешний рантайм. */
+    /** Понятная инструкция, если автоматическое скачивание не подошло. */
     fun guideLocalModel(m: com.pocketcode.LocalModelAdvice) {
         val url = "https://huggingface.co/api/models?search=" + java.net.URLEncoder.encode(m.id.replace(':', '-'), "UTF-8")
-        localInstallStatus = "Модель ${m.id} не вшита в APK: приложение не может запускать GGUF без рантайма. " +
-            "Варианты: 1) поставь LM Studio / llama.cpp / Ollama и открой «Подключения» — там адрес локального сервера; " +
-            "2) скачай GGUF вручную с $url и положи в ${localModelsDir.absolutePath}, затем нажми «Использовать»."
+        localInstallStatus = "Модель ${m.id} можно скачать кнопкой «Скачать GGUF» — файл попадёт в ${localModelsDir.absolutePath} и будет виден Linux-серверу. " +
+            "Если нужен другой файл: скачай его с $url, положи в эту папку и нажми «Запустить сервер». " +
+            "Внешний вариант — LM Studio / Ollama, адрес вводится в поле «Внешний сервер»."
     }
 
     fun dismissLocalInstallStatus() { localInstallStatus = null }
@@ -411,19 +411,34 @@ class ChatController(
     val localDownloader by lazy { com.pocketcode.linux.LocalModelDownloader(app) }
     fun downloadLocalModel(id: String, quant: String, manualUrl: String = "") {
         if (localRuntimeBusy || running) return
-        val url = manualUrl.ifBlank { localDownloader.huggingFaceUrl(id, quant) }
-        if (url == null) {
-            localInstallStatus = "Для ${id} нет готового URL. Вставь прямую ссылку на .gguf с HuggingFace ниже."
-            return
-        }
         val target = localDownloader.target(id, quant)
         if (target.exists() && target.length() > 1024 * 1024) {
-            localInstallStatus = "Модель уже скачана: ${target.name} (${target.length() / 1024 / 1024} МБ)."
+            setLocalSettings(localPort, localGpuLayers, localContext, target.name)
+            localInstallStatus = "Модель уже скачана: ${target.name} (${target.length() / 1024 / 1024} МБ). Нажми «Запустить сервер»."
             return
         }
         localRuntimeBusy = true
-        localInstallStatus = "Скачиваю ${target.name}…"
+        localInstallStatus = "Ищу файл модели на Hugging Face…"
         scope.launch(Dispatchers.IO) {
+            var url = manualUrl.trim()
+            var problem: String? = null
+            if (url.isBlank()) {
+                val repo = localDownloader.huggingFaceRepo(id)
+                if (repo == null) {
+                    problem = "Для $id нет автоматической ссылки. Вставь прямую ссылку на .gguf с Hugging Face в поле выше."
+                } else {
+                    url = localDownloader.resolveUrl(repo, quant) ?: localDownloader.huggingFaceUrl(id, quant).orEmpty()
+                    if (url.isBlank()) problem = "Не удалось найти .gguf в $repo. Вставь прямую ссылку на файл."
+                }
+            }
+            if (problem != null) {
+                withContext(Dispatchers.Main) {
+                    localRuntimeBusy = false
+                    localInstallStatus = problem
+                }
+                return@launch
+            }
+            withContext(Dispatchers.Main) { localInstallStatus = "Скачиваю ${target.name}…" }
             val r = localDownloader.download(url, target) { progress ->
                 scope.launch { localInstallStatus = "Скачиваю ${target.name}: $progress" }
             }
@@ -432,7 +447,7 @@ class ChatController(
                 localInstallStatus = r.fold(
                     onSuccess = {
                         setLocalSettings(localPort, localGpuLayers, localContext, it.name)
-                        "Готово: ${it.name} (${it.length() / 1024 / 1024} МБ). SHA256: ${localDownloader.sha256(it).take(12)}… Нажми «Запустить сервер»." },
+                        "Готово: ${it.name} (${it.length() / 1024 / 1024} МБ). Файл виден Linux как /root/.pocketcode/models/${it.name}. Нажми «Запустить сервер»." },
                     onFailure = { "Не удалось скачать: ${it.message}. Проверь ссылку и место на диске." },
                 )
             }
@@ -474,7 +489,7 @@ class ChatController(
         localInstallStatus = "Подключено: $base — модель $model"
     }
 
-    /** Локальный рантайм: ставится через termux-like пакеты в Linux и поднимает OpenAI-совместимый сервер на порту 8080. */
+    /** Локальный рантайм: llama-server из APK запускается в Linux и поднимает OpenAI-совместимый сервер на выбранном порту. */
     var localRuntimeBusy by mutableStateOf(false)
         private set
     var localRuntimeStatus by mutableStateOf("")
@@ -483,7 +498,7 @@ class ChatController(
     fun installLocalRuntime() {
         if (localRuntimeBusy || linuxBusy || running) return
         if (!linuxInstalled) {
-            localRuntimeStatus = "Сначала установи Linux в «Ещё → Среда Linux»."
+            localRuntimeStatus = "Сначала установи Linux в «Ещё → Среда Linux» — llama-server работает внутри него."
             return
         }
         localRuntimeBusy = true
@@ -491,16 +506,12 @@ class ChatController(
         scope.launch(Dispatchers.IO) {
             try {
                 val bundled = com.pocketcode.linux.BundledLlama.install(app)
-                val out = linuxRun(
-                    "mkdir -p /root/.pocketcode/models && " +
-                        "if command -v python3 >/dev/null 2>&1; then echo PY_OK; else echo PY_MISSING; fi 2>&1",
-                    120,
-                )
                 withContext(Dispatchers.Main) {
                     localRuntimeStatus = when {
-                        bundled != null -> "Встроенный llama-server готов: ${bundled.absolutePath}. Положи GGUF в /root/.pocketcode/models и нажми «Запустить локальный сервер»."
-                        out.contains("PY_OK") -> "Python готов, но встроенного бинарника нет (собери workflow build-llama). Положи GGUF в /root/.pocketcode/models и нажми «Запустить локальный сервер»."
-                        else -> "Нужен python3: открой «Ещё → Среда Linux → Поставить python, git, node» и повтори."
+                        bundled != null -> "llama-server готов (${bundled.length() / 1024 / 1024} МБ). Скачай модель в каталоге ниже или положи .gguf в папку моделей, затем нажми «Запустить сервер»."
+                        com.pocketcode.linux.BundledLlama.assetName() == null ->
+                            "В этой сборке нет llama-server для процессора телефона (бинарник только для arm64). Скачивание моделей работает, а запустить их можно через LM Studio/Ollama по адресу — поле «Внешний сервер» ниже."
+                        else -> "Встроенного llama-server нет: в APK не попал бинарник (нужна сборка с workflow build-llama). Пока можно подключить LM Studio/Ollama по адресу ниже."
                     }
                 }
             } catch (e: Exception) {
@@ -511,34 +522,54 @@ class ChatController(
         }
     }
 
-    fun startLocalServer(port: Int = 8080) {
+    /** Экранирование одного аргумента для sh: имена GGUF иногда содержат пробелы и кавычки. */
+    private fun shQuote(s: String): String = "'" + s.replace("'", "'\\''") + "'"
+
+    fun startLocalServer(port: Int = localPort) {
         if (localRuntimeBusy || running) return
         localRuntimeBusy = true
-        localRuntimeStatus = "Запускаю локальный OpenAI-совместимый сервер на 127.0.0.1:$port…"
+        localRuntimeStatus = "Запускаю llama-server на 127.0.0.1:$port…"
         scope.launch(Dispatchers.IO) {
             try {
                 val bundled = com.pocketcode.linux.BundledLlama.install(app)
-                val models = localModel.ifBlank {
-                    linuxRun("ls -1 /root/.pocketcode/models/*.gguf 2>/dev/null | head -1", 60).trim()
-                }
                 if (bundled == null) {
-                    withContext(Dispatchers.Main) { localRuntimeStatus = "Встроенного llama-server нет: запусти workflow build-llama в GitHub Actions." }
+                    withContext(Dispatchers.Main) {
+                        localRuntimeStatus = if (com.pocketcode.linux.BundledLlama.assetName() == null) {
+                            "Для этой архитектуры в APK нет llama-server. Подключи LM Studio/Ollama по адресу ниже или собери APK с бинарником (workflow build-llama)."
+                        } else {
+                            "Не удалось распаковать llama-server из APK. Переустанови APK или подключи внешний сервер ниже."
+                        }
+                    }
                     return@launch
                 }
-                if (models.isBlank()) {
-                    withContext(Dispatchers.Main) { localRuntimeStatus = "GGUF не найден. Положи файл .gguf в /root/.pocketcode/models через «Файлы»." }
+                // Модели из папки приложения подключены в Linux как /root/.pocketcode/models.
+                val model = localModel.trim().let { name ->
+                    when {
+                        name.isBlank() -> ""
+                        name.startsWith("/") -> name
+                        else -> "/root/.pocketcode/models/" + name
+                    }
+                }.ifBlank {
+                    linuxRun("ls -1 /root/.pocketcode/models/*.gguf 2>/dev/null | head -1", 60).trim()
+                }
+                if (model.isBlank()) {
+                    withContext(Dispatchers.Main) {
+                        localRuntimeStatus = "Модель не найдена. Нажми «Скачать GGUF» в каталоге ниже или положи файл .gguf в папку моделей."
+                    }
                     return@launch
                 }
                 // Запускаем нативный бинарник через встроенный Linux: он по-прежнему исполняется внутри proot.
                 val guestBin = java.io.File(linuxEnv.rootfs, "usr/local/bin/llama-server").apply { parentFile.mkdirs() }
                 bundled.copyTo(guestBin, overwrite = true)
                 guestBin.setExecutable(true)
-                val cmd = "/usr/local/bin/llama-server -m $models --host 127.0.0.1 --port $port " +
-                    "--n-gpu-layers $localGpuLayers --ctx-size $localContext"
+                val cmd = "/usr/local/bin/llama-server -m " + shQuote(model) + " --host 127.0.0.1 --port " + port +
+                    " --n-gpu-layers " + localGpuLayers + " --ctx-size " + localContext
                 val pb = linuxEnv.processBuilder(cmd, workspace.root, linuxEnv.rootfs)
                 bgProcs.start("llama-local", cmd, pb)
                 withContext(Dispatchers.Main) {
-                    localRuntimeStatus = "Локальная модель запущена: http://127.0.0.1:$port/v1. Подключи этот адрес в «Подключениях»."
+                    localRuntimeStatus = "Сервер запущен: http://127.0.0.1:$port/v1 · модель ${model.substringAfterLast('/')}. Если ответа нет, открой лог ниже — возможно, не хватает памяти."
+                    // Сразу добавляем профиль, чтобы не искать адрес вручную.
+                    runCatching { connectLocalEndpoint("http://127.0.0.1:$port/v1", model.substringAfterLast('/').removeSuffix(".gguf")) }
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) { localRuntimeStatus = "Ошибка: ${e.message}" }
@@ -4143,36 +4174,65 @@ class ChatController(
     var pluginSearchStatus by mutableStateOf<String?>(null)
         private set
 
-    fun searchPlugins(query: String, sort: String = "stars") {
+    /** Последний запрос — чтобы кнопка «Повторить» и смена сортировки не теряли контекст поиска. */
+    var pluginSearchQuery by mutableStateOf("")
+        private set
+    var pluginSearchCategory by mutableStateOf("Все")
+        private set
+    var pluginSearchSort by mutableStateOf("stars")
+        private set
+
+    fun searchPlugins(query: String, sort: String = "stars", category: String = "Все") {
         if (pluginSearchBusy) return
+        val clean = query.trim()
+        pluginSearchQuery = clean
+        pluginSearchCategory = category
+        pluginSearchSort = sort
+        if (clean.isBlank()) {
+            pluginSearchStatus = "Введи, что искать: например «claude skills» или «mcp server»."
+            return
+        }
         pluginSearchBusy = true
         pluginSearchStatus = "Ищу на GitHub…"
+        pluginSearchResults = emptyList()
         scope.launch {
+            val client = okhttp3.OkHttpClient.Builder()
+                .callTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+                .build()
+            var lastError: String? = null
             try {
-                val url = com.pocketcode.ui.PluginSearch.url(query, sort = sort)
-                val req = okhttp3.Request.Builder().url(url)
-                    .header("Accept", "application/vnd.github+json")
-                    .header("User-Agent", "PocketCode")
-                    .apply { if (settings.githubToken.isNotBlank()) header("Authorization", "Bearer " + settings.githubToken) }
-                    .build()
-                val (code, body) = withContext(Dispatchers.IO) {
-                    okhttp3.OkHttpClient.Builder().callTimeout(30, java.util.concurrent.TimeUnit.SECONDS).build()
-                        .newCall(req).execute().use { it.code to it.body?.string().orEmpty() }
+                // Фраза целиком часто даёт ноль совпадений: GitHub требует все слова сразу.
+                // Идём от точного запроса к короткому, пока что-то не найдётся.
+                for (q in com.pocketcode.ui.PluginSearch.fallbacks(clean, category)) {
+                    val req = okhttp3.Request.Builder().url(com.pocketcode.ui.PluginSearch.url(q, category, sort))
+                        .header("Accept", "application/vnd.github+json")
+                        .header("User-Agent", "PocketCode")
+                        .apply { if (settings.githubToken.isNotBlank()) header("Authorization", "Bearer " + settings.githubToken) }
+                        .build()
+                    val (code, body) = withContext(Dispatchers.IO) {
+                        client.newCall(req).execute().use { it.code to it.body?.string().orEmpty() }
+                    }
+                    if (code == 401 || code == 403) {
+                        pluginSearchStatus = "GitHub: лимит или нет доступа (HTTP $code). Без токена поиск ограничен 10 запросами в минуту; добавь токен в настройках или попробуй позже."
+                        return@launch
+                    }
+                    if (code == 422) {
+                        lastError = "GitHub не принял запрос (HTTP 422). Упрости запрос или убери лишние символы."
+                        continue
+                    }
+                    if (code !in 200..299) {
+                        lastError = "GitHub вернул HTTP $code: ${body.take(200)}"
+                        continue
+                    }
+                    val hits = com.pocketcode.ui.PluginSearch.parse(body)
+                    if (hits.isNotEmpty()) {
+                        pluginSearchResults = hits
+                        pluginSearchStatus = if (q != clean) "По «$clean» ничего нет — показаны результаты по «$q»." else null
+                        return@launch
+                    }
                 }
-                if (code == 401 || code == 403) {
-                    pluginSearchResults = emptyList()
-                    pluginSearchStatus = "GitHub: лимит или нет доступа (HTTP $code). Без токена поиск ограничен; добавь токен в настройках или попробуй позже."
-                    return@launch
-                }
-                if (code !in 200..299) {
-                    pluginSearchResults = emptyList()
-                    pluginSearchStatus = "GitHub вернул HTTP $code: ${body.take(200)}"
-                    return@launch
-                }
-                pluginSearchResults = com.pocketcode.ui.PluginSearch.parse(body)
-                pluginSearchStatus = if (pluginSearchResults.isEmpty()) {
-                    "Ничего не найдено. Попробуй другой запрос (например: claude skills agent)."
-                } else null
+                pluginSearchResults = emptyList()
+                pluginSearchStatus = lastError ?: "Ничего не найдено. Попробуй короче: «skills», «mcp», «agent»."
             } catch (e: Throwable) {
                 pluginSearchStatus = "Ошибка поиска: ${Secrets.mask(e.message ?: e.javaClass.simpleName)}"
             } finally {
@@ -4701,7 +4761,7 @@ class ChatController(
     var amoled by mutableStateOf(settingsStore.rawGet("amoled") == "1")
         private set
     fun setAmoledValue(v: Boolean) { amoled = v; settingsStore.rawPut("amoled", if (v) "1" else "0") }
-    /** Стиль интерфейса: код из UiStyle (md3 или ios). */
+    /** Стиль интерфейса: код из UiStyle (md3, ios или aurora). */
     var uiStyle by mutableStateOf(uiStyleById(settingsStore.rawGet("uiStyle")).id)
         private set
     fun setUiStyleValue(v: String) { uiStyle = uiStyleById(v).id; settingsStore.rawPut("uiStyle", uiStyle) }

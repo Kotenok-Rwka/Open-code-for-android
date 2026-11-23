@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -50,7 +51,7 @@ fun PluginsScreen(vm: ChatController, onBack: () -> Unit) {
     var ghSort by remember { mutableStateOf("stars") }
     var ghCategory by remember { mutableStateOf("Все") }
     LaunchedEffect(Unit) {
-        if (vm.pluginSearchResults.isEmpty() && vm.pluginSearchStatus == null) vm.searchPlugins(ghQuery)
+        if (vm.pluginSearchResults.isEmpty() && vm.pluginSearchStatus == null) vm.searchPlugins(ghQuery, ghSort, ghCategory)
     }
     var confirmDel by remember { mutableStateOf<com.pocketcode.agent.Skill?>(null) }
     LaunchedEffect(Unit) { vm.refreshExtensions() }
@@ -69,7 +70,11 @@ fun PluginsScreen(vm: ChatController, onBack: () -> Unit) {
         ) {
             androidx.compose.material3.ScrollableTabRow(selectedTabIndex = tab, edgePadding = 0.dp) {
                 listOf("Навыки и команды", "Инструменты", "Плагины и MCP", "Расписание", "Поиск GitHub").forEachIndexed { i, t ->
-                    androidx.compose.material3.Tab(selected = tab == i, onClick = { tab = i }, text = { Text(t) })
+                    androidx.compose.material3.Tab(
+                        selected = tab == i,
+                        onClick = { tab = i },
+                        text = { Text(t, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) },
+                    )
                 }
             }
             if (tab == 0) Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
@@ -121,7 +126,7 @@ fun PluginsScreen(vm: ChatController, onBack: () -> Unit) {
             if (vm.skillList.isEmpty()) Text("Пока нет. Поставь что-нибудь из каталога выше.", style = MaterialTheme.typography.bodySmall)
             vm.skillList.forEach { sk ->
                 val on = vm.skillEnabled(sk.name)
-                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer), modifier = Modifier.fillMaxWidth()) {
+                AppCard(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
@@ -196,14 +201,14 @@ fun PluginsScreen(vm: ChatController, onBack: () -> Unit) {
             )
             vm.extraTools.forEach { t ->
                 val busy = vm.toolBusy == t.id
-                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer), modifier = Modifier.fillMaxWidth()) {
+                AppCard(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text(t.title + if (vm.toolInstalled(t.id)) " · установлен" else "", style = MaterialTheme.typography.titleMedium)
                         Text(t.about, style = MaterialTheme.typography.bodySmall)
                         Text(t.warn, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
                         if (busy) androidx.compose.material3.LinearProgressIndicator(Modifier.fillMaxWidth())
                         vm.toolStatus[t.id]?.let { Text(it, style = MaterialTheme.typography.labelSmall, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace) }
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             if (!vm.toolInstalled(t.id)) Button(onClick = { vm.toolAction(t.id, "install") }, enabled = vm.toolBusy == null) { Text("Установить") }
                             OutlinedButton(onClick = { vm.toolAction(t.id, "check") }, enabled = vm.toolBusy == null) { Text("Проверить") }
                             if (vm.toolInstalled(t.id)) TextButton(onClick = { vm.toolAction(t.id, "remove") }, enabled = vm.toolBusy == null) { Text("Удалить") }
@@ -225,9 +230,11 @@ fun PluginsScreen(vm: ChatController, onBack: () -> Unit) {
             vm.installedPlugins().forEach { (name, enabled) ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(if (enabled) name else "$name (отключён)", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
-                    TextButton(onClick = { vm.updatePlugin(name) }, enabled = !vm.pluginBusy) { Text("Обновить") }
-                    TextButton(onClick = { vm.disablePlugin(name, enabled) }) { Text(if (enabled) "Выключить" else "Включить") }
-                    TextButton(onClick = { vm.removePlugin(name) }) { Text("Удалить") }
+                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        TextButton(onClick = { vm.updatePlugin(name) }, enabled = !vm.pluginBusy) { Text("Обновить") }
+                        TextButton(onClick = { vm.disablePlugin(name, enabled) }) { Text(if (enabled) "Выключить" else "Включить") }
+                        TextButton(onClick = { vm.removePlugin(name) }) { Text("Удалить") }
+                    }
                 }
             }
             OutlinedTextField(
@@ -251,7 +258,7 @@ fun PluginsScreen(vm: ChatController, onBack: () -> Unit) {
                     Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text("${sc.project} · каждые ${if (sc.intervalMin >= 1440) "${sc.intervalMin / 1440} сут." else if (sc.intervalMin >= 60) "${sc.intervalMin / 60} ч" else "${sc.intervalMin} мин"}" + if (sc.enabled) "" else " · выключено", style = MaterialTheme.typography.titleSmall)
                         Text(sc.prompt.take(200), style = MaterialTheme.typography.bodySmall)
-                        Row {
+                        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                             TextButton(onClick = { vm.runScheduled(sc.id, true) }, enabled = !vm.running) { Text("Запустить сейчас") }
                             TextButton(onClick = { vm.toggleSchedule(sc.id) }) { Text(if (sc.enabled) "Выключить" else "Включить") }
                             TextButton(onClick = { vm.removeSchedule(sc.id) }) { Text("Удалить") }
@@ -283,7 +290,7 @@ fun PluginsScreen(vm: ChatController, onBack: () -> Unit) {
                     Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text("${srv.name} · инструментов ${srv.tools.size}" + if (srv.enabled) "" else " · выключен", style = MaterialTheme.typography.titleSmall)
                         Text(srv.url, style = MaterialTheme.typography.bodySmall)
-                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                             TextButton(onClick = { vm.refreshMcp(srv.id) }, enabled = !vm.mcpBusy) { Text("Обновить") }
                             TextButton(onClick = { vm.toggleMcp(srv.id) }) { Text(if (srv.enabled) "Выключить" else "Включить") }
                             TextButton(onClick = { vm.removeMcp(srv.id) }) { Text("Удалить") }
@@ -310,46 +317,108 @@ fun PluginsScreen(vm: ChatController, onBack: () -> Unit) {
             ) { Text("Добавить сервер") }
             vm.mcpMessage?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
             }
-        }
-    if (tab == 4) {
-        Text("Поиск навыков и плагинов на GitHub", style = MaterialTheme.typography.titleMedium)
-        Text(
-            "Находит репозитории с навыками и плагинами, показывает описание и число звёзд. " +
-                "Для большего лимита запросов укажи токен GitHub в настройках.",
-            style = MaterialTheme.typography.bodySmall,
-        )
-        OutlinedTextField(ghQuery, { ghQuery = it }, label = { Text("Что ищем (например: claude skills)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        Button(onClick = { vm.searchPlugins(ghQuery) }, enabled = ghQuery.isNotBlank() && !vm.pluginSearchBusy) {
-            Text(if (vm.pluginSearchBusy) "Ищу…" else "Найти на GitHub")
-        }
-        vm.pluginSearchStatus?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            listOf("Все", "skills", "agents", "MCP", "plugins").forEach { cat ->
-                androidx.compose.material3.FilterChip(selected = ghCategory == cat, onClick = { ghCategory = cat }, label = { Text(cat) })
-            }
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            listOf("stars" to "По звёздам", "updated" to "По обновлению", "name" to "По названию").forEach { (k, label) ->
-                androidx.compose.material3.FilterChip(selected = ghSort == k, onClick = { ghSort = k; vm.searchPlugins(ghQuery, k) }, label = { Text(label) })
-            }
-        }
-        val shown = vm.pluginSearchResults
-            .filter { cat -> ghCategory == "Все" || cat.fullName.contains(ghCategory, ignoreCase = true) || cat.description.contains(ghCategory, ignoreCase = true) }
-            .let { list -> if (ghSort == "name") list.sortedBy { it.fullName } else list }
-        shown.forEach { hit ->
-            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer), modifier = Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(12.dp), Arrangement.spacedBy(4.dp)) {
-                    Text(hit.fullName, style = MaterialTheme.typography.titleSmall)
-                    if (hit.description.isNotBlank()) Text(hit.description, style = MaterialTheme.typography.bodySmall)
-                    Text("★ ${hit.stars}" + if (hit.language.isNotBlank()) " · ${hit.language}" else "", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
-                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        TextButton(onClick = { vm.installPlugin(hit.url) }) { Text("Установить") }
-                        TextButton(onClick = { vm.previewUrl = hit.url }) { Text("Открыть на GitHub") }
+
+            if (tab == 4) {
+                Text("Поиск навыков и плагинов на GitHub", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "Ищет репозитории с навыками, агентами, MCP-серверами и плагинами. Запрос проверяется в названии, описании и README; " +
+                        "если по всей фразе пусто, приложение само пробует короче. Без токена GitHub разрешает 10 запросов в минуту, с токеном — больше " +
+                        "(токен: Настройки → GitHub).",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                OutlinedTextField(
+                    ghQuery, { ghQuery = it },
+                    label = { Text("Что ищем") },
+                    placeholder = { Text("claude skills, mcp server, agent") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    trailingIcon = {
+                        androidx.compose.material3.IconButton(
+                            onClick = { vm.searchPlugins(ghQuery, ghSort, ghCategory) },
+                            enabled = ghQuery.isNotBlank() && !vm.pluginSearchBusy,
+                        ) { androidx.compose.material3.Icon(AppIcons.Search, contentDescription = "Найти") }
+                    },
+                )
+                Button(
+                    onClick = { vm.searchPlugins(ghQuery, ghSort, ghCategory) },
+                    enabled = ghQuery.isNotBlank() && !vm.pluginSearchBusy,
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text(if (vm.pluginSearchBusy) "Ищу…" else "Найти на GitHub") }
+                Text("Категория", style = MaterialTheme.typography.labelMedium)
+                Row(
+                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    PluginSearch.CATEGORIES.forEach { cat ->
+                        androidx.compose.material3.FilterChip(
+                            selected = ghCategory == cat,
+                            onClick = { ghCategory = cat; vm.searchPlugins(ghQuery, ghSort, cat) },
+                            label = { Text(cat, maxLines = 1) },
+                        )
+                    }
+                }
+                Text("Сортировка", style = MaterialTheme.typography.labelMedium)
+                Row(
+                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    listOf("stars" to "По звёздам", "updated" to "По обновлению", "name" to "По названию").forEach { (k, label) ->
+                        androidx.compose.material3.FilterChip(
+                            selected = ghSort == k,
+                            onClick = {
+                                ghSort = k
+                                // GitHub не принимает sort=name: такой список сортируем на телефоне.
+                                if (k == "name") { if (vm.pluginSearchResults.isEmpty()) vm.searchPlugins(ghQuery, "stars", ghCategory) }
+                                else vm.searchPlugins(ghQuery, k, ghCategory)
+                            },
+                            label = { Text(label, maxLines = 1) },
+                        )
+                    }
+                }
+                if (vm.pluginSearchBusy) androidx.compose.material3.LinearProgressIndicator(Modifier.fillMaxWidth())
+                vm.pluginSearchStatus?.let { st ->
+                    Text(
+                        st,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (vm.pluginSearchResults.isEmpty() && !vm.pluginSearchBusy) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                val shown = vm.pluginSearchResults.let { list -> if (ghSort == "name") list.sortedBy { it.fullName.lowercase() } else list }
+                if (shown.isNotEmpty()) Text("Найдено: ${shown.size}", style = MaterialTheme.typography.labelMedium)
+                shown.forEach { hit ->
+                    AppCard(Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(
+                                hit.fullName,
+                                style = MaterialTheme.typography.titleSmall,
+                                maxLines = 2,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                            )
+                            if (hit.description.isNotBlank()) {
+                                Text(
+                                    hit.description,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    maxLines = 5,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                )
+                            }
+                            Text(
+                                "★ ${hit.stars}" + if (hit.language.isNotBlank()) " · ${hit.language}" else "",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                            Row(
+                                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                Button(onClick = { vm.installPlugin(hit.url) }, enabled = !vm.pluginBusy) { Text("Установить") }
+                                OutlinedButton(onClick = { vm.previewUrl = hit.url }) { Text("Открыть на GitHub") }
+                            }
+                        }
                     }
                 }
             }
         }
-    }
     }
     viewing?.let { sk ->
         androidx.compose.material3.AlertDialog(

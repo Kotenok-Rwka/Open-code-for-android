@@ -1,6 +1,7 @@
 package com.pocketcode.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -40,8 +41,90 @@ fun hubHeader(text: String) = HubItem(AppIcons.Chevron, text, "", null, true)
 /** Раздел нижней панели: пункты с пояснениями, куда это ведёт. Вид зависит от выбранного стиля интерфейса. */
 @Composable
 fun HubScreen(title: String, subtitle: String, items: List<HubItem>, onSearch: (() -> Unit)? = null) {
-    if (LocalUiStyle.current == UiStyle.IOS) IosHub(title, subtitle, items, onSearch)
-    else Md3Hub(title, subtitle, items, onSearch)
+    when (LocalUiStyle.current) {
+        UiStyle.IOS -> IosHub(title, subtitle, items, onSearch)
+        UiStyle.AURORA -> AuroraHub(title, subtitle, items, onSearch)
+        UiStyle.MD3 -> Md3Hub(title, subtitle, items, onSearch)
+    }
+}
+
+/** Aurora: крупный заголовок, группы карточек с тонкой обводкой и градиентные значки. */
+@Composable
+private fun AuroraHub(title: String, subtitle: String, items: List<HubItem>, onSearch: (() -> Unit)?) {
+    val m = metricsOf(UiStyle.AURORA)
+    val sections = groupBySections(items, { it.header }, { it.title })
+    val cs = MaterialTheme.colorScheme
+    LazyColumn(
+        Modifier.fillMaxSize(),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 28.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        item {
+            Row(Modifier.fillMaxWidth().padding(start = 4.dp, top = 14.dp, bottom = 10.dp), verticalAlignment = Alignment.Top) {
+                Column(Modifier.weight(1f), Arrangement.spacedBy(2.dp)) {
+                    Text(title, style = MaterialTheme.typography.headlineMedium)
+                    if (subtitle.isNotBlank()) Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = cs.onSurfaceVariant)
+                }
+                if (onSearch != null) androidx.compose.material3.IconButton(onClick = onSearch) {
+                    Icon(AppIcons.Search, contentDescription = "Поиск по настройкам", tint = cs.primary)
+                }
+            }
+        }
+        sections.forEach { section ->
+            val head = section.first
+            val rows = section.second
+            item {
+                if (head != null) {
+                    Text(
+                        head.uppercase(), style = MaterialTheme.typography.labelSmall, color = cs.primary,
+                        modifier = Modifier.padding(start = 4.dp, top = 6.dp, bottom = 6.dp),
+                    )
+                }
+                Column(
+                    Modifier.fillMaxWidth()
+                        .clip(RoundedCornerShape(m.cardRadius.dp))
+                        .background(cs.surfaceContainerLow)
+                        .border(1.dp, cs.outlineVariant, RoundedCornerShape(m.cardRadius.dp)),
+                ) {
+                    rows.forEachIndexed { i, row -> AuroraRow(row, last = i == rows.lastIndex) }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AuroraRow(entry: HubItem, last: Boolean) {
+    val cs = MaterialTheme.colorScheme
+    Column {
+        Row(
+            Modifier.fillMaxWidth().clickable(onClick = entry.onClick).padding(start = 14.dp, end = 12.dp, top = 12.dp, bottom = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            Box(
+                Modifier.size(40.dp).clip(RoundedCornerShape(13.dp))
+                    .background(Brush.linearGradient(listOf(cs.primary.copy(alpha = 0.34f), cs.primary.copy(alpha = 0.10f)))),
+                contentAlignment = Alignment.Center,
+            ) { Icon(entry.icon, contentDescription = null, tint = cs.primary, modifier = Modifier.size(21.dp)) }
+            Column(Modifier.weight(1f), Arrangement.spacedBy(2.dp)) {
+                Text(entry.title, style = MaterialTheme.typography.titleSmall)
+                if (entry.about.isNotBlank()) {
+                    Text(
+                        entry.about, style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant,
+                        maxLines = 2, overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+            entry.badge?.let { b ->
+                Box(Modifier.clip(RoundedCornerShape(10.dp)).background(cs.primary.copy(alpha = 0.14f)).padding(horizontal = 8.dp, vertical = 3.dp)) {
+                    Text(b, style = MaterialTheme.typography.labelSmall, color = cs.primary)
+                }
+            }
+            Icon(AppIcons.Chevron, contentDescription = null, tint = cs.outline, modifier = Modifier.size(20.dp))
+        }
+        if (!last) HorizontalDivider(Modifier.padding(start = 66.dp), thickness = 1.dp, color = cs.outlineVariant)
+    }
 }
 
 /** Material 3: тональная шапка и карточки без рамок, значки в кружках. */

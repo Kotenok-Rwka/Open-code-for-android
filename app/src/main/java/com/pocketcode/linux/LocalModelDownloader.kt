@@ -3,6 +3,11 @@ package com.pocketcode.linux
 import android.content.Context
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
@@ -11,6 +16,7 @@ import java.util.concurrent.TimeUnit
 
 /** Скачивание GGUF в локальную папку модели с прогрессом и проверкой размера. */
 class LocalModelDownloader(private val context: Context) {
+    /** Эта же папка подключена в Linux как /root/.pocketcode/models (см. LinuxEnv.processBuilder). */
     val dir = File(context.filesDir, "models").apply { mkdirs() }
 
     fun installed(): List<File> = dir.listFiles { f -> f.isFile && f.name.endsWith(".gguf", ignoreCase = true) }
@@ -32,25 +38,67 @@ class LocalModelDownloader(private val context: Context) {
         md.digest().joinToString("") { "%02x".format(it) }
     }.getOrDefault("")
 
-    /** URL GGUF по id модели из каталога (популярные репозитории). */
-    fun huggingFaceUrl(id: String, quant: String = "Q4_K_M"): String? {
-        val slug = id.substringBefore(':')
-        val repo = when {
-            slug.contains("qwen2.5-coder", true) -> "Qwen/Qwen2.5-Coder-${id.substringAfter(':').uppercase()}-GGUF"
-            slug.contains("qwen2.5-vl", true) -> "Qwen/Qwen2.5-VL-${id.substringAfter(':').uppercase()}-GGUF"
-            slug.contains("llama3.2", true) -> "bartowski/Llama-3.2-${id.substringAfter(':').uppercase()}-GGUF"
-            slug.contains("llama3.1", true) -> "bartowski/Meta-Llama-3.1-${id.substringAfter(':').uppercase()}-GGUF"
-            slug.contains("mistral", true) -> "bartowski/Mistral-${id.substringAfter(':').uppercase()}-GGUF"
-            slug.contains("gemma3", true) -> "bartowski/gemma-3-${id.substringAfter(':').uppercase()}-it-GGUF"
-            slug.contains("phi3.5", true) -> "bartowski/Phi-3.5-mini-instruct-GGUF"
-            slug.contains("smollm2", true) -> "HuggingFaceTB/SmolLM2-${id.substringAfter(':').uppercase()}-Instruct-GGUF"
-            slug.contains("codellama", true) -> "TheBloke/CodeLlama-${id.substringAfter(':').uppercase()}-GGUF"
-            slug.contains("deepseek-coder", true) -> "TheBloke/DeepSeek-Coder-${id.substringAfter(':').uppercase()}-GGUF"
-            slug.contains("llava", true) -> "bartowski/llava-v1.6-${id.substringAfter(':').uppercase()}-GGUF"
-            else -> return null
+    /**
+     * Репозиторий GGUF на Hugging Face для id из каталога.
+     * Названия проверены по API: у Qwen файлы лежат в репозиториях с «-Instruct», а не «-3B-GGUF».
+     */
+    fun huggingFaceRepo(id: String): String? {
+        val slug = id.substringBefore(':').lowercase()
+        val tag = id.substringAfter(':', "").uppercase()
+        if (tag.isBlank()) return null
+        return when {
+            slug.contains("qwen2.5-coder") -> "Qwen/Qwen2.5-Coder-$tag-Instruct-GGUF"
+            slug.contains("qwen2.5-vl") -> "unsloth/Qwen2.5-VL-$tag-Instruct-GGUF"
+            slug.contains("llama3.2") -> "bartowski/Llama-3.2-$tag-Instruct-GGUF"
+            slug.contains("llama3.1") -> "bartowski/Meta-Llama-3.1-$tag-Instruct-GGUF"
+            slug.contains("mistral") -> "bartowski/Mistral-7B-Instruct-v0.3-GGUF"
+            slug.contains("gemma3") -> "unsloth/gemma-3-$tag-it-GGUF"
+            slug.contains("phi3.5") -> "bartowski/Phi-3.5-mini-instruct-GGUF"
+            slug.contains("smollm2") -> "HuggingFaceTB/SmolLM2-$tag-Instruct-GGUF"
+            slug.contains("codellama") -> "TheBloke/CodeLlama-$tag-Instruct-GGUF"
+            slug.contains("deepseek-coder") -> "TheBloke/deepseek-coder-$tag-instruct-GGUF"
+            slug.contains("llava") -> "mradermacher/llava-v1.6-mistral-7b-GGUF"
+            slug.contains("qwq") -> "Qwen/QwQ-$tag-GGUF"
+            else -> null
         }
-        val file = fileName(id, quant)
-        return "https://huggingface.co/$repo/resolve/main/$file"
+    }
+
+    /** Запасной прямой адрес, если список файлов репозитория получить не удалось. */
+    fun huggingFaceUrl(id: String, quant: String = "Q4_K_M"): String? {
+        val repo = huggingFaceRepo(id) ?: return null
+        val guessed = repo.substringAfterLast('/').removeSuffix("-GGUF").lowercase() + "-" + quant.lowercase() + ".gguf"
+        return "https://huggingface.co/$repo/resolve/main/$guessed"
+    }
+
+    /**
+     * Находит настоящий файл модели в репозитории: имена у всех разные
+     * (Qwen2.5-Coder-3B-Instruct-Q4_K_M.gguf, deepseek-coder-6.7b-instruct.Q4_K_M.gguf и т.д.),
+     * поэтому угадывать имя нельзя — спрашиваем список файлов у Hugging Face.
+     */
+    suspend fun resolveUrl(repo: String, quant: String = "Q4_K_M"): String? = withContext(Dispatchers.IO) {
+        try {
+            val client = OkHttpClient.Builder()
+                .connectTimeout(20, TimeUnit.SECONDS)
+                .readTimeout(30, TimeUnit.SECONDS)
+                .build()
+            val req = Request.Builder()
+                .url("https://huggingface.co/api/models/$repo/tree/main")
+                .header("User-Agent", "PocketCode")
+                .build()
+            val text = client.newCall(req).execute().use { resp ->
+                if (!resp.isSuccessful) return@withContext null
+                resp.body?.string()
+            } ?: return@withContext null
+            val files = Json.parseToJsonElement(text).jsonArray.mapNotNull { el ->
+                runCatching { el.jsonObject["path"]?.jsonPrimitive?.contentOrNull }.getOrNull()
+            }.filter { it.lowercase().endsWith(".gguf") && !it.lowercase().contains("mmproj") }
+            if (files.isEmpty()) return@withContext null
+            val q = quant.lowercase()
+            val pick = files.firstOrNull { it.lowercase().contains(q) } ?: files.first()
+            "https://huggingface.co/$repo/resolve/main/" + java.net.URLEncoder.encode(pick, "UTF-8").replace("+", "%20")
+        } catch (e: Exception) {
+            null
+        }
     }
 
     suspend fun download(url: String, target: File, onProgress: (String) -> Unit): Result<File> = withContext(Dispatchers.IO) {
@@ -60,7 +108,7 @@ class LocalModelDownloader(private val context: Context) {
             val client = OkHttpClient.Builder().connectTimeout(30, TimeUnit.SECONDS)
                 .readTimeout(180, TimeUnit.SECONDS).build()
             val tmp = File(dir, "." + target.name + ".part")
-            client.newCall(Request.Builder().url(url).build()).execute().use { resp ->
+            client.newCall(Request.Builder().url(url).header("User-Agent", "PocketCode").build()).execute().use { resp ->
                 if (!resp.isSuccessful) error("HTTP ${resp.code}")
                 val body = resp.body ?: error("Пустой ответ")
                 val total = body.contentLength()

@@ -1,6 +1,8 @@
-package com.pocketcode.ui
+package com.pocketcode
 
+import com.pocketcode.ui.PluginSearch
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -24,7 +26,34 @@ class PluginSearchTest {
         val url = PluginSearch.url("claude skills")
         assertTrue(url.contains("api.github.com/search/repositories"))
         assertTrue(url.contains("sort=stars"))
+        assertTrue(url.contains("in%3Aname%2Cdescription%2Creadme"))
         assertTrue(url.contains("claude"))
+        assertTrue(url.contains("per_page=20"))
+    }
+
+    @Test
+    fun invalidSortIsNeverSentToGithub() {
+        // GitHub отвечает 422 на sort=name — такой список сортируется на телефоне.
+        val url = PluginSearch.url("skills", sort = "name")
+        assertFalse(url.contains("sort="))
+    }
+
+    @Test
+    fun categoryAddsItsWordToTheQuery() {
+        val url = PluginSearch.url("telegram", category = "MCP")
+        assertTrue(url.contains("mcp"))
+        assertEquals("skills", PluginSearch.categoryWord("Навыки"))
+        assertEquals("", PluginSearch.categoryWord("Все"))
+    }
+
+    @Test
+    fun fallbacksGoFromNarrowToBroad() {
+        val list = PluginSearch.fallbacks("claude code skills", "Навыки")
+        assertEquals("claude code skills", list.first())
+        assertTrue(list.contains("claude code"))
+        assertTrue(list.any { it == "skills" })
+        assertTrue(list.size <= 5)
+        assertTrue(PluginSearch.fallbacks("   ").isEmpty())
     }
 
     @Test

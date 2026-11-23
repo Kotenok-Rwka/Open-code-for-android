@@ -625,6 +625,8 @@ class MainActivity : ComponentActivity() {
                             initial = controller.appearance,
                             themeMode = controller.themeMode,
                             amoled = controller.amoled,
+                            uiStyle = controller.uiStyle,
+                            onUiStyle = { controller.setUiStyleValue(it) },
                             onThemeMode = { controller.setThemeModeValue(it) },
                             onAmoled = { controller.setAmoledValue(it) },
                             onSave = { controller.saveAppearance(it) },
@@ -884,13 +886,18 @@ private fun AppTheme(content: @Composable () -> Unit) {
     }
     val reduceMotion = ctl.reduceMotion || systemNoAnim || appearance.animations.level == com.pocketcode.ui.AnimationLevel.NONE
     val ios = style == com.pocketcode.ui.UiStyle.IOS
+    val aurora = style == com.pocketcode.ui.UiStyle.AURORA
     val scheme = when {
         accent == null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
             val dyn = if (dark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-            if (ios) com.pocketcode.ui.buildIosScheme(dark, dark && ctl.amoled, com.pocketcode.ui.Accent("system", "Из обоев", dyn.primary, dyn.primary))
-            else if (dark && ctl.amoled) com.pocketcode.ui.amoledize(dyn) else dyn
+            when {
+                ios -> com.pocketcode.ui.buildIosScheme(dark, dark && ctl.amoled, com.pocketcode.ui.Accent("system", "Из обоев", dyn.primary, dyn.primary))
+                aurora -> com.pocketcode.ui.buildAuroraScheme(dark, dark && ctl.amoled, com.pocketcode.ui.Accent("system", "Из обоев", dyn.primary, dyn.primary))
+                else -> if (dark && ctl.amoled) com.pocketcode.ui.amoledize(dyn) else dyn
+            }
         }
         ios -> com.pocketcode.ui.buildIosScheme(dark, dark && ctl.amoled, accent ?: com.pocketcode.ui.ACCENTS.first())
+        aurora -> com.pocketcode.ui.buildAuroraScheme(dark, dark && ctl.amoled, accent ?: com.pocketcode.ui.ACCENTS.first())
         else -> com.pocketcode.ui.buildScheme(dark, dark && ctl.amoled, accent ?: com.pocketcode.ui.ACCENTS.first())
     }
     // Цвета системных панелей и подложки окна берём из темы приложения: без серой полосы сверху и белой снизу

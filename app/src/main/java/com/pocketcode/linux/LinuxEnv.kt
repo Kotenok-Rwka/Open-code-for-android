@@ -120,12 +120,17 @@ class LinuxEnv(private val context: Context) {
         val guestCwd = if (rel.isEmpty() || rel.startsWith("..")) "/work" else "/work/$rel"
         File(rootfs, "tmp").mkdirs()
         File(rootfs, "root").mkdirs()
+        // Скачанные GGUF лежат в приватной папке приложения (models). Подключаем её в Linux,
+        // иначе llama-server не видит модель и не может её запустить.
+        val models = File(context.filesDir, "models").apply { mkdirs() }
+        File(rootfs, "root/.pocketcode/models").mkdirs()
         val args = mutableListOf(
             prootBin.absolutePath,
             "--kill-on-exit", *(if (noLink) emptyArray() else arrayOf("--link2symlink")), "-0",
             "-r", rootfs.absolutePath,
             "-b", "/dev", "-b", "/proc",
             "-b", "${root.absolutePath}:/work",
+            "-b", "${models.absolutePath}:/root/.pocketcode/models",
             "-w", guestCwd,
             "/bin/sh", "-c", command,
         )

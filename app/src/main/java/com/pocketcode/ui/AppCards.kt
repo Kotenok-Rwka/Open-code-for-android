@@ -55,13 +55,18 @@ fun AppCard(
     val container = when {
         emphasized -> cs.primaryContainer
         style == UiStyle.IOS -> cs.surfaceContainer
+        style == UiStyle.AURORA -> cs.surfaceContainerLow
         else -> cs.surfaceContainerHigh
     }
     val colors = CardDefaults.cardColors(containerColor = container)
+    // Aurora: мягкая карточка с тонкой обводкой вместо тональной заливки Material 3.
+    val border = if (style == UiStyle.AURORA && !emphasized) {
+        androidx.compose.foundation.BorderStroke(1.dp, cs.outlineVariant)
+    } else null
     if (onClick != null) {
-        Card(onClick = onClick, shape = shape, colors = colors, modifier = modifier, content = { content() })
+        Card(onClick = onClick, shape = shape, colors = colors, border = border, modifier = modifier, content = { content() })
     } else {
-        Card(shape = shape, colors = colors, modifier = modifier, content = { content() })
+        Card(shape = shape, colors = colors, border = border, modifier = modifier, content = { content() })
     }
 }
 

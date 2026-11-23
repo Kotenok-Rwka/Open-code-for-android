@@ -162,12 +162,92 @@ fun buildIosScheme(dark: Boolean, amoled: Boolean, a: Accent): ColorScheme {
     }
 }
 
+/**
+ * Палитра стиля Aurora: глубокий фон, слоистые поверхности с тонкой обводкой и насыщенный акцент.
+ * Отличается от Material 3 более контрастными границами и мягкими, но заметными карточками.
+ */
+fun buildAuroraScheme(dark: Boolean, amoled: Boolean, a: Accent): ColorScheme {
+    val white = Color.White
+    val black = Color.Black
+    return if (dark) {
+        val base = if (amoled) black else Color(0xFF0B0E14)
+        val c = a.dark
+        darkColorScheme(
+            primary = c,
+            onPrimary = Color(0xFF071018),
+            primaryContainer = lerp(base, c, 0.26f),
+            onPrimaryContainer = lerp(c, white, 0.72f),
+            secondary = lerp(c, white, 0.3f),
+            onSecondary = Color(0xFF071018),
+            secondaryContainer = lerp(base, c, 0.14f),
+            onSecondaryContainer = lerp(c, white, 0.7f),
+            tertiary = lerp(c, Color(0xFFFF8AB4), 0.35f),
+            background = base,
+            onBackground = Color(0xFFE8EBF2),
+            surface = base,
+            onSurface = Color(0xFFE8EBF2),
+            surfaceVariant = lerp(base, white, 0.10f),
+            onSurfaceVariant = Color(0xFFA8B0C0),
+            surfaceContainerLowest = lerp(base, black, 0.35f),
+            surfaceContainerLow = lerp(base, white, 0.035f),
+            surfaceContainer = lerp(base, white, 0.055f),
+            surfaceContainerHigh = lerp(base, white, 0.085f),
+            surfaceContainerHighest = lerp(base, white, 0.115f),
+            outline = Color(0xFF5C6472),
+            outlineVariant = lerp(base, white, 0.09f),
+        )
+    } else {
+        val base = Color(0xFFF6F7FB)
+        val c = a.light
+        lightColorScheme(
+            primary = c,
+            onPrimary = white,
+            primaryContainer = lerp(white, c, 0.14f),
+            onPrimaryContainer = lerp(c, black, 0.5f),
+            secondary = lerp(c, black, 0.12f),
+            onSecondary = white,
+            secondaryContainer = lerp(white, c, 0.09f),
+            onSecondaryContainer = lerp(c, black, 0.45f),
+            tertiary = lerp(c, Color(0xFFB4246B), 0.3f),
+            background = base,
+            onBackground = Color(0xFF14161B),
+            surface = base,
+            onSurface = Color(0xFF14161B),
+            surfaceVariant = lerp(base, black, 0.06f),
+            onSurfaceVariant = Color(0xFF4C5361),
+            surfaceContainerLowest = white,
+            surfaceContainerLow = lerp(base, white, 0.7f),
+            surfaceContainer = white,
+            surfaceContainerHigh = lerp(base, black, 0.035f),
+            surfaceContainerHighest = lerp(base, black, 0.07f),
+            outline = Color(0xFF9AA1AE),
+            outlineVariant = lerp(base, black, 0.07f),
+        )
+    }
+}
+
 /** Динамические цвета из обоев, но с чёрным фоном для AMOLED. */
 fun amoledize(s: ColorScheme): ColorScheme = s.copy(
     background = Color.Black, surface = Color.Black,
     surfaceContainerLowest = Color.Black,
     surfaceContainerLow = Color(0xFF0E0F11), surfaceContainer = Color(0xFF15171A),
     surfaceContainerHigh = Color(0xFF1D2024), surfaceContainerHighest = Color(0xFF272B30),
+)
+
+/** Шкала Aurora: крупные заголовки с плотным трекингом, спокойный основной текст, читаемые подписи. */
+val AuroraTypography = androidx.compose.material3.Typography(
+    headlineLarge = androidx.compose.ui.text.TextStyle(fontSize = 30.sp, lineHeight = 36.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.5).sp),
+    headlineMedium = androidx.compose.ui.text.TextStyle(fontSize = 27.sp, lineHeight = 33.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.4).sp),
+    headlineSmall = androidx.compose.ui.text.TextStyle(fontSize = 22.sp, lineHeight = 28.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.2).sp),
+    titleLarge = androidx.compose.ui.text.TextStyle(fontSize = 21.sp, lineHeight = 27.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.2).sp),
+    titleMedium = androidx.compose.ui.text.TextStyle(fontSize = 16.sp, lineHeight = 22.sp, fontWeight = FontWeight.SemiBold),
+    titleSmall = androidx.compose.ui.text.TextStyle(fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.SemiBold),
+    bodyLarge = androidx.compose.ui.text.TextStyle(fontSize = 16.sp, lineHeight = 24.sp, fontWeight = FontWeight.Normal),
+    bodyMedium = androidx.compose.ui.text.TextStyle(fontSize = 14.sp, lineHeight = 21.sp, fontWeight = FontWeight.Normal),
+    bodySmall = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, lineHeight = 19.sp, fontWeight = FontWeight.Normal),
+    labelLarge = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, lineHeight = 18.sp, fontWeight = FontWeight.SemiBold),
+    labelMedium = androidx.compose.ui.text.TextStyle(fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.Medium, letterSpacing = 0.2.sp),
+    labelSmall = androidx.compose.ui.text.TextStyle(fontSize = 11.sp, lineHeight = 14.sp, fontWeight = FontWeight.Medium, letterSpacing = 0.2.sp),
 )
 
 val AppTypography = androidx.compose.material3.Typography(

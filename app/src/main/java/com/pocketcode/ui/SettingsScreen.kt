@@ -683,9 +683,16 @@ fun SettingsScreen(
                 AppSwitch(checked = vm.bigInput, onCheckedChange = { vm.setBigInputValue(it) })
             }
             Text("Стиль интерфейса", style = MaterialTheme.typography.bodyMedium, modifier = sec("uistyle"))
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
                 UiStyle.values().forEach { st ->
-                    androidx.compose.material3.FilterChip(selected = vm.uiStyle == st.id, onClick = { vm.setUiStyleValue(st.id) }, label = { Text(st.title) })
+                    androidx.compose.material3.FilterChip(
+                        selected = vm.uiStyle == st.id,
+                        onClick = { vm.setUiStyleValue(st.id) },
+                        label = { Text(st.title, maxLines = 1) },
+                    )
                 }
             }
             Text(uiStyleById(vm.uiStyle).about, style = MaterialTheme.typography.bodySmall)

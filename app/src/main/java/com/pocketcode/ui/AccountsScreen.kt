@@ -2,6 +2,7 @@ package com.pocketcode.ui
 
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -47,12 +48,14 @@ fun AccountsScreen(vm: ChatController, onBack: () -> Unit) {
             Text("Подключи сервис через токен аккаунта или открой его сайт. Токен хранится только на телефоне и подставляется в запросы как Bearer. Файлы проекта остаются на телефоне: модель видит их через инструменты PocketCode (read_file/write_file/bash) и сама решает, что прочитать и изменить — сервис получает только текст запроса и нужные фрагменты, а не весь телефон.", style = MaterialTheme.typography.bodySmall)
             androidx.compose.material3.Card(
                 colors = androidx.compose.material3.CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.errorContainer,
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
                 ),
+                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.45f)),
             ) {
                 Text(
                     "Бесплатные тарифы: важные ограничения",
                     style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.error,
                     modifier = Modifier.padding(12.dp),
                 )
                 Text(
@@ -73,7 +76,11 @@ fun AccountsScreen(vm: ChatController, onBack: () -> Unit) {
             accountError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
             AccountKind.values().forEach { kind ->
                 val connected = AccountStore.token(ctx, kind) != null
-                Column(Modifier.fillMaxWidth().padding(8.dp)) {
+                androidx.compose.material3.Card(
+                    Modifier.fillMaxWidth(),
+                    colors = androidx.compose.material3.CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+                ) {
+                Column(Modifier.fillMaxWidth().padding(14.dp)) {
                     Text(kind.title, style = MaterialTheme.typography.titleSmall)
                     Text(
                         if (connected) "✓ Подключён ${AccountStore.email(ctx, kind).orEmpty()}" else "Не подключён",
@@ -81,7 +88,10 @@ fun AccountsScreen(vm: ChatController, onBack: () -> Unit) {
                     )
                     var token by remember { mutableStateOf("") }
                     OutlinedTextField(token, { token = it }, label = { Text("Токен / ключ аккаунта") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row(
+                        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
                         if (kind == AccountKind.CHATGPT) {
                             Button(onClick = {
                                 kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch {
@@ -136,6 +146,7 @@ fun AccountsScreen(vm: ChatController, onBack: () -> Unit) {
                         }) { Text("Открыть сайт") }
                         if (connected) TextButton(onClick = { AccountStore.remove(ctx, kind); tick++ }) { Text("Отключить") }
                     }
+                }
                 }
             }
             Text("Важно: ChatGPT и Gemini говорят по OpenAI-совместимому протоколу — их токены работают сразу. Claude использует другой протокол: для него нужен API-ключ из console.anthropic.com (кнопка «Открыть сайт»). Обычный вход в claude.ai не даёт доступа API — это ограничение сервиса, а не PocketCode. Остальные сервисы можно подключить через OpenAI-совместимый адрес вручную.", style = MaterialTheme.typography.bodySmall)

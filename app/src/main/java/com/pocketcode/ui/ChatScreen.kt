@@ -7,6 +7,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.height
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
@@ -289,7 +290,7 @@ fun ChatScreen(
                     )
                 }
             }
-            Box(Modifier.weight(1f).fillMaxWidth()) {
+            Box(Modifier.weight(1f).fillMaxWidth().clipToBounds()) {
                 if (!hasItems) {
                     EmptyHint(vm.workspacePath, welcome = if (!vm.welcomeSeen || vm.needsFreeStart) ({ Column(verticalArrangement = Arrangement.spacedBy(12.dp)) { if (vm.needsFreeStart) FreeStartCard(vm, onOpenSettings); if (!vm.welcomeSeen) WelcomeCard(vm, onOpenLearn = onOpenLearn, onOpenSettings = onOpenSettings) { runCatching { ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://t.me/pocket_code_github")).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) } } } }) else null, phone = vm.phoneMode.takeIf { it.enabled }, onOpenPhone = onOpenPhone) { input = it }
                 } else {
@@ -357,7 +358,14 @@ fun ChatScreen(
                         style = MaterialTheme.typography.labelSmall,
                     )
                 }
-                Text(vm.reasoningSupportLabel, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    vm.reasoningSupportLabel,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
                 if (vm.runStats.isNotBlank()) Text(vm.runStats, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.tertiary)
             }
             if (vm.running || vm.queue.isNotEmpty()) {
@@ -1151,8 +1159,8 @@ private fun EmptyHint(workspacePath: String, welcome: (@Composable () -> Unit)?,
         Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(24.dp),
-        verticalArrangement = Arrangement.Center,
+            .padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 24.dp),
+        verticalArrangement = Arrangement.Top,
     ) {
         if (welcome != null) { welcome(); Spacer(Modifier.height(20.dp)) }
         val cs = MaterialTheme.colorScheme
@@ -1201,6 +1209,7 @@ private fun EmptyHint(workspacePath: String, welcome: (@Composable () -> Unit)?,
                     pair.forEach { (icon, title, text) ->
                         Column(
                             Modifier.weight(1f)
+                                .heightIn(min = 104.dp)
                                 .clip(RoundedCornerShape(20.dp))
                                 .background(cs.surfaceContainer)
                                 .clickable { onPick(text) }

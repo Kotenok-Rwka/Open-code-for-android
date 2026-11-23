@@ -10,6 +10,10 @@ enum class UiStyle(val id: String, val title: String, val about: String) {
         "ios", "iOS",
         "Как на iPhone: крупные заголовки, списки-группы с тонкими разделителями, зелёные переключатели, строгая нижняя панель.",
     ),
+    AURORA(
+        "aurora", "Aurora",
+        "Новый стиль: мягкие карточки с тонкой обводкой, градиентный акцент, крупные скругления и подписи у всех пунктов нижней панели.",
+    ),
 }
 
 /** Стиль по умолчанию, пока пользователь не выбрал другой. */
@@ -33,6 +37,7 @@ data class StyleMetrics(
 fun metricsOf(style: UiStyle): StyleMetrics = when (style) {
     UiStyle.MD3 -> StyleMetrics(cardRadius = 20, heroRadius = 28, iconTile = 40, iconTileRadius = 20, groupedLists = false, navIndicator = true)
     UiStyle.IOS -> StyleMetrics(cardRadius = 12, heroRadius = 0, iconTile = 30, iconTileRadius = 7, groupedLists = true, navIndicator = false)
+    UiStyle.AURORA -> StyleMetrics(cardRadius = 24, heroRadius = 32, iconTile = 42, iconTileRadius = 14, groupedLists = false, navIndicator = true)
 }
 
 /**

@@ -53,6 +53,17 @@ class UiStyleTest {
     }
 
     @Test
+    fun auroraStyleIsSelectableAndModern() {
+        val aurora = metricsOf(UiStyle.AURORA)
+        assertEquals(UiStyle.AURORA, uiStyleById("aurora"))
+        assertFalse(aurora.groupedLists)
+        assertTrue(aurora.navIndicator)
+        // Новый стиль — самые крупные скругления из трёх, но старые метрики не меняются.
+        assertTrue(aurora.cardRadius > metricsOf(UiStyle.MD3).cardRadius)
+        assertTrue(aurora.cardRadius > metricsOf(UiStyle.IOS).cardRadius)
+    }
+
+    @Test
     fun sectionsSplitByHeaders() {
         val items = listOf("#Один", "a1", "a2", "#Два", "b1", "#Три")
         val res = groupBySections(items, { it.startsWith("#") }, { it.removePrefix("#") })

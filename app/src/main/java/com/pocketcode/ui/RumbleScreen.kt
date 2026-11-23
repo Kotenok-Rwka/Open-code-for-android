@@ -38,19 +38,19 @@ fun RumbleScreen(initial: Rumble.Config, onSave: (Rumble.Config) -> Unit, onBack
     val ctx = LocalContext.current
     var c by remember { mutableStateOf(initial) }
     Column(Modifier.padding(pad).fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), Arrangement.spacedBy(10.dp)) {
-        Text("Тактильные импульсы, когда чат думает, вызывает инструменты и завершает ответ", style = MaterialTheme.typography.titleMedium)
-        Card(Modifier.fillMaxWidth()) {
+        SectionHeader("Тактильные импульсы", "Когда чат думает, вызывает инструменты и завершает ответ")
+        AppCard(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(14.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text("Вибрация", style = MaterialTheme.typography.titleSmall)
                         Text("Чувствуйте импульсы при размышлении, вызове инструмента, написании ответа.", style = MaterialTheme.typography.bodySmall)
                     }
-                    Switch(checked = c.enabled, onCheckedChange = { c = c.copy(enabled = it); onSave(c) })
+                    AppSwitch(checked = c.enabled, onCheckedChange = { c = c.copy(enabled = it); onSave(c) })
                 }
             }
         }
-        Card(Modifier.fillMaxWidth()) {
+        AppCard(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(14.dp), Arrangement.spacedBy(6.dp)) {
                 Text("Где вибрирует", style = MaterialTheme.typography.titleSmall)
                 toggleRow("Чат — импульсы во время ходов в чате", c.inChat) { c = c.copy(inChat = it); onSave(c) }
@@ -58,7 +58,7 @@ fun RumbleScreen(initial: Rumble.Config, onSave: (Rumble.Config) -> Unit, onBack
                 Button(onClick = { Rumble.pulse(ctx, Rumble.Kind.TOOL, c.copy(enabled = true)) }) { Text("Попробовать") }
             }
         }
-        Card(Modifier.fillMaxWidth()) {
+        AppCard(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(14.dp), Arrangement.spacedBy(6.dp)) {
                 Text("Вибрация во время ответа", style = MaterialTheme.typography.titleSmall)
                 Text("Плавная вибрация, пока приходит ответ в чате.", style = MaterialTheme.typography.bodySmall)
@@ -74,6 +74,6 @@ fun RumbleScreen(initial: Rumble.Config, onSave: (Rumble.Config) -> Unit, onBack
 private fun toggleRow(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Text(label, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
-        Switch(checked = checked, onCheckedChange = onChange)
+        AppSwitch(checked = checked, onCheckedChange = onChange)
     }
 }

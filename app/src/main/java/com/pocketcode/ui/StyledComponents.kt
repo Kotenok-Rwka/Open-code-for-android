@@ -64,6 +64,13 @@ fun appShapes(style: UiStyle): Shapes = when (style) {
         large = RoundedCornerShape(14.dp),
         extraLarge = RoundedCornerShape(20.dp),
     )
+    UiStyle.AURORA -> Shapes(
+        extraSmall = RoundedCornerShape(8.dp),
+        small = RoundedCornerShape(12.dp),
+        medium = RoundedCornerShape(16.dp),
+        large = RoundedCornerShape(20.dp),
+        extraLarge = RoundedCornerShape(32.dp),
+    )
 }
 
 /** Шкала текста iPhone: крупный заголовок 34, заголовок 17, основной 17, подписи 13. */
@@ -82,7 +89,11 @@ private val IosTypography = Typography(
     labelSmall = TextStyle(fontSize = 11.sp, lineHeight = 14.sp, fontWeight = FontWeight.Medium),
 )
 
-fun appTypography(style: UiStyle): Typography = if (style == UiStyle.IOS) IosTypography else AppTypography
+fun appTypography(style: UiStyle): Typography = when (style) {
+    UiStyle.IOS -> IosTypography
+    UiStyle.AURORA -> AuroraTypography
+    UiStyle.MD3 -> AppTypography
+}
 
 /** Значок «назад»: стрелка в Material 3, шеврон в iOS. */
 @Composable
@@ -97,9 +108,11 @@ fun AppTopBar(
     navigationIcon: @Composable () -> Unit = {},
     actions: @Composable RowScope.() -> Unit = {},
 ) {
+    val cs = MaterialTheme.colorScheme
+    val aurora = LocalUiStyle.current == UiStyle.AURORA
     val colors = TopAppBarDefaults.topAppBarColors(
-        containerColor = MaterialTheme.colorScheme.background,
-        scrolledContainerColor = MaterialTheme.colorScheme.background,
+        containerColor = if (aurora) cs.surfaceContainerLow else cs.background,
+        scrolledContainerColor = if (aurora) cs.surfaceContainerHigh else cs.background,
     )
     if (LocalUiStyle.current == UiStyle.IOS) {
         CenterAlignedTopAppBar(
@@ -132,7 +145,22 @@ fun AppSwitch(
 ) {
     val tick = rememberTick()
     val change: ((Boolean) -> Unit)? = onCheckedChange?.let { f -> { v: Boolean -> tick(); f(v) } }
-    if (LocalUiStyle.current == UiStyle.IOS) {
+    if (LocalUiStyle.current == UiStyle.AURORA) {
+        Switch(
+            checked = checked,
+            onCheckedChange = change,
+            modifier = modifier,
+            enabled = enabled,
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
+                checkedTrackColor = MaterialTheme.colorScheme.primary,
+                checkedBorderColor = Color.Transparent,
+                uncheckedThumbColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                uncheckedTrackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                uncheckedBorderColor = Color.Transparent,
+            ),
+        )
+    } else if (LocalUiStyle.current == UiStyle.IOS) {
         Switch(
             checked = checked,
             onCheckedChange = change,
@@ -167,18 +195,20 @@ fun AppSwitch(
 @Composable
 fun AppNavigationBar(content: @Composable RowScope.() -> Unit) {
     val cs = MaterialTheme.colorScheme
-    val ios = LocalUiStyle.current == UiStyle.IOS
+    val style = LocalUiStyle.current
+    val ios = style == UiStyle.IOS
+    val aurora = style == UiStyle.AURORA
     Box(Modifier.fillMaxWidth().navigationBarsPadding().padding(start = 14.dp, end = 14.dp, top = 6.dp, bottom = 10.dp)) {
         Surface(
-            shape = RoundedCornerShape(if (ios) 34.dp else 30.dp),
+            shape = RoundedCornerShape(if (ios) 34.dp else if (aurora) 28.dp else 30.dp),
             color = cs.surfaceContainerHigh,
             tonalElevation = 0.dp,
-            shadowElevation = 10.dp,
-            border = BorderStroke(0.5.dp, cs.outlineVariant),
+            shadowElevation = if (aurora) 4.dp else 10.dp,
+            border = BorderStroke(if (aurora) 1.dp else 0.5.dp, if (aurora) cs.primary.copy(alpha = 0.18f) else cs.outlineVariant),
             modifier = Modifier.fillMaxWidth(),
         ) {
             Row(
-                Modifier.fillMaxWidth().height(if (ios) 68.dp else 64.dp).padding(horizontal = 8.dp),
+                Modifier.fillMaxWidth().height(if (ios) 68.dp else if (aurora) 66.dp else 64.dp).padding(horizontal = 8.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically,
                 content = content,
@@ -191,12 +221,15 @@ fun AppNavigationBar(content: @Composable RowScope.() -> Unit) {
 @Composable
 fun AppNavItem(selected: Boolean, onClick: () -> Unit, icon: ImageVector, label: String, modifier: Modifier = Modifier) {
     val cs = MaterialTheme.colorScheme
-    val ios = LocalUiStyle.current == UiStyle.IOS
+    val style = LocalUiStyle.current
+    val ios = style == UiStyle.IOS
+    val aurora = style == UiStyle.AURORA
     val tick = rememberTick()
     val tint = if (selected) cs.primary else cs.onSurfaceVariant
     val bg = when {
         !selected -> Color.Transparent
         ios -> cs.onSurface.copy(alpha = 0.08f)
+        aurora -> cs.primary.copy(alpha = 0.14f)
         else -> cs.primary.copy(alpha = 0.16f)
     }
     val reduce = LocalReduceMotion.current
@@ -213,6 +246,21 @@ fun AppNavItem(selected: Boolean, onClick: () -> Unit, icon: ImageVector, label:
         ) {
             Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(24.dp))
             Text(label, style = MaterialTheme.typography.labelSmall, color = tint, maxLines = 1)
+        }
+    } else if (aurora) {
+        Column(
+            base.height(52.dp).padding(horizontal = 12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(22.dp))
+            Text(
+                label,
+                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                color = tint,
+                maxLines = 1,
+                softWrap = false,
+            )
         }
     } else {
         Row(

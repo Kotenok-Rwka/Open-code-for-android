@@ -3769,5 +3769,7 @@
 "Список": "List",
 "Модель отвечает без доступа к файлам, терминалу и телефону — только поиск в интернете и заметки.": "The model replies without access to files, terminal or phone — only web search and notes.",
 "Агент сможет читать файлы и искать, но не сможет ничего менять или запускать команды.": "The agent can read files and search, but cannot change anything or run commands.",
-"Агент сам запускает diagnostics и тесты, перечитывает правки и сообщает, что не проверил.": "The agent runs diagnostics and tests itself, rereads its edits and reports what it did not verify."
+"Агент сам запускает diagnostics и тесты, перечитывает правки и сообщает, что не проверил.": "The agent runs diagnostics and tests itself, rereads its edits and reports what it did not verify.",
+  "Новый стиль: мягкие карточки с тонкой обводкой, градиентный акцент, крупные скругления и подписи у всех пунктов нижней панели.": "A new look: soft cards with a thin outline, gradient accent, large radii and labels on every bottom-bar item.",
+  "Стиль интерфейса: Material 3, iOS или Aurora": "Interface style: Material 3, iOS or Aurora"
 }
