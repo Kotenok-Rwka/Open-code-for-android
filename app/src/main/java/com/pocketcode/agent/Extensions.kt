@@ -39,7 +39,7 @@ class Extensions(
             "проект" to File(p, ".claude"),
             "общие" to globalDir,
         )
-        pluginsDir.listFiles()?.filter { it.isDirectory }?.sortedBy { it.name }?.forEach { list += "плагин ${it.name}" to it }
+        pluginsDir.listFiles()?.filter { it.isDirectory && !it.name.startsWith(".disabled-") && !it.name.startsWith(".old-") }?.sortedBy { it.name }?.forEach { list += "плагин ${it.name}" to it }
         return list
     }
 
@@ -48,10 +48,13 @@ class Extensions(
         for ((src, root) in roots()) {
             val candidates = mutableListOf<File>()
             File(root, "skills").listFiles()?.filter { it.isDirectory }?.sortedBy { it.name }?.let { candidates += it }
-            if (File(root, "SKILL.md").isFile) candidates += root
+            runCatching {
+                root.walkTopDown().maxDepth(3).filter { it.isFile && it.name.equals("SKILL.md", true) && it.parentFile != root }
+                    .forEach { if (it.parentFile !in candidates) candidates += it.parentFile!! }
+            }
+            if (File(root, "SKILL.md").isFile || File(root, "skill.md").isFile) candidates += root
             for (dir in candidates) {
-                val f = File(dir, "SKILL.md")
-                if (!f.isFile) continue
+                val f = listOf(File(dir, "SKILL.md"), File(dir, "skill.md")).firstOrNull { it.isFile } ?: continue
                 val parsed = runCatching { parseFrontmatter(f.readText()) }.getOrNull() ?: continue
                 val name = (parsed.meta["name"] ?: dir.name).trim().replace(' ', '-')
                 if (name.isEmpty() || name in out) continue
@@ -82,9 +85,10 @@ class Extensions(
     /** Текст навыка: SKILL.md и небольшие текстовые файлы рядом. */
     fun readSkill(skill: Skill): String {
         val sb = StringBuilder()
-        sb.append(parseFrontmatter(File(skill.dir, "SKILL.md").readText()).body.trim())
+        val main = listOf(File(skill.dir, "SKILL.md"), File(skill.dir, "skill.md")).firstOrNull { it.isFile }
+        if (main != null) sb.append(parseFrontmatter(main.readText()).body.trim())
         val extra = skill.dir.walkTopDown().maxDepth(3)
-            .filter { it.isFile && it.name != "SKILL.md" && it.extension.lowercase() in setOf("md", "txt", "json", "yaml", "yml", "py", "sh", "js") }
+            .filter { it.isFile && !it.name.equals("SKILL.md", true) && it.extension.lowercase() in setOf("md", "txt", "json", "yaml", "yml", "py", "sh", "js") }
             .sortedBy { it.path }.take(15).toList()
         var budget = 20_000
         for (f in extra) {

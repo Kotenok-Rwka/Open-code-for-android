@@ -2,6 +2,8 @@ package com.pocketcode.ui
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -25,13 +27,15 @@ object PluginSearch {
         return items.mapNotNull { el ->
             val o = runCatching { el.jsonObject }.getOrNull() ?: return@mapNotNull null
             val name = o["full_name"]?.jsonPrimitive?.content ?: return@mapNotNull null
+            // description/language могут быть null — JsonNull даёт строку «null», поэтому берём contentOrNull.
+            fun text(key: String): String = (o[key] as? JsonPrimitive)?.contentOrNull.orEmpty()
             GitHubRepoHit(
                 fullName = name,
-                description = o["description"]?.jsonPrimitive?.content.orEmpty(),
+                description = text("description"),
                 stars = o["stargazers_count"]?.jsonPrimitive?.content?.toIntOrNull() ?: 0,
                 url = o["html_url"]?.jsonPrimitive?.content ?: "https://github.com/$name",
-                language = o["language"]?.jsonPrimitive?.content.orEmpty(),
-                updatedAt = o["updated_at"]?.jsonPrimitive?.content.orEmpty(),
+                language = text("language"),
+                updatedAt = text("updated_at"),
             )
         }
     }

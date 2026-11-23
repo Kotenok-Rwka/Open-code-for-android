@@ -174,7 +174,7 @@ private val NEW_LESSONS = listOf(
 )
 
 /** Все уроки: основные с тестом и дополнительные из LearnContent. */
-val ALL_LESSONS: List<Lesson> get() = LESSONS + MORE_LESSONS + NEW_LESSONS
+val ALL_LESSONS: List<Lesson> get() = LESSONS + MORE_LESSONS + NEW_LESSONS + EXTRA_LESSONS
 
 /** Обучение с практикой: уроки, кнопка «Показать, где это» и мини-тест на каждый. Прогресс сохраняется. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -216,7 +216,13 @@ fun LearnScreen(vm: ChatController, onBack: () -> Unit, onGo: (String) -> Unit, 
                 Text("Ничего не нашлось. Попробуй другое слово или открой «Проверка и расход» или группу в Telegram.", style = MaterialTheme.typography.bodyMedium)
             }
             shown.forEach { l ->
-                LessonCard(l, vm.learnDone, open == l.id, { open = if (open == l.id) null else l.id }, onGo) { vm.markLesson(l.id) }
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = true,
+                    enter = androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(Motion.ms(180))) +
+                        androidx.compose.animation.slideInVertically(androidx.compose.animation.core.tween(Motion.ms(220))) { it / 5 },
+                ) {
+                    LessonCard(l, vm.learnDone, open == l.id, { open = if (open == l.id) null else l.id }, onGo) { vm.markLesson(l.id) }
+                }
             }
             if (faq.isNotEmpty()) {
                 Text("Частые вопросы", style = MaterialTheme.typography.titleMedium)

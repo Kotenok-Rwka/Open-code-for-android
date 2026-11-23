@@ -52,6 +52,7 @@ fun SettingsScreen(
     onSave: (Settings, List<Profile>, String) -> Unit,
     onResetContext: () -> Unit,
     onOpenCompare: () -> Unit,
+    onOpenAppearance: () -> Unit = {},
     onBack: () -> Unit,
     models: Boolean = false,
     focus: String? = null,
@@ -466,7 +467,8 @@ fun SettingsScreen(
             if (!vm.rateProxyOk) Text("Ограничитель не запустился (порт занят). Перезапусти приложение.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
             }
             if (!models) {
-            Text("Вид", style = MaterialTheme.typography.titleMedium, modifier = sec("view").padding(top = 8.dp))
+            Text("Оформление", style = MaterialTheme.typography.titleMedium, modifier = sec("view").padding(top = 8.dp))
+            Text("Темы, шрифты, размеры, фоны и анимации — всё в одном месте: «Ещё → Оформление и темы». Здесь остались только общие настройки приложения.", style = MaterialTheme.typography.bodySmall)
             Text("Размер шрифта: ${(fontScale * 100).toInt()}%")
             Slider(value = fontScale, onValueChange = { fontScale = (Math.round(it * 20) / 20f) }, valueRange = 0.8f..1.4f)
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -476,7 +478,6 @@ fun SettingsScreen(
                 }
                 AppSwitch(checked = compactUi, onCheckedChange = { compactUi = it })
             }
-
             }
             if (models) {
             Text("Контекст и память", style = MaterialTheme.typography.titleMedium, modifier = sec("ctx").padding(top = 8.dp))
@@ -688,19 +689,7 @@ fun SettingsScreen(
                 }
             }
             Text(uiStyleById(vm.uiStyle).about, style = MaterialTheme.typography.bodySmall)
-            Text("Тема", style = MaterialTheme.typography.bodyMedium, modifier = sec("theme"))
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                listOf("dark" to "Тёмная", "light" to "Светлая", "system" to "Как в системе").forEach { (v, l) ->
-                    androidx.compose.material3.FilterChip(selected = vm.themeMode == v, onClick = { vm.setThemeModeValue(v) }, label = { Text(l) })
-                }
-            }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text("AMOLED: чисто чёрный фон")
-                    Text("Экономит заряд на OLED-экранах. Действует в тёмной теме.", style = MaterialTheme.typography.bodySmall)
-                }
-                AppSwitch(checked = vm.amoled, onCheckedChange = { vm.setAmoledValue(it) })
-            }
+            TextButton(onClick = { onOpenAppearance() }, modifier = sec("theme")) { Text("Открыть оформление и темы →") }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text("Уменьшить анимации", modifier = sec("motion"))
@@ -708,19 +697,9 @@ fun SettingsScreen(
                 }
                 AppSwitch(checked = vm.reduceMotion, onCheckedChange = { vm.setReduceMotionValue(it) })
             }
-            Text("Цвет акцента", style = MaterialTheme.typography.bodyMedium, modifier = sec("accent"))
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                (visibleAccents(vm.thanksUnlocked, vm.palette).map { Triple(it.id, it.title, it.dark) } + Triple("system", "Из обоев", androidx.compose.ui.graphics.Color(0xFF9E9E9E))).forEach { (id, title, color) ->
-                    androidx.compose.material3.FilterChip(
-                        selected = vm.palette == id, onClick = { vm.setPaletteValue(id) },
-                        leadingIcon = { androidx.compose.foundation.layout.Box(Modifier.size(14.dp).background(color, androidx.compose.foundation.shape.CircleShape)) },
-                        label = { Text(title) },
-                    )
-                }
-            }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("Защита приложения")
+                    Text("Защита приложения", modifier = sec("accent"))
                     Text(
                         "При запуске и после минуты в фоне просит PIN, графический ключ или отпечаток, которые стоят на телефоне. Нужна блокировка экрана в настройках Android.",
                         style = MaterialTheme.typography.bodySmall,

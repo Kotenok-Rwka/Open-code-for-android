@@ -28,6 +28,10 @@ object ThemeCatalog {
         ThemePreset("forest", "Forest", Color(0xFF2E7D32), Color(0xFF81C784), 0xFFEDF7ED, 0xFF10231A),
         ThemePreset("berry", "Berry", Color(0xFFAD1457), Color(0xFFF48FB1), 0xFFFCE4EC, 0xFF2A1020),
         ThemePreset("mono", "Монохром", Color(0xFF424242), Color(0xFFE0E0E0), 0xFFFFFFFF, 0xFF121212),
+        ThemePreset("lavender", "Лаванда", Color(0xFF7E57C2), Color(0xFFB39DDB), 0xFFF7F3FF, 0xFF1E1730),
+        ThemePreset("ocean", "Океан", Color(0xFF0277BD), Color(0xFF4FC3F7), 0xFFE8F6FF, 0xFF0A1F2E),
+        ThemePreset("matcha", "Матча", Color(0xFF558B2F), Color(0xFFAED581), 0xFFF6FBE9, 0xFF18240F),
+        ThemePreset("sunset", "Закат", Color(0xFFEF6C00), Color(0xFFFFB74D), 0xFFFFF3E0, 0xFF2B1608),
     )
 
     fun byId(id: String): ThemePreset? = presets.firstOrNull { it.id == id }
@@ -81,6 +85,9 @@ object BackgroundCatalog {
         BackgroundPreset("berry", "Ягода", listOf(0xFF4A0E4E, 0xFF9D174D, 0xFFF43F5E)),
         BackgroundPreset("graphite", "Графит", listOf(0xFF232526, 0xFF414345)),
         BackgroundPreset("paper", "Бумага", listOf(0xFFFDFBFB, 0xFFEBEDEE)),
+        BackgroundPreset("mint", "Мята", listOf(0xFF00B09B, 0xFF96C93D)),
+        BackgroundPreset("plum", "Слива", listOf(0xFF2B1055, 0xFF7597DE)),
+        BackgroundPreset("coffee", "Кофе", listOf(0xFF3E2723, 0xFF8D6E63)),
     )
 
     fun byId(id: String): BackgroundPreset = presets.firstOrNull { it.id == id } ?: presets.first()
@@ -90,6 +97,8 @@ object BackgroundCatalog {
 @kotlinx.serialization.Serializable
 data class AppearanceConfig(
     val themeId: String = "default",
+    /** Идентификатор палитры из ACCENTS/EXTRA_ACCENTS, либо пусто = цвет темы. */
+    val accentId: String = "blue",
     val customColor: String = "",
     val fontFamily: String = "system",
     val monoFontFamily: String = "system",

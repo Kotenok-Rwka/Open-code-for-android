@@ -164,6 +164,23 @@ fun PluginsScreen(vm: ChatController, onBack: () -> Unit) {
                 OutlinedButton(onClick = { vm.createSample("skill", newName, global) }, enabled = newName.isNotBlank()) { Text("Навык") }
                 OutlinedButton(onClick = { vm.createSample("command", newName, global) }, enabled = newName.isNotBlank()) { Text("Команда") }
             }
+            var newDesc by remember { mutableStateOf("") }
+            var newBody by remember { mutableStateOf("") }
+            Text("Написать навык самому", style = MaterialTheme.typography.titleSmall)
+            Text("Навык — инструкция для нейросети, чтобы не писать одно и то же каждый раз. Имя берётся из поля выше.", style = MaterialTheme.typography.bodySmall)
+            OutlinedTextField(
+                value = newDesc, onValueChange = { newDesc = it }, label = { Text("Когда применять (одно предложение)") },
+                singleLine = true, modifier = Modifier.fillMaxWidth(),
+            )
+            OutlinedTextField(
+                value = newBody, onValueChange = { newBody = it }, label = { Text("Инструкции для нейросети") },
+                minLines = 5, modifier = Modifier.fillMaxWidth(),
+            )
+            Button(
+                onClick = { if (vm.writeSkill(newName, newDesc, newBody, global)) { newDesc = ""; newBody = "" } },
+                enabled = newName.isNotBlank() && newBody.isNotBlank(),
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text("Сохранить навык") }
             Text(
                 "Созданный файл потом открой в «Файлы» (для проекта — .pocketcode/) и допиши инструкции. Либо попроси агента.",
                 style = MaterialTheme.typography.bodySmall,
@@ -205,10 +222,12 @@ fun PluginsScreen(vm: ChatController, onBack: () -> Unit) {
 
             if (tab == 2) {
             Text("Плагины", style = MaterialTheme.typography.titleMedium)
-            File(vm.extensions.pluginsDir.path).listFiles()?.filter { it.isDirectory }?.sortedBy { it.name }?.forEach { d ->
+            vm.installedPlugins().forEach { (name, enabled) ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(d.name, Modifier.weight(1f))
-                    TextButton(onClick = { vm.removePlugin(d.name) }) { Text("Удалить") }
+                    Text(if (enabled) name else "$name (отключён)", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+                    TextButton(onClick = { vm.updatePlugin(name) }, enabled = !vm.pluginBusy) { Text("Обновить") }
+                    TextButton(onClick = { vm.disablePlugin(name, enabled) }) { Text(if (enabled) "Выключить" else "Включить") }
+                    TextButton(onClick = { vm.removePlugin(name) }) { Text("Удалить") }
                 }
             }
             OutlinedTextField(

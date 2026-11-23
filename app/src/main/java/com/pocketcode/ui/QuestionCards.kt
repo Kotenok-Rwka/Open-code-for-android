@@ -16,11 +16,13 @@ data class QuestionItem(
 
 data class ParsedQuestions(val questions: List<QuestionItem>, val cleanText: String, val remainingText: String = "")
 
+/** Варианты вида «B: текст», «C: текст» (латинские буквы B–F; A и Q разобраны отдельно). */
+private val LETTER_OPTION = Regex("""^[B-Fb-f]:.*""")
 private val OPTION_LINE = Regex("""^\s*(?:[-*•]|\d+[.)]|\(?[a-zA-Z]\)?)\s+(.*)$""")
 
 /** Разбирает блок QUESTIONS. Ничего не знает про Android — проверяется обычным unit-тестом. */
 fun parseQuestionCards(raw: String): ParsedQuestions? {
-    val lines = raw.replace("\r\n", "\n").lines()
+    val lines = raw.replace("\r\n", "\n").replace("```", "").lines()
     val start = lines.indexOfFirst { it.trim().equals("QUESTIONS", ignoreCase = true) || it.trim().equals("ВОПРОСЫ", ignoreCase = true) }
     if (start < 0) return null
     val end = lines.withIndex().firstOrNull { (i, l) -> i > start && l.trim().equals("/QUESTIONS", ignoreCase = true) }?.index ?: -1
@@ -40,9 +42,12 @@ fun parseQuestionCards(raw: String): ParsedQuestions? {
         val s = line.trim()
         if (s.isEmpty()) continue
         when {
-            s.startsWith("Q:", ignoreCase = true) -> { flush(); currentQ = s.removePrefix("Q:").removePrefix("q:").trim() }
+            s.startsWith("Q:", ignoreCase = true) || s.startsWith("Вопрос:", ignoreCase = true) || s.startsWith("В:", ignoreCase = true) -> {
+                flush()
+                currentQ = s.substringAfter(':').trim()
+            }
             s.startsWith("TAG:", ignoreCase = true) -> tag = s.substring(4).trim()
-            s.startsWith("A:", ignoreCase = true) || s.startsWith("О:", ignoreCase = true) -> {
+            s.startsWith("A:", ignoreCase = true) || s.startsWith("О:", ignoreCase = true) || LETTER_OPTION.matches(s) -> {
                 if (currentQ != null) options += QuestionOption(s.substring(2).trim())
             }
             OPTION_LINE.matches(s) -> {
@@ -77,7 +82,7 @@ Q: your question
 - Second option
 - Other
 /QUESTIONS
-Include 2-4 options and no text after the block. The app will show buttons and send the chosen answer as the user's next message.
+Include 2-4 options and no text after the block. The app will show buttons and a free-text answer field; the chosen answer is sent as the user's next message. The block must be the last lines of your reply, with no code fence around it.
 """
 
 /** Текст ответа пользователя, который уходит модели после выбора в карточке. */

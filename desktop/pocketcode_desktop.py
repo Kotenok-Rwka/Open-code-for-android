@@ -103,9 +103,44 @@ def call_llm(profile, messages):
     return data["choices"][0]["message"]["content"]
 
 
+TOKEN_FILE = SYNC / "token.txt"
+
+
+def access_token():
+    """Токен для удалённого доступа: создаётся автоматически при первом запуске."""
+    if not TOKEN_FILE.exists():
+        TOKEN_FILE.write_text(__import__("secrets").token_urlsafe(24))
+    return TOKEN_FILE.read_text().strip()
+
+
+
+def decrypt_payload(value, password=""):
+    """Расшифровать PCENC1:<iv>:<data> (AES-256-GCM, ключ SHA-256(password) x2000)."""
+    if not isinstance(value, str) or not value.startswith("PCENC1:"):
+        return value, False
+    if not password:
+        return value, True
+    import base64, hashlib
+    try:
+        from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+        _, iv, data = value.split(":", 2)
+        key = hashlib.sha256((password * 2000).encode()).digest()
+        plain = AESGCM(key).decrypt(base64.b64decode(iv), base64.b64decode(data), None)
+        return json.loads(plain.decode()), True
+    except Exception:
+        return value, True
+
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *args):
         pass
+
+    def token_ok(self):
+        expected = access_token()
+        # Без токена разрешаем только локальные подключения (для обратной совместимости).
+        supplied = self.headers.get("X-PocketCode-Token", "")
+        if supplied == expected:
+            return True
+        return self.client_address[0] in ("127.0.0.1", "::1")
 
     def send(self, value, code=200):
         raw = json.dumps(value, ensure_ascii=False).encode()
@@ -138,10 +173,18 @@ class Handler(BaseHTTPRequestHandler):
             self.send(load_json(HOME / "roles.json", {}))
         elif self.path == "/api/widgets":
             self.send(load_json(HOME / "widgets.json", []))
+        elif self.path == "/api/sync/token":
+            if self.client_address[0] not in ("127.0.0.1", "::1"):
+                self.send({"error": "local only"}, 403); return
+            self.send({"token": access_token()})
         elif self.path.startswith("/api/sync/status"):
+            if not self.token_ok():
+                self.send({"error": "token required"}, 401); return
             state = load_json(SYNC_STATE, {"last_seq": 0, "last_ts": 0, "events": 0, "fulls": 0})
             self.send({**state, "pending": len(SYNC_EVENTS.read_text().splitlines()) if SYNC_EVENTS.exists() else 0})
         elif self.path.startswith("/api/sync/pull"):
+            if not self.token_ok():
+                self.send({"error": "token required"}, 401); return
             from urllib.parse import parse_qs, urlparse
             q = parse_qs(urlparse(self.path).query)
             since = int(q.get("since", ["0"])[0])
@@ -203,6 +246,13 @@ class Handler(BaseHTTPRequestHandler):
                 save_json(SYNC / "config.json", b)
                 self.send({"ok": True})
             elif self.path == "/api/sync/push":
+                if not self.token_ok():
+                    self.send({"error": "token required"}, 401); return
+                cfg = load_json(SYNC / "config.json", {})
+                if isinstance(b, str):
+                    b, encrypted = decrypt_payload(b, cfg.get("password", ""))
+                    if not isinstance(b, dict):
+                        self.send({"error": "bad encrypted payload"}, 400); return
                 seq = int(b.get("seq", 0) or 0)
                 typ = b.get("type", "event")
                 with SYNC_EVENTS.open("a") as f:

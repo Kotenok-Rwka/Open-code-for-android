@@ -37,6 +37,26 @@ class AppearanceTest {
     }
 
     @Test
+    fun accentPaletteIsAvailableAndBackgroundsPersist() {
+        assertTrue(ACCENTS.size >= 8)
+        assertNotNull(accentById("violet"))
+        val c = AppearanceConfig(accentId = "violet", background = "image", backgroundImage = "my.jpg")
+        val j = kotlinx.serialization.json.Json { encodeDefaults = true }
+        val json = j.encodeToString(AppearanceConfig.serializer(), c)
+        val back = j.decodeFromString<AppearanceConfig>(json)
+        assertEquals("violet", back.accentId)
+        assertEquals("image", back.background)
+        assertEquals("my.jpg", back.backgroundImage)
+    }
+
+    @Test
+    fun legacyAppearanceWithoutAccentStillDecodes() {
+        val old = """{"themeId":"default","customColor":"","background":"none","cornerRadius":20}"""
+        val c = kotlinx.serialization.json.Json.decodeFromString<AppearanceConfig>(old)
+        assertEquals("blue", c.accentId)
+    }
+
+    @Test
     fun settingsRoundTrip() {
         val c = AppearanceConfig(themeId = "nord", cornerRadius = 8, readingMode = true)
         val json = kotlinx.serialization.json.Json.encodeToString(AppearanceConfig.serializer(), c)

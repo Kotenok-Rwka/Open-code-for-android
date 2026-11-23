@@ -5,14 +5,14 @@
 ## Windows 10/11 (portable EXE)
 
 1. Установи Python 3.10+ (https://python.org), если планируешь собирать самому.
-2. Готовый вариант: распакуй `PocketCodeDesktop-windows.zip`, запусти `PocketCodeDesktop.exe`.
+2. Готовый вариант: распакуй `PocketCodeDesktop-windows-4.0.6.zip`, запусти `PocketCodeDesktop.exe`.
 3. Открой http://127.0.0.1:8765/ в браузере.
 4. Сборка: `powershell -ExecutionPolicy Bypass -File build_windows.ps1`.
 
 ## Linux (Debian/Ubuntu, .deb)
 
 ```sh
-sudo apt install ./pocketcode-desktop_4.0.1_amd64.deb
+sudo apt install ./pocketcode-desktop_4.0.6_amd64.deb
 pocketcode-desktop
 # открой http://127.0.0.1:8765/
 ```
@@ -38,6 +38,18 @@ pocketcode-desktop
 
 См. `EDITOR_INTEGRATION.md`. Мост: `python3 ide_bridge.py`, порт 8766.
 
+## Синхронизация через интернет (за 5 км, мобильный интернет)
+
+1. На ПК запусти компаньон: `python3 pocketcode_desktop.py --host 0.0.0.0`.
+2. Узнай токен: открой `http://127.0.0.1:8765/api/sync/token` на самом ПК.
+3. Сделай ПК доступным извне, например Cloudflare Tunnel:
+   ```sh
+   cloudflared tunnel --url http://localhost:8765
+   ```
+   Он даст адрес вида `https://xxx.trycloudflare.com`.
+4. На телефоне: «Автосинхронизация» → вставь этот HTTPS-адрес и токен, выключи «Только Wi-Fi», нажми «Проверить подключение».
+5. Готово: синхронизация работает по мобильному интернету, адрес и токен сохраняются.
+
 ## Безопасность
 
-Слушай только 127.0.0.1, если синхронизация не нужна. Для доступа с телефона используй `--host 0.0.0.0` только в доверенной сети — HTTP между приложениями не шифруется.
+Слушай только 127.0.0.1, если синхронизация не нужна. Для удалённого доступа обязательно используй HTTPS-туннель и токен: без токена компаньон отклоняет нелокальные запросы, а открытый HTTP не шифруется.

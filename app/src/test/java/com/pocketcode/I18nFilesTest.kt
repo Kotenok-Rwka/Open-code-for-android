@@ -31,7 +31,8 @@ class I18nFilesTest {
 
     @Test
     fun newScreensAreTranslatedEverywhere() {
-        val required = listOf("Умные функции", "Обучение", "Показать, где это", "Предохранитель", "Быстрые режимы")
+        val required = listOf("Умные функции", "Обучение", "Показать, где это", "Предохранитель", "Быстрые режимы",
+            "Написать навык самому", "Сохранить навык", "Режим темы", "Палитра", "Центр безопасности")
         for (l in langs) {
             val m = load(l)
             for (k in required) assertTrue("Нет перевода «$k» в $l", !m[k].isNullOrBlank())

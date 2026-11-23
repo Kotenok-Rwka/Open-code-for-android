@@ -33,6 +33,8 @@ class PhoneController(
 
     @Volatile var lastSnapshot: ScreenSnapshot? = null
         private set
+    @Volatile var lastLookAt: Long = 0L
+        private set
 
     val ready: Boolean get() = reader.available || input.connected
 
@@ -79,6 +81,7 @@ class PhoneController(
     suspend fun look(withImage: Boolean = true, maxSide: Int = 1024, ocrText: Boolean = false): Look {
         val snap = reader.snapshot(displayId)
         lastSnapshot = snap
+        lastLookAt = System.currentTimeMillis()
         var text = if (snap != null) {
             ScreenText.format(snap) + "\nКоординаты — в пикселях экрана ${snap.width}x${snap.height}; скриншот может быть уменьшен."
         } else if (!reader.available) {
@@ -140,6 +143,11 @@ class PhoneController(
     /** Ждёт, пока экран успокоится после действия. */
     suspend fun settle(ms: Long = 700) = delay(ms)
 
+    /** Номер элемента из старого снимка мог указать на другой экран — требуем свежий phone_look. */
+    fun nodeByIdFresh(id: Int): UiNode? {
+        if (System.currentTimeMillis() - lastLookAt > 90_000L) return null
+        return lastSnapshot?.nodes?.firstOrNull { it.id == id }
+    }
     fun nodeById(id: Int): UiNode? = lastSnapshot?.nodes?.firstOrNull { it.id == id }
 
     suspend fun tap(x: Int, y: Int): Boolean =

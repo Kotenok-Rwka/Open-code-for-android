@@ -20,6 +20,10 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.pocketcode.phone.PhoneConfirm
@@ -55,6 +59,27 @@ fun PhoneScreen(vm: ChatController, onBack: () -> Unit, onToChat: () -> Unit) {
                         else "Без службы доступности агент ничего не увидит. Начни с шага 1.",
                         style = MaterialTheme.typography.bodySmall,
                     )
+                }
+            }
+
+            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("Окно подтверждения поверх экрана", style = MaterialTheme.typography.titleSmall)
+                    val ctx = androidx.compose.ui.platform.LocalContext.current
+                    var overlayOk by remember { mutableStateOf(android.provider.Settings.canDrawOverlays(ctx)) }
+                    Text(
+                        if (overlayOk) "✓ Включено: когда агент попросит разрешить нажатие, окно появится прямо поверх текущего приложения — экран не сменится."
+                        else "✗ Выключено: подтверждение откроется внутри PocketCode, и экран, на котором агент работает, сменится. Включи разрешение «Показывать поверх других приложений».",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    Button(onClick = {
+                        runCatching {
+                            ctx.startActivity(
+                                android.content.Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                    android.net.Uri.parse("package:" + ctx.packageName)).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+                            )
+                        }
+                    }, modifier = Modifier.fillMaxWidth()) { Text("Разрешить показывать поверх") }
                 }
             }
 

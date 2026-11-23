@@ -11,7 +11,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -30,6 +32,7 @@ fun QuestionCardView(item: UiItem.Questions, onAnswer: (List<Pair<String, String
     val cs = MaterialTheme.colorScheme
     val q = item.questions.getOrNull(item.index)
     var selected by remember(item.index, item) { mutableStateOf(-1) }
+    var custom by remember(item.index, item) { mutableStateOf("") }
     if (item.done || q == null) {
         Column(
             Modifier.fillMaxWidth().padding(vertical = 4.dp).clip(RoundedCornerShape(14.dp))
@@ -60,10 +63,10 @@ fun QuestionCardView(item: UiItem.Questions, onAnswer: (List<Pair<String, String
             Column(
                 Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
                     .background(if (selected == i) cs.primaryContainer else cs.surfaceContainerHigh)
-                    .clickable { selected = i }.padding(horizontal = 8.dp, vertical = 6.dp),
+                    .clickable { selected = i; custom = "" }.padding(horizontal = 8.dp, vertical = 6.dp),
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    RadioButton(selected = selected == i, onClick = { selected = i })
+                    RadioButton(selected = selected == i, onClick = { selected = i; custom = "" })
                     Column(Modifier.weight(1f)) {
                         Text(opt.label, style = MaterialTheme.typography.bodyMedium)
                         if (opt.description.isNotBlank()) Text(opt.description, style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
@@ -71,10 +74,24 @@ fun QuestionCardView(item: UiItem.Questions, onAnswer: (List<Pair<String, String
                 }
             }
         }
+        OutlinedTextField(
+            value = custom,
+            onValueChange = { custom = it; if (it.isNotBlank()) selected = -1 },
+            label = { Text("Свой ответ") },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = false,
+            maxLines = 3,
+        )
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             TextButton(onClick = { onAnswer(listOf(q.question to "Пропустить")) }) { Text("Пропустить") }
             Row(Modifier.weight(1f), horizontalArrangement = Arrangement.End) {
-                Button(enabled = selected >= 0, onClick = { onAnswer(listOf(q.question to q.options[selected].label)) }) {
+                Button(
+                    enabled = selected >= 0 || custom.isNotBlank(),
+                    onClick = {
+                        val answer = custom.trim().ifBlank { q.options.getOrNull(selected)?.label.orEmpty() }
+                        onAnswer(listOf(q.question to answer))
+                    },
+                ) {
                     Text(if (item.index < item.questions.lastIndex) "Далее" else "Ответить")
                 }
             }

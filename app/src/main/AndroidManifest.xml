@@ -83,6 +83,18 @@
         </activity>
 
         <receiver
+            android:name=".QuickStatusWidget"
+            android:exported="false"
+            android:label="PocketCode статус">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_status_info" />
+        </receiver>
+
+        <receiver
             android:name=".QuickWidget"
             android:exported="false">
             <intent-filter>
@@ -101,6 +113,15 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths" />
         </provider>
+
+        <service
+            android:name=".service.ApprovalOverlay"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="approval_overlay" />
+        </service>
 
         <service
             android:name=".python.PythonService"

@@ -15,6 +15,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -52,6 +55,29 @@ fun ConnectionsScreen(
     var key by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
+    val context = LocalContext.current
+    val pickKey = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            // ssh из Linux не умеет content:// — копируем ключ в приватную папку и храним обычный путь.
+            val copied = runCatching {
+                val dir = java.io.File(context.filesDir, "ssh-keys").apply { mkdirs() }
+                val name = java.util.UUID.randomUUID().toString() + "_id_rsa"
+                val target = java.io.File(dir, name)
+                context.contentResolver.openInputStream(uri)?.use { input ->
+                    target.outputStream().use { out -> input.copyTo(out, 64 * 1024) }
+                }
+                if (target.length() > 0) {
+                    @Suppress("SetWorldReadable")
+                    target.setReadable(true, true)
+                    target.setWritable(false, false)
+                    target.setWritable(true, true)
+                    target.absolutePath
+                } else null
+            }.getOrNull()
+            if (copied != null) { key = copied; error = null }
+            else error = "Не удалось прочитать файл ключа"
+        }
+    }
     for (p in sshProfiles) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text("${p.name}: ${p.user}@${p.host}:${p.port}", modifier = Modifier.padding(vertical = 6.dp))
@@ -64,7 +90,15 @@ fun ConnectionsScreen(
         OutlinedTextField(port, { port = it }, label = { Text("Порт") }, modifier = Modifier.weight(0.35f), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
         OutlinedTextField(user, { user = it }, label = { Text("Пользователь") }, modifier = Modifier.weight(0.65f))
     }
-    OutlinedTextField(key, { key = it }, label = { Text("Путь к приватному ключу (необязательно)") }, modifier = Modifier.fillMaxWidth())
+    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            if (key.isBlank()) "Ключ не выбран (необязательно)" else "Ключ: ${key.takeLast(60)}",
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.weight(1f),
+        )
+        TextButton(onClick = { pickKey.launch(arrayOf("*/*")) }) { Text("Выбрать файл ключа") }
+        if (key.isNotBlank()) TextButton(onClick = { key = "" }) { Text("Убрать") }
+    }
     OutlinedTextField(password, { password = it }, label = { Text("Пароль (необязательно)") }, modifier = Modifier.fillMaxWidth())
     error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
     Button(onClick = {

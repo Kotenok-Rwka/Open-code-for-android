@@ -207,7 +207,7 @@ class ChatController(
             refreshExtensions()
             val sk = withContext(Dispatchers.IO) { extensions.skills().count { it.source == "плагин $name" } }
             val cm = withContext(Dispatchers.IO) { extensions.commands().count { it.source == "плагин $name" } }
-            pluginMessage = if (sk + cm == 0) "Скачано, но навыков (skills/*/SKILL.md) и команд (commands/*.md) не найдено."
+            pluginMessage = if (sk + cm == 0) "Скачано, но навыков/команд не найдено. Ожидаются SKILL.md (регистр не важен) в папке skills/<имя>/ или commands/*.md внутри плагина."
             else "Установлено: навыков $sk, команд $cm."
         }
     }
@@ -216,6 +216,53 @@ class ChatController(
         File(extensions.pluginsDir, name).deleteRecursively()
         agent = null
         refreshExtensions()
+    }
+
+    /** Отключение плагина без удаления: достаточно переименовать папку. */
+    fun disablePlugin(name: String, disabled: Boolean) {
+        val dir = File(extensions.pluginsDir, name)
+        val target = File(extensions.pluginsDir, if (disabled) ".disabled-$name" else name.removePrefix(".disabled-"))
+        if (dir.isDirectory && !target.exists()) runCatching { dir.renameTo(target) }
+        agent = null
+        refreshExtensions()
+    }
+
+    fun installedPlugins(): List<Pair<String, Boolean>> =
+        (extensions.pluginsDir.listFiles { f -> f.isDirectory && !f.name.startsWith(".old-") } ?: emptyArray())
+            .map { it.name.removePrefix(".disabled-") to !it.name.startsWith(".disabled-") }
+            .distinctBy { it.first }
+            .sortedBy { it.first }
+
+    fun updatePlugin(name: String) {
+        if (pluginBusy) return
+        val dir0 = File(extensions.pluginsDir, name.removePrefix(".disabled-"))
+        val url = runCatching {
+            File(dir0, ".git/config").takeIf { it.isFile }?.readText()
+                ?.lineSequence()?.firstOrNull { it.trim().startsWith("url =") }
+                ?.substringAfter("url =")?.trim()
+        }.getOrNull()?.takeIf { it.startsWith("http") }
+        if (url == null) { pluginMessage = "Неизвестен URL плагина — удали и установи заново."; return }
+        pluginBusy = true
+        pluginMessage = "Обновляю плагин $name…"
+        scope.launch(Dispatchers.IO) {
+            val backup = File(extensions.pluginsDir, ".old-${name}-${System.currentTimeMillis()}")
+            val r = runCatching {
+                if (dir0.exists()) dir0.renameTo(backup)
+                com.pocketcode.tools.GitOps.clone(url, dir0, settings.githubToken, homeDir)
+            }
+            withContext(Dispatchers.Main) {
+                pluginBusy = false
+                if (r.isFailure) {
+                    if (backup.exists()) backup.renameTo(dir0)
+                    pluginMessage = "Не удалось обновить: ${r.exceptionOrNull()?.message}"
+                } else {
+                    backup.deleteRecursively()
+                    pluginMessage = "Плагин обновлён."
+                }
+                agent = null
+                refreshExtensions()
+            }
+        }
     }
 
     fun createSample(kind: String, name: String, global: Boolean) {
@@ -231,9 +278,28 @@ class ChatController(
         agent = null
         refreshExtensions()
     }
+    /** Записывает навык целиком: имя, описание (когда применять) и текст инструкций. Существующий навык с таким именем перезаписывается. */
+    fun writeSkill(name: String, description: String, body: String, global: Boolean): Boolean {
+        val base = if (global) extensions.globalDir else File(workspace.root, ".pocketcode")
+        val n = sanitize(name).ifEmpty { return false }
+        val d = description.replace("\n", " ").trim().ifEmpty { "Когда применять этот навык" }
+        val f = File(base, "skills/" + n + "/SKILL.md")
+        return runCatching {
+            f.parentFile.mkdirs()
+            f.writeText("---\nname: " + n + "\ndescription: " + d + "\n---\n\n" + body.trim() + "\n")
+            agent = null
+            refreshExtensions()
+            true
+        }.getOrDefault(false)
+    }
+    init { com.pocketcode.tools.SafeFiles.init(app.filesDir) }
     private val privateDir = File(app.filesDir, "workspace").apply { mkdirs() }
     private val sharedDir = File(Environment.getExternalStorageDirectory(), "PocketCode")
-    private val linuxEnv = LinuxEnv(app).also { it.noSeccomp = settingsStore.loadLinuxNoSeccomp(); it.noLink = settingsStore.rawGet("linuxNoLink") == "1" }
+    private val linuxEnv = LinuxEnv(app).also {
+        it.noSeccomp = settingsStore.loadLinuxNoSeccomp()
+        it.noLink = settingsStore.rawGet("linuxNoLink") == "1"
+        it.flavor = settingsStore.loadRootFs()
+    }
     private val androidShell = AndroidShell(homeDir)
     private val python = PythonRunner(app)
     private val scope = CoroutineScope(
@@ -317,6 +383,166 @@ class ChatController(
     var executionProfileId by mutableStateOf(settings.executionProfileId)
         private set
 
+    /** Состояние установки локальной модели из каталога (идея локальных моделей Agora/Harness, своя реализация). */
+    var localInstallStatus by mutableStateOf<String?>(null)
+        private set
+    var localInstallBusy by mutableStateOf(false)
+        private set
+    val localModelsDir: java.io.File get() = java.io.File(app.filesDir, "models")
+    fun installedLocalModels(): List<String> = localModelsDir.listFiles { f -> f.isFile && f.name.endsWith(".gguf") }
+        ?.map { it.name }.orEmpty().sorted()
+
+    /** Показывает в чате понятную инструкцию: само скачивание GGUF требует внешний рантайм. */
+    fun guideLocalModel(m: com.pocketcode.LocalModelAdvice) {
+        val url = "https://huggingface.co/api/models?search=" + java.net.URLEncoder.encode(m.id.replace(':', '-'), "UTF-8")
+        localInstallStatus = "Модель ${m.id} не вшита в APK: приложение не может запускать GGUF без рантайма. " +
+            "Варианты: 1) поставь LM Studio / llama.cpp / Ollama и открой «Подключения» — там адрес локального сервера; " +
+            "2) скачай GGUF вручную с $url и положи в ${localModelsDir.absolutePath}, затем нажми «Использовать»."
+    }
+
+    fun dismissLocalInstallStatus() { localInstallStatus = null }
+
+    /** Автоустановка GGUF: качаем в фоне с прогрессом, затем можно сразу запустить. */
+    val localDownloader by lazy { com.pocketcode.linux.LocalModelDownloader(app) }
+    fun downloadLocalModel(id: String, quant: String, manualUrl: String = "") {
+        if (localRuntimeBusy || running) return
+        val url = manualUrl.ifBlank { localDownloader.huggingFaceUrl(id, quant) }
+        if (url == null) {
+            localInstallStatus = "Для ${id} нет готового URL. Вставь прямую ссылку на .gguf с HuggingFace ниже."
+            return
+        }
+        val target = localDownloader.target(id, quant)
+        if (target.exists() && target.length() > 1024 * 1024) {
+            localInstallStatus = "Модель уже скачана: ${target.name} (${target.length() / 1024 / 1024} МБ)."
+            return
+        }
+        localRuntimeBusy = true
+        localInstallStatus = "Скачиваю ${target.name}…"
+        scope.launch(Dispatchers.IO) {
+            val r = localDownloader.download(url, target) { progress ->
+                scope.launch { localInstallStatus = "Скачиваю ${target.name}: $progress" }
+            }
+            withContext(Dispatchers.Main) {
+                localRuntimeBusy = false
+                localInstallStatus = r.fold(
+                    onSuccess = {
+                        setLocalSettings(localPort, localGpuLayers, localContext, it.name)
+                        "Готово: ${it.name} (${it.length() / 1024 / 1024} МБ). SHA256: ${localDownloader.sha256(it).take(12)}… Нажми «Запустить сервер»." },
+                    onFailure = { "Не удалось скачать: ${it.message}. Проверь ссылку и место на диске." },
+                )
+            }
+        }
+    }
+
+    /** Настройки локального сервера: модель, GPU-слои, контекст, порт. */
+    var localPort by mutableStateOf(settingsStore.rawGet("localPort")?.toIntOrNull()?.coerceIn(1024, 65535) ?: 8080)
+        private set
+    var localGpuLayers by mutableStateOf(settingsStore.rawGet("localGpu")?.toIntOrNull()?.coerceIn(0, 99) ?: 0)
+        private set
+    var localContext by mutableStateOf(settingsStore.rawGet("localCtx")?.toIntOrNull()?.coerceIn(512, 131072) ?: 8192)
+        private set
+    var localModel by mutableStateOf(settingsStore.rawGet("localModel").orEmpty())
+        private set
+    fun setLocalSettings(port: Int, gpu: Int, ctx: Int, model: String) {
+        localPort = port.coerceIn(1024, 65535); localGpuLayers = gpu.coerceIn(0, 99)
+        localContext = ctx.coerceIn(512, 131072); localModel = model
+        settingsStore.rawPut("localPort", localPort.toString())
+        settingsStore.rawPut("localGpu", localGpuLayers.toString())
+        settingsStore.rawPut("localCtx", localContext.toString())
+        settingsStore.rawPut("localModel", localModel)
+    }
+    fun stopLocalServer() { runCatching { bgProcs.stop("llama-local") }; localRuntimeStatus = "Локальный сервер остановлен." }
+
+    fun localServerLog(): String = bgProcs.get("llama-local")?.buffer?.toString().orEmpty()
+
+    /** Подключить OpenAI-совместимый адрес (встроенный сервер, LM Studio, Ollama). */
+    fun connectLocalEndpoint(url: String, model: String, token: String = "local") {
+        val base = url.trim().trimEnd('/')
+        if (!base.startsWith("http://") && !base.startsWith("https://")) return
+        val existing = profiles.firstOrNull { it.baseUrl == base }
+        val id = existing?.id ?: "local-" + java.util.UUID.randomUUID().toString().take(6)
+        val p = com.pocketcode.Profile(
+            id, "Локальная: $model", com.pocketcode.Provider.OPENAI, base, model, token,
+        )
+        val list = if (existing != null) profiles.map { if (it.id == id) p else it } else profiles + p
+        saveSettings(settings.copy(provider = com.pocketcode.Provider.OPENAI, model = model, baseUrl = base, apiKey = token), list, id)
+        localInstallStatus = "Подключено: $base — модель $model"
+    }
+
+    /** Локальный рантайм: ставится через termux-like пакеты в Linux и поднимает OpenAI-совместимый сервер на порту 8080. */
+    var localRuntimeBusy by mutableStateOf(false)
+        private set
+    var localRuntimeStatus by mutableStateOf("")
+        private set
+
+    fun installLocalRuntime() {
+        if (localRuntimeBusy || linuxBusy || running) return
+        if (!linuxInstalled) {
+            localRuntimeStatus = "Сначала установи Linux в «Ещё → Среда Linux»."
+            return
+        }
+        localRuntimeBusy = true
+        localRuntimeStatus = "Готовлю локальный рантайм для GGUF…"
+        scope.launch(Dispatchers.IO) {
+            try {
+                val bundled = com.pocketcode.linux.BundledLlama.install(app)
+                val out = linuxRun(
+                    "mkdir -p /root/.pocketcode/models && " +
+                        "if command -v python3 >/dev/null 2>&1; then echo PY_OK; else echo PY_MISSING; fi 2>&1",
+                    120,
+                )
+                withContext(Dispatchers.Main) {
+                    localRuntimeStatus = when {
+                        bundled != null -> "Встроенный llama-server готов: ${bundled.absolutePath}. Положи GGUF в /root/.pocketcode/models и нажми «Запустить локальный сервер»."
+                        out.contains("PY_OK") -> "Python готов, но встроенного бинарника нет (собери workflow build-llama). Положи GGUF в /root/.pocketcode/models и нажми «Запустить локальный сервер»."
+                        else -> "Нужен python3: открой «Ещё → Среда Linux → Поставить python, git, node» и повтори."
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) { localRuntimeStatus = "Ошибка: ${e.message}" }
+            } finally {
+                withContext(Dispatchers.Main) { localRuntimeBusy = false }
+            }
+        }
+    }
+
+    fun startLocalServer(port: Int = 8080) {
+        if (localRuntimeBusy || running) return
+        localRuntimeBusy = true
+        localRuntimeStatus = "Запускаю локальный OpenAI-совместимый сервер на 127.0.0.1:$port…"
+        scope.launch(Dispatchers.IO) {
+            try {
+                val bundled = com.pocketcode.linux.BundledLlama.install(app)
+                val models = localModel.ifBlank {
+                    linuxRun("ls -1 /root/.pocketcode/models/*.gguf 2>/dev/null | head -1", 60).trim()
+                }
+                if (bundled == null) {
+                    withContext(Dispatchers.Main) { localRuntimeStatus = "Встроенного llama-server нет: запусти workflow build-llama в GitHub Actions." }
+                    return@launch
+                }
+                if (models.isBlank()) {
+                    withContext(Dispatchers.Main) { localRuntimeStatus = "GGUF не найден. Положи файл .gguf в /root/.pocketcode/models через «Файлы»." }
+                    return@launch
+                }
+                // Запускаем нативный бинарник через встроенный Linux: он по-прежнему исполняется внутри proot.
+                val guestBin = java.io.File(linuxEnv.rootfs, "usr/local/bin/llama-server").apply { parentFile.mkdirs() }
+                bundled.copyTo(guestBin, overwrite = true)
+                guestBin.setExecutable(true)
+                val cmd = "/usr/local/bin/llama-server -m $models --host 127.0.0.1 --port $port " +
+                    "--n-gpu-layers $localGpuLayers --ctx-size $localContext"
+                val pb = linuxEnv.processBuilder(cmd, workspace.root, linuxEnv.rootfs)
+                bgProcs.start("llama-local", cmd, pb)
+                withContext(Dispatchers.Main) {
+                    localRuntimeStatus = "Локальная модель запущена: http://127.0.0.1:$port/v1. Подключи этот адрес в «Подключениях»."
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) { localRuntimeStatus = "Ошибка: ${e.message}" }
+            } finally {
+                withContext(Dispatchers.Main) { localRuntimeBusy = false }
+            }
+        }
+    }
+
     /** Применяет рекомендованную локальную модель к текущему профилю (OpenAI-совместимый endpoint). */
     fun useLocalModel(modelId: String) {
         val s = settings
@@ -378,25 +604,32 @@ class ChatController(
     val rootFsDescription: String
         get() = runCatching { com.pocketcode.linux.RootFsChoice.valueOf(rootFsChoice) }.getOrDefault(com.pocketcode.linux.RootFsChoice.ALPINE).description
 
+    /** Образ, который реально лежит на диске (может отличаться от выбранного до переустановки). */
+    val installedRootFs: String get() = settingsStore.rawGet("installedRootFs") ?: "ALPINE"
+
     /** Переключение rootfs: следующий запуск installLinux() использует выбранный образ. */
     fun chooseRootFs(name: String) {
         if (runCatching { com.pocketcode.linux.RootFsChoice.valueOf(name) }.isFailure) return
         rootFsChoice = name
         settingsStore.saveRootFs(name)
+        linuxEnv.flavor = name
+        linuxInstalled = linuxEnv.isInstalled()
         linuxStatus = if (name == "UBUNTU") {
-            "Ubuntu будет скачан при установке. Для Ubuntu нужны apt и другой набор инструментов: installLinuxTools пока ставит пакеты через apk — после перехода на Ubuntu использовать apt. Образ по умолчанию: " + com.pocketcode.linux.RootFsCatalog.ubuntuUrl("arm64")
-        } else null
+            "Ubuntu будет скачан при установке (образ ubuntu-base, ≈40–80 МБ). Пакеты ставятся через apt."
+        } else "Alpine вшит в приложение, ставится без интернета."
     }
 
     fun installLinux() {
         if (running || linuxBusy) return
         linuxBusy = true
         linuxStatus = "Начинаю установку…"
+        linuxEnv.flavor = rootFsChoice
         scope.launch {
             try {
                 val r = linuxEnv.install { msg -> scope.launch { linuxStatus = msg } }
                 settingsStore.saveLinuxNoSeccomp(linuxEnv.noSeccomp)
                 settingsStore.rawPut("linuxNoLink", if (linuxEnv.noLink) "1" else "0")
+                settingsStore.rawPut("installedRootFs", linuxEnv.flavor)
                 linuxInstalled = true
                 runCatching { linuxEnv.configureBridge(hostMode == "ask", toolsNotes()) }
                 runCatching { linuxEnv.configureGit(settings.gitName, settings.gitEmail, settings.githubToken) }
@@ -416,14 +649,22 @@ class ChatController(
     /** Ставит python, git, node и сборочные инструменты через apk. */
     /** Ставит CodeGraph, Caveman и 9Router через Linux-окружение (best effort). */
     fun installLinuxExtras() {
-        if (!linuxInstalled) { linuxStatus = "Сначала установи Linux-окружение"; return }
+        if (running || linuxBusy || !linuxInstalled) { linuxStatus = "Сначала установи Linux-окружение"; return }
+        linuxBusy = true
+        linuxStatus = "Готовлю инструменты в Linux…"
         scope.launch(Dispatchers.IO) {
-            val out = linuxShell.run(
-                "mkdir -p /root/.pocketcode && echo 'codegraph: grep-based index ready' > /root/.pocketcode/codegraph.txt && echo 'caveman: built into PocketCode' > /root/.pocketcode/caveman.txt && echo '9router: configure endpoint in Model Roles screen' > /root/.pocketcode/9router.txt && echo OK",
-                linuxEnv.rootfs, 60,
-            )
-            settingsStore.rawPut("codegraphInstalled", if (out.contains("OK")) "1" else "0")
-            withContext(Dispatchers.Main) { linuxStatus = out.take(500) }
+            try {
+                val out = linuxShell.run(
+                    "mkdir -p /root/.pocketcode && echo 'codegraph: grep-based index ready' > /root/.pocketcode/codegraph.txt && echo 'caveman: built into PocketCode' > /root/.pocketcode/caveman.txt && echo '9router: configure endpoint in Model Roles screen' > /root/.pocketcode/9router.txt && echo OK",
+                    linuxEnv.rootfs, 60,
+                )
+                settingsStore.rawPut("codegraphInstalled", if (out.contains("OK")) "1" else "0")
+                withContext(Dispatchers.Main) { linuxStatus = out.take(500) }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) { linuxStatus = "Ошибка: ${e.message}" }
+            } finally {
+                withContext(Dispatchers.Main) { linuxBusy = false }
+            }
         }
     }
 
@@ -431,17 +672,19 @@ class ChatController(
         if (running || linuxBusy || !linuxInstalled) return
         linuxBusy = true
         linuxStatus = "Устанавливаю python, git, nodejs… Это может занять несколько минут."
-        scope.launch {
+        scope.launch(Dispatchers.IO) {
             try {
-                val out = linuxShell.run(
-                    "apk add --no-cache bash git python3 py3-pip nodejs npm curl 2>&1 | tail -n 15",
-                    linuxEnv.rootfs, 900,
-                )
-                linuxStatus = "Результат:\n$out"
+                val pkg = if (rootFsChoice == com.pocketcode.linux.RootFsChoice.UBUNTU.name) {
+                    "apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq bash git python3 python3-pip nodejs npm curl"
+                } else {
+                    "apk add --no-cache bash git python3 py3-pip nodejs npm curl"
+                }
+                val out = linuxShell.run("$pkg 2>&1 | tail -n 15", linuxEnv.rootfs, 900)
+                withContext(Dispatchers.Main) { linuxStatus = "Результат:\n$out" }
             } catch (e: Exception) {
-                linuxStatus = "Ошибка: ${e.message}"
+                withContext(Dispatchers.Main) { linuxStatus = "Ошибка: ${e.message}" }
             } finally {
-                linuxBusy = false
+                withContext(Dispatchers.Main) { linuxBusy = false }
             }
         }
     }
@@ -837,10 +1080,22 @@ class ChatController(
 
     fun removeLinux() {
         if (running || linuxBusy) return
-        linuxEnv.uninstall()
-        linuxInstalled = false
-        agent = null
-        linuxStatus = "Linux удалён."
+        linuxBusy = true
+        linuxStatus = "Удаляю Linux…"
+        scope.launch(Dispatchers.IO) {
+            try {
+                linuxEnv.uninstall()
+                withContext(Dispatchers.Main) {
+                    linuxInstalled = false
+                    agent = null
+                    linuxStatus = "Linux удалён."
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) { linuxStatus = "Ошибка удаления Linux: ${e.message}" }
+            } finally {
+                withContext(Dispatchers.Main) { linuxBusy = false }
+            }
+        }
     }
 
     /** Выставляется MainActivity: нужно ли слать уведомления, когда экран не виден. */
@@ -862,6 +1117,7 @@ class ChatController(
         if (!isTab) scope.launch { runCatching { cleanupOld(cleanupDays) } }
         refreshProjects()
         sessionList = sessions.list()
+        refreshBranches()
         if (!settings.freshOnStart && !isTab) {
             sessionList.firstOrNull { projectOf(it) == currentProject }?.let { loadInto(it.id) }
         }
@@ -1764,6 +2020,43 @@ class ChatController(
         streamingIndex = null
     }
 
+    /** Ветка беседы (идея дерева сообщений Agora): сохраняет копию всей ленты на момент сообщения. */
+    data class Branch(val id: String, val title: String, val at: Long)
+
+    var branches by mutableStateOf<List<Branch>>(emptyList())
+        private set
+
+    fun refreshBranches() {
+        val project = currentProject
+        branches = sessions.list()
+            .filter { it.title.startsWith(BRANCH_PREFIX) && it.project == project }
+            .map { Branch(it.id, it.title.removePrefix(BRANCH_PREFIX), it.updatedAt) }
+            .sortedByDescending { it.at }
+    }
+
+    fun forkChat(atIndex: Int, label: String = "") {
+        if (items.isEmpty()) return
+        val end = (atIndex.coerceIn(0, items.lastIndex) + 1)
+        val copied = items.take(end).toList()
+        val id = UUID.randomUUID().toString()
+        val title = BRANCH_PREFIX + label.ifBlank { "Ветка ${branches.size + 1}" }
+        val data = SessionData(id, title, System.currentTimeMillis(), copied, history.take(100), currentProject)
+        scope.launch {
+            sessions.save(data)
+            withContext(Dispatchers.Main) {
+                sessionList = sessions.list()
+                refreshBranches()
+                loadInto(id)
+                items += UiItem.Notice("Ветка создана: ${title.removePrefix(BRANCH_PREFIX)}. Дальнейшие ответы идут только в ней.")
+            }
+        }
+    }
+
+    fun loadBranch(id: String) {
+        loadInto(id)
+        items += UiItem.Notice("Открыта ветка. Оригинал беседы остался в «Сессиях».")
+    }
+
     private fun persist() {
         // Каждая вкладка пишет OC-сессию под своим проектом — иначе при параллельной работе
         // в двух проектах беседа одного проекта перезаписывает другой.
@@ -1784,6 +2077,16 @@ class ChatController(
     // ---------- запуск агента ----------
 
     // ---------- режим плана, задачи, журнал правок ----------
+
+    /** Чат без проекта: агент отвечает без файлов, терминала и инструментов устройства. */
+    var chatOnlyMode by mutableStateOf(settingsStore.rawGet("chatOnlyMode") == "1")
+        private set
+    fun setChatOnly(v: Boolean) { chatOnlyMode = v; settingsStore.rawPut("chatOnlyMode", if (v) "1" else "0"); agent = null }
+
+    /** Только чтение: любые инструменты, меняющие файлы/систему, отклоняются без запроса. */
+    var readOnlyMode by mutableStateOf(settingsStore.rawGet("readOnlyMode") == "1")
+        private set
+    fun setReadOnly(v: Boolean) { readOnlyMode = v; settingsStore.rawPut("readOnlyMode", if (v) "1" else "0"); agent = null }
 
     private var planModeState by mutableStateOf(false)
     var planMode: Boolean
@@ -1820,8 +2123,13 @@ class ChatController(
     private val agentHooks = object : AgentHooks {
         override fun planMode() = this@ChatController.planMode
 
-        override fun decide(tool: String, input: JsonObject, description: String) =
-            PermissionRules.decide(settings.permissionRules, tool, description)
+        override fun decide(tool: String, input: JsonObject, description: String): com.pocketcode.agent.Decision {
+            if (readOnlyMode && tool !in com.pocketcode.agent.PLAN_ALLOWED) {
+                scope.launch { items += UiItem.Notice("Режим «Только чтение»: $tool отклонён.") }
+                return com.pocketcode.agent.Decision.DENY
+            }
+            return PermissionRules.decide(settings.permissionRules, tool, description)
+        }
 
         override suspend fun before(tool: Tool, input: JsonObject) {
             if (tool.name != "write_file" && tool.name != "edit_file") return
@@ -1897,6 +2205,31 @@ class ChatController(
 
     fun toolAvailable(id: String): Boolean = com.pocketcode.ui.ToolRegistry.isEnabled(id, toolsConfig)
 
+    /** Модели, про которые точно известно, что они умеют видимые размышления. Для остальных — «неизвестно», never «нет» без проверки. */
+    private val reasoningKnownModels = listOf(
+        "claude-sonnet", "claude-opus", "o1", "o3", "o4", "deepseek-r1", "qwq", "r1",
+    )
+    enum class ReasoningSupport { SUPPORTED, UNKNOWN }
+    val reasoningSupport: ReasoningSupport
+        get() {
+            val model = settings.model.lowercase()
+            if (model.isBlank()) return ReasoningSupport.UNKNOWN
+            if (reasoningKnownModels.any { model.contains(it) }) return ReasoningSupport.SUPPORTED
+            return ReasoningSupport.UNKNOWN
+        }
+    val reasoningNativeEnabled: Boolean
+        get() = com.pocketcode.llm.ReasoningSpec(toolsConfig.reasoning, toolsConfig.reasoningDepth, toolsConfig.reasoningVendor)
+            .sendsNative(settings.model, settings.baseUrl)
+    val reasoningSupportLabel: String get() = when (reasoningSupport) {
+        ReasoningSupport.SUPPORTED ->
+            if (reasoningNativeEnabled) "нативный параметр reasoning отправляется провайдеру${if (com.pocketcode.llm.ReasoningSpec(toolsConfig.reasoning, toolsConfig.reasoningDepth, toolsConfig.reasoningVendor).supported(settings.model, settings.baseUrl)) "" else " (поддержка не подтверждена)"}" else "только инструкция в промпте"
+        ReasoningSupport.UNKNOWN -> "любой OpenAI-совместимый провайдер получает reasoning_effort; если модель не умеет — параметр игнорируется"
+    }
+
+    fun setReasoningFromChat(enabled: Boolean, depth: Int) {
+        saveToolsConfig(toolsConfig.copy(reasoning = enabled, reasoningDepth = depth.coerceIn(0, 3)))
+    }
+
     var syncConfig by mutableStateOf(
         runCatching { Json.decodeFromString<com.pocketcode.SyncConfig>(settingsStore.rawGet("syncConfig") ?: "{}") }.getOrDefault(com.pocketcode.SyncConfig())
     )
@@ -1921,7 +2254,7 @@ class ChatController(
         scope.launch(Dispatchers.IO) {
             val seq = syncSeq + 1
             val body = com.pocketcode.SyncEngine.eventPacket(seq, android.os.Build.MODEL, currentProject, kind, Secrets.mask(data))
-            val r = com.pocketcode.SyncEngine.send(com.pocketcode.SyncEngine.endpoint(cfg), body)
+            val r = com.pocketcode.SyncEngine.send(com.pocketcode.SyncEngine.endpoint(cfg), body, cfg.token, cfg.password)
             pcSyncStatus = if (r.isSuccess) "OK · seq $seq · ${System.currentTimeMillis()}" else "Ошибка: ${r.exceptionOrNull()?.message ?: "нет связи"}"
             if (r.isSuccess) syncSeq = seq
         }
@@ -1943,8 +2276,8 @@ class ChatController(
                     put("text", kotlinx.serialization.json.JsonPrimitive(Secrets.mask(text)))
                 }
             })
-            val body = com.pocketcode.SyncEngine.fullPacket(seq, android.os.Build.MODEL, currentProject, msgs, workspace.root, cfg.includeFiles)
-            val r = com.pocketcode.SyncEngine.send(com.pocketcode.SyncEngine.endpoint(cfg), body)
+            val body = com.pocketcode.SyncEngine.fullPacket(seq, android.os.Build.MODEL, currentProject, msgs, workspace.root, cfg.includeFiles && !cfg.onlyChats)
+            val r = com.pocketcode.SyncEngine.send(com.pocketcode.SyncEngine.endpoint(cfg), body, cfg.token, cfg.password)
             pcSyncStatus = if (r.isSuccess) "Снимок отправлен · seq $seq" else "Ошибка: ${r.exceptionOrNull()?.message ?: "нет связи"}"
             if (r.isSuccess) syncSeq = seq
         }
@@ -2633,6 +2966,53 @@ class ChatController(
             runCatching { app.contentResolver.openOutputStream(uri)?.use { o -> o.write(text.toByteArray()) } }
                 .onFailure { e -> withContext(Dispatchers.Main) { items += UiItem.Error("Не удалось сохранить файл: ${e.message}") } }
                 .onSuccess { withContext(Dispatchers.Main) { items += UiItem.Notice("— Чат сохранён в Markdown —") } }
+        }
+    }
+
+    /** Импорт чата из Markdown, экспортированного этим же приложением (ветки сообщений сохраняются как отдельные сессии). */
+    fun importMarkdown(uri: Uri) {
+        scope.launch(Dispatchers.IO) {
+            val raw = runCatching { app.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } }.getOrNull()
+            if (raw == null) {
+                withContext(Dispatchers.Main) { items += UiItem.Error("Не удалось прочитать Markdown-файл") }
+                return@launch
+            }
+            val loaded = mutableListOf<UiItem>()
+            var role = ""
+            val body = StringBuilder()
+            fun flush() {
+                val text = body.toString().trim()
+                if (text.isNotEmpty()) {
+                    when (role) {
+                        "user" -> loaded += UiItem.User(text)
+                        "assistant" -> loaded += UiItem.Assistant(text)
+                    }
+                }
+                body.setLength(0)
+            }
+            for (line in raw.lines()) {
+                when {
+                    line.startsWith("## 🧑 ") -> { flush(); role = "user" }
+                    line.startsWith("## 🤖 ") -> { flush(); role = "assistant" }
+                    else -> { if (role.isNotEmpty()) body.append(line).append('\n') }
+                }
+            }
+            flush()
+            if (loaded.isEmpty()) {
+                withContext(Dispatchers.Main) { items += UiItem.Error("В файле не найдены сообщения PocketCode") }
+                return@launch
+            }
+            val id = java.util.UUID.randomUUID().toString()
+            val data = com.pocketcode.session.SessionData(
+                id, "Импорт: " + loaded.firstOrNull { it is UiItem.User }.let { (it as? UiItem.User)?.text?.take(40) ?: "чат" },
+                System.currentTimeMillis(), loaded.toList(), emptyList(), currentProject,
+            )
+            sessions.save(data)
+            sessionList = sessions.list()
+            withContext(Dispatchers.Main) {
+                loadInto(id)
+                items += UiItem.Notice("Импортировано сообщений: ${loaded.size}")
+            }
         }
     }
 
@@ -3772,12 +4152,24 @@ class ChatController(
                     .header("User-Agent", "PocketCode")
                     .apply { if (settings.githubToken.isNotBlank()) header("Authorization", "Bearer " + settings.githubToken) }
                     .build()
-                val body = withContext(Dispatchers.IO) {
+                val (code, body) = withContext(Dispatchers.IO) {
                     okhttp3.OkHttpClient.Builder().callTimeout(30, java.util.concurrent.TimeUnit.SECONDS).build()
-                        .newCall(req).execute().use { it.body?.string().orEmpty() }
+                        .newCall(req).execute().use { it.code to it.body?.string().orEmpty() }
+                }
+                if (code == 401 || code == 403) {
+                    pluginSearchResults = emptyList()
+                    pluginSearchStatus = "GitHub: лимит или нет доступа (HTTP $code). Без токена поиск ограничен; добавь токен в настройках или попробуй позже."
+                    return@launch
+                }
+                if (code !in 200..299) {
+                    pluginSearchResults = emptyList()
+                    pluginSearchStatus = "GitHub вернул HTTP $code: ${body.take(200)}"
+                    return@launch
                 }
                 pluginSearchResults = com.pocketcode.ui.PluginSearch.parse(body)
-                pluginSearchStatus = if (pluginSearchResults.isEmpty()) "Ничего не найдено. Попробуй другой запрос или проверь токен GitHub." else null
+                pluginSearchStatus = if (pluginSearchResults.isEmpty()) {
+                    "Ничего не найдено. Попробуй другой запрос (например: claude skills agent)."
+                } else null
             } catch (e: Throwable) {
                 pluginSearchStatus = "Ошибка поиска: ${Secrets.mask(e.message ?: e.javaClass.simpleName)}"
             } finally {
@@ -3981,6 +4373,12 @@ class ChatController(
     // черновик сообщения переживает закрытие приложения
     val draft: String get() = settingsStore.rawGet("draft$tabNo").orEmpty()
     fun saveDraft(t: String) { settingsStore.rawPut("draft$tabNo", t) }
+    fun saveChatScroll(index: Int, offset: Int) {
+        settingsStore.rawPut("chatScrollIndex-$tabNo", index.toString())
+        settingsStore.rawPut("chatScrollOffset-$tabNo", offset.toString())
+    }
+    fun chatScrollIndex(): Int = settingsStore.rawGet("chatScrollIndex-$tabNo")?.toIntOrNull()?.coerceAtLeast(0) ?: 0
+    fun chatScrollOffset(): Int = settingsStore.rawGet("chatScrollOffset-$tabNo")?.toIntOrNull()?.coerceAtLeast(0) ?: 0
 
     // ---------- отложенная отправка и статистика по времени суток ----------
     class DelayedTask(val id: String, val at: Long, val project: String, val text: String)
@@ -4132,6 +4530,50 @@ class ChatController(
         remoteRows = syncMgr.rows()
         syncBusy = false
         return r
+    }
+
+    /** Легкая настройка: проверить адрес компаньона и подставить IP сети автоматически. */
+    var syncCheck by mutableStateOf("")
+        private set
+    fun setSyncCheck(s: String) { syncCheck = s }
+    var capabilityInfo by mutableStateOf("")
+        private set
+    fun setCapabilityInfo(s: String) { capabilityInfo = s }
+    fun lastUserText(): String = (items.lastOrNull { it is UiItem.User } as? UiItem.User)?.text?.take(2000).orEmpty()
+
+    fun checkSyncServer(url: String, token: String) {
+        val base = url.trim().trimEnd('/')
+        if (!base.startsWith("http://") && !base.startsWith("https://")) {
+            syncCheck = "Нужен адрес вида http://192.168.1.10:8765"
+            return
+        }
+        syncCheck = "Проверяю $base…"
+        scope.launch(Dispatchers.IO) {
+            val ok = runCatching {
+                okhttp3.OkHttpClient.Builder().connectTimeout(4, java.util.concurrent.TimeUnit.SECONDS)
+                    .callTimeout(8, java.util.concurrent.TimeUnit.SECONDS).build()
+                    .newCall(okhttp3.Request.Builder().url(base + "/api/sync/status")
+                        .apply { if (token.isNotBlank()) header("X-PocketCode-Token", token) }
+                        .build()).execute().use { it.isSuccessful }
+            }.getOrDefault(false)
+            withContext(Dispatchers.Main) {
+                syncCheck = if (ok) "✓ Компаньон найден. Адрес сохранён." else "✗ Нет ответа. Запусти на ПК: python3 pocketcode_desktop.py --host 0.0.0.0"
+                if (ok) saveSyncConfig(syncConfig.copy(serverUrl = base, enabled = true, token = token))
+            }
+        }
+    }
+
+    fun suggestedSyncUrls(): List<String> {
+        val out = mutableListOf("http://127.0.0.1:8765")
+        runCatching {
+            val wifi = app.getSystemService(android.content.Context.WIFI_SERVICE) as? android.net.wifi.WifiManager
+            val ip = wifi?.connectionInfo?.ipAddress ?: 0
+            if (ip != 0) {
+                val a = ip and 0xFF; val b = (ip shr 8) and 0xFF; val c = (ip shr 16) and 0xFF
+                for (host in 1..254) out.add("http://$a.$b.$c.$host:8765")
+            }
+        }
+        return out.take(30)
     }
 
     fun syncNow() {
@@ -4452,6 +4894,27 @@ class ChatController(
         while (items.size > i) items.removeAt(items.lastIndex)
         lastRunFailed = false
         send(text)
+    }
+
+    /** Продолжить прерванный ответ с того места, а не начинать задачу заново. */
+    fun continueAnswer() {
+        if (running) return
+        val last = items.lastOrNull { it is UiItem.Assistant } as? UiItem.Assistant ?: return
+        val tail = last.text.takeLast(1200)
+        items += UiItem.Notice("— Продолжаю с того места, где остановился —")
+        send("[Продолжи предыдущий ответ с того места, где прервался. Не повторяй уже начатый фрагмент.]\n\n" + tail)
+    }
+
+    /** Вариант ответа: старый остаётся в ленте, новый генерируется заново (можно с другой моделью). */
+    fun regenerateAnswer(profileId: String? = null) {
+        if (running) return
+        val idx = items.indexOfLast { it is UiItem.Assistant }
+        val userIdx = items.indexOfLast { it is UiItem.User }
+        if (idx < 0 || userIdx < 0 || userIdx > idx) return
+        val prompt = (items[userIdx] as UiItem.User).text
+        if (profileId != null && profileId != activeProfileId) switchProfile(profileId)
+        items += UiItem.Notice("— Альтернативный ответ с моделью ${profileLabel} —")
+        send("[Перегенерируй предыдущий ответ на этот же запрос. Старый вариант остался выше в ленте.]\n\n$prompt")
     }
 
     /** Экспорт беседы OpenCode в Markdown-файл. */
@@ -4798,6 +5261,7 @@ class ChatController(
         streamingIndex = null
         lastRunFailed = false
         running = true
+        runCatching { com.pocketcode.QuickStatusWidget.refresh(app) }
         persist()
         startService()
         Notifier.clearAlert(app)
@@ -5017,6 +5481,7 @@ class ChatController(
                     if (retryScheduled) {
                         val retryId = ++runId
                         running = true
+        runCatching { com.pocketcode.QuickStatusWidget.refresh(app) }
                         startService()
                         job = scope.launch {
                             kotlinx.coroutines.delay(ocRetryDelay)
@@ -5037,6 +5502,7 @@ class ChatController(
         if (!welcomeSeen) hideWelcome()
         val trimmed = text.trim()
         if ((trimmed.isEmpty() && pendingImages.isEmpty()) || running) return
+        beginStats()
         if (openCodeMode && trimmed.isNotEmpty() && !trimmed.startsWith("/")) { sendViaOpenCode(mentionExpand(extensions.expand(trimmed) ?: trimmed), shown = trimmed); return }
         if (settings.apiKey.isBlank()) {
             items += UiItem.Error("Сначала укажи API-ключ в настройках (шестерёнка сверху).")
@@ -5045,6 +5511,11 @@ class ChatController(
         when (trimmed.lowercase()) {
             "/clear", "/reset" -> { resetContext(); return }
             "/new" -> { newChat(); return }
+            "/read-only" -> { setReadOnly(!readOnlyMode); items += UiItem.Notice("Только чтение: ${if (readOnlyMode) "вкл" else "выкл"}"); return }
+            "/chat-only" -> { setChatOnly(!chatOnlyMode); items += UiItem.Notice("Чат без проекта: ${if (chatOnlyMode) "вкл" else "выкл"}"); return }
+            "/sync" -> { pcSyncNow(); return }
+            "/fork" -> { forkChat(items.lastIndex); return }
+            "/stopall" -> { stopAll(); return }
         }
         val expanded = extensions.expand(trimmed)
         if (currentId == null) currentId = UUID.randomUUID().toString()
@@ -5059,6 +5530,7 @@ class ChatController(
         streamingIndex = null
         lastRunFailed = false
         running = true
+        runCatching { com.pocketcode.QuickStatusWidget.refresh(app) }
         persist()
         startService()
         Notifier.clearAlert(app)
@@ -5107,9 +5579,56 @@ class ChatController(
         persist()
     }
 
+    /** Ротация ключей при 429/401: запоминаем, какой профиль был использован последним. */
+    var providerHealth by mutableStateOf<List<com.pocketcode.llm.ProviderHealth>>(emptyList())
+        private set
+    private var rotationIndex = 0
+    fun markProviderFailure(id: String, code: Int) {
+        providerHealth = providerHealth.map {
+            if (it.profileId == id) it.copy(status = if (code == 429) "Лимит (429)" else "Ошибка $code") else it
+        }
+        if (code == 429 && profiles.size > 1) {
+            rotationIndex = (rotationIndex + 1) % profiles.size
+            switchProfile(profiles[rotationIndex].id)
+        }
+    }
+    fun markProviderOk(id: String) {
+        providerHealth = providerHealth.map {
+            if (it.profileId == id) it.copy(status = "Работает", checkedAt = System.currentTimeMillis()) else it
+        }
+    }
+    fun tokenEstimate(text: String): Int = text.length / 4 + 32
+
+    /** Простая телеметрия текущего/последнего запуска. */
+    var runStats by mutableStateOf("")
+        private set
+    private var runStartedAt = 0L
+    private var testsRanThisTurn = false
+    fun noteToolRun(name: String) {
+        if (name == "run_tests" || name == "test") testsRanThisTurn = true
+        val ms = if (runStartedAt > 0) System.currentTimeMillis() - runStartedAt else 0
+        runStats = "$name · ${ms / 1000}s · шагов ${items.count { it is UiItem.Tool }}"
+    }
+    fun beginStats() { runStartedAt = System.currentTimeMillis(); runStats = ""; testsRanThisTurn = false }
+
+    /** Остановить всё: агента, фоновые команды и отложенные задачи. */
+    fun stopAll() {
+        stop()
+        runCatching { bgProcs.stopAll() }
+        runCatching { queue.clear(); saveQueue() }
+        runCatching { schedules.filter { it.enabled }.forEach { toggleSchedule(it.id) } }
+        runCatching { freeStartBusy = false }
+        runCatching { linuxBusy = false }
+        items += UiItem.Notice("Все фоновые задачи остановлены.")
+    }
+
     private fun finishRun() {
+        if (toolsConfig.selfCheck && !testsRanThisTurn && items.any { it is UiItem.Tool }) {
+            items += UiItem.Notice("НЕ ПРОВЕРЕНО: тесты не запускались в этой задаче. Проверь вручную через «Запустить тесты».")
+        }
         editsAllowedThisRun = false
         running = false
+        runCatching { com.pocketcode.QuickStatusWidget.refresh(app) }
         streamingIndex = null
         approval = null
         job = null
@@ -5166,6 +5685,7 @@ class ChatController(
                 Notifier.updateWorking(app, "Выполняю: ${event.name}")
             }
             is AgentEvent.ToolResult -> {
+                noteToolRun(event.name)
                 val idx = items.indexOfLast { it is UiItem.Tool && it.output == null }
                 if (idx >= 0) {
                     val old = items[idx] as UiItem.Tool
@@ -5187,6 +5707,8 @@ class ChatController(
                 persist()
             }
             is AgentEvent.Error -> {
+                val code = Regex("""(?:HTTP\s*|\b)(\d{3})\b""").find(event.message)?.groupValues?.get(1)?.toIntOrNull()
+                if (code != null) markProviderFailure(activeProfileId, code)
                 AppLog.log("ERROR", event.message)
                 if (!appVisible) Notifier.alert(app, "Агент остановился: ошибка", event.message.take(200))
                 lastRunFailed = true
@@ -5294,7 +5816,30 @@ class ChatController(
     }
 
     private suspend fun askApproval(tool: String, description: String): Boolean {
+        if (com.pocketcode.service.ApprovalOverlay.isSessionAllowed(tool)) return true
         val deferred = CompletableDeferred<Boolean>()
+        // В режиме управления телефоном окно подтверждения должно быть поверх текущего приложения:
+        // иначе возврат в PocketCode меняет экран, и агент нажимает не туда.
+        val useOverlay = phoneMode.enabled || tool in setOf("bash", "root", "git", "github", "adb", "ssh", "phone_tap", "phone_key", "phone_swipe") || dangerNote(description) != null
+        if (useOverlay && !appVisible && android.provider.Settings.canDrawOverlays(app)) {
+            val shown = com.pocketcode.service.ApprovalOverlay.show(
+                app,
+                tool,
+                "разрешить $tool?",
+                description,
+                onAllow = { deferred.complete(true) },
+                onDeny = { deferred.complete(false) },
+            )
+            if (shown) {
+                Notifier.updateWorking(app, "Ждёт подтверждения поверх экрана: $tool · $currentProject")
+                try {
+                    return deferred.await()
+                } finally {
+                    com.pocketcode.service.ApprovalOverlay.hide(app)
+                    Notifier.clearAlert(app)
+                }
+            }
+        }
         approval = ApprovalRequest(tool, description, deferred)
         Notifier.updateWorking(app, "Ждёт подтверждения: $tool · $currentProject")
         if (!appVisible) Notifier.alert(app, "Нужно подтверждение: $tool · $currentProject", description.take(300), tab = tabNo)
@@ -5327,15 +5872,30 @@ class ChatController(
         // В режиме плана работает модель планирования, после одобрения — модель выполнения.
         val roleId = if (planMode) s.planningProfileId else s.executionProfileId
         val roleProfile = roleId.takeIf { it.isNotBlank() }?.let { id -> profiles.firstOrNull { it.id == id } }
-        val rs = if (roleProfile != null) s.copy(provider = roleProfile.provider, baseUrl = roleProfile.baseUrl, apiKey = roleProfile.apiKey) else s
+        var rs = if (roleProfile != null) s.copy(provider = roleProfile.provider, baseUrl = roleProfile.baseUrl, apiKey = roleProfile.apiKey) else s
+        // Аккаунт ChatGPT: обновляем просроченный токен перед созданием клиента.
+        if (rs.baseUrl.contains("api.openai.com") && com.pocketcode.accounts.AccountStore.token(app, com.pocketcode.accounts.AccountKind.CHATGPT) != null) {
+            runCatching {
+                kotlinx.coroutines.runBlocking(Dispatchers.IO) {
+                    com.pocketcode.accounts.ChatGptOAuth.refreshIfNeeded(app)
+                }
+            }.getOrNull()?.let { fresh -> rs = rs.copy(apiKey = fresh) }
+        }
         val llm: LlmClient = when (rs.provider) {
-            Provider.ANTHROPIC -> AnthropicClient(rs.baseUrl, rs.apiKey, roleProfile?.model ?: s.model, s.promptCaching, s.maxOutputTokens)
-            Provider.OPENAI -> OpenAiClient(rs.baseUrl, rs.apiKey, roleProfile?.model ?: s.model, s.promptCaching, s.maxOutputTokens)
+            Provider.ANTHROPIC -> AnthropicClient(
+                rs.baseUrl, rs.apiKey, roleProfile?.model ?: s.model, s.promptCaching, s.maxOutputTokens,
+                reasoning = com.pocketcode.llm.ReasoningSpec(toolsConfig.reasoning, toolsConfig.reasoningDepth, "anthropic"),
+            )
+            Provider.OPENAI -> OpenAiClient(
+                rs.baseUrl, rs.apiKey, roleProfile?.model ?: s.model, s.promptCaching, s.maxOutputTokens,
+                reasoning = com.pocketcode.llm.ReasoningSpec(toolsConfig.reasoning, toolsConfig.reasoningDepth, toolsConfig.reasoningVendor),
+            )
         }
         val baseTools = listOf(
             ReadFileTool(workspace),
             WriteFileTool(workspace, undo),
             EditFileTool(workspace, undo),
+            ApplyPatchTool(workspace, undo),
             ListDirTool(workspace),
             GrepTool(workspace),
             BashTool(workspace, com.pocketcode.tools.TrashShell(shell) { smart.trashOn }),
@@ -5366,12 +5926,16 @@ class ChatController(
             DiagnosticsTool(workspace, python, shell) { changes.map { it.path } },
             TestTool(workspace, shell, python),
             NotesTool(extensions),
+            RecallTool(workspace),
+            ProjectSearchTool(workspace),
+            RequestLogTool(),
             GitHubTool(workspace) { settings.githubToken },
         )
         val tools = baseTools + mcpTools + planTools + devTools + explorer + listOfNotNull(
             if (skills.isNotEmpty()) SkillTool(extensions) else null,
             WebSearchTool(),
             WebFetchTool(),
+            WebCiteTool(),
             if (linuxActive) AdbTool(workspace, linuxShell) { devices } else null,
             com.pocketcode.video.toon.ToonTool(toon),
             if (linuxActive) VideoTool(video) else null,
@@ -5388,7 +5952,8 @@ class ChatController(
             com.pocketcode.tools.CodeGraphTool(workspace, shell) { settingsStore.rawGet("codegraphInstalled") == "1" },
         )
         // Пользователь решает, какие инструменты видит модель: отключённые не попадают в запрос.
-        val activeTools = tools.filter { toolAvailable(it.name) }
+        val chatOnlyAllowed = setOf("web_search", "web_fetch", "web_evidence", "remember", "recall", "todo", "present_plan")
+        val activeTools = tools.filter { toolAvailable(it.name) && (!chatOnlyMode || it.name in chatOnlyAllowed) }
         val sysPrompt = systemPrompt(
             workspace.root.absolutePath, shell.info, linuxActive,
             adbDevices = if (linuxActive) devices.map { "${it.label} (${it.address})" } else null,
@@ -5407,6 +5972,7 @@ class ChatController(
             caveman = settingsStore.rawGet("cavemanOn") == "1",
             reasoning = toolsConfig.reasoning,
             reasoningDepth = toolsConfig.reasoningDepth,
+            selfCheck = toolsConfig.selfCheck,
         ) + (phoneMode.promptSection()?.let { "\n\n" + it } ?: "")
         val workerTools: List<Tool> = baseTools + devTools.filter { it.name != "preview" }
         val workerFactory = { name: String, _: String, isolated: Boolean ->
@@ -5577,5 +6143,6 @@ class ChatController(
 
     companion object {
         private val serviceUsers = java.util.concurrent.atomic.AtomicInteger(0)
+        private const val BRANCH_PREFIX = "🌿 "
     }
 }

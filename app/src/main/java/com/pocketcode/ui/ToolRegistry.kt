@@ -19,6 +19,9 @@ data class ToolsConfig(
     val disabled: Set<String> = emptySet(),
     val reasoning: Boolean = true,
     val reasoningDepth: Int = 1,
+    /** После правок агент сам запускает диагностику и тесты (идея AndroidHarness/Agora — своим кодом). */
+    val selfCheck: Boolean = true,
+    val reasoningVendor: String = "auto",
 )
 
 object ToolRegistry {
@@ -27,7 +30,12 @@ object ToolRegistry {
         ToolInfo("read_file", "read_file", "Чтение файла", "Читает текстовый файл и возвращает строки с номерами.", "Файлы"),
         ToolInfo("write_file", "write_file", "Запись файла", "Создаёт или перезаписывает файл.", "Файлы"),
         ToolInfo("edit_file", "edit_file", "Правка файла", "Заменяет фрагмент; сохраняет историю отката.", "Файлы"),
+        ToolInfo("apply_patch", "apply_patch", "Безопасная правка", "Проверяет уникальность фрагмента и сохраняет версию файла.", "Файлы"),
         ToolInfo("list_dir", "list_dir", "Список файлов", "Показывает содержимое папки.", "Файлы"),
+        ToolInfo("web_evidence", "web_evidence", "Проверка фактов", "Ищет подтверждения с источниками и открывает страницы.", "Сеть"),
+        ToolInfo("recall", "recall", "Память", "Ищет и удаляет заметки проекта.", "Память"),
+        ToolInfo("project_recall", "project_recall", "Поиск по проекту", "Возвращает фрагменты кода и документов по запросу.", "Память"),
+        ToolInfo("request_log", "request_log", "Журнал", "Показывает последние события и ошибки без секретов.", "Диагностика"),
         ToolInfo("grep", "grep", "Поиск по коду", "Ищет текст/регулярное выражение по файлам.", "Файлы"),
         ToolInfo("code_search", "code_search", "Семантический поиск", "Ищет по смыслу в коде проекта.", "Файлы"),
         ToolInfo("bash", "bash", "Терминал", "Выполняет команду в Android sh или Linux bash.", "Команды"),

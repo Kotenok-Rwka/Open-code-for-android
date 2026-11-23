@@ -48,6 +48,7 @@ fun HubScreen(title: String, subtitle: String, items: List<HubItem>, onSearch: (
 @Composable
 private fun Md3Hub(title: String, subtitle: String, items: List<HubItem>, onSearch: (() -> Unit)?) {
     val m = metricsOf(UiStyle.MD3)
+    val ctx = androidx.compose.ui.platform.LocalContext.current
     LazyColumn(
         Modifier.fillMaxSize(),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp, vertical = 12.dp),
@@ -72,8 +73,13 @@ private fun Md3Hub(title: String, subtitle: String, items: List<HubItem>, onSear
                 )
                 return@items
             }
+            androidx.compose.animation.AnimatedVisibility(
+                visible = true,
+                enter = androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(Motion.ms(220))) +
+                    androidx.compose.animation.slideInVertically(androidx.compose.animation.core.tween(Motion.ms(220))) { it / 4 },
+            ) {
             Card(
-                onClick = entry.onClick,
+                onClick = { entry.onClick(); hapticTap(ctx) },
                 shape = RoundedCornerShape(24.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
                 modifier = Modifier.fillMaxWidth(),
@@ -94,6 +100,7 @@ private fun Md3Hub(title: String, subtitle: String, items: List<HubItem>, onSear
                     }
                     Icon(AppIcons.Chevron, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
+            }
             }
         }
     }
@@ -169,5 +176,14 @@ private fun IosRow(entry: HubItem, last: Boolean) {
             Icon(AppIcons.Chevron, contentDescription = null, tint = MaterialTheme.colorScheme.outline, modifier = Modifier.size(20.dp))
         }
         if (!last) HorizontalDivider(Modifier.padding(start = 62.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
+    }
+}
+
+/** Короткий haptic на нажатиях, если анимации не уменьшены. */
+fun hapticTap(ctx: android.content.Context) {
+    runCatching {
+        val v = ctx.getSystemService(android.content.Context.VIBRATOR_SERVICE) as? android.os.Vibrator
+        if (android.os.Build.VERSION.SDK_INT >= 26) v?.vibrate(android.os.VibrationEffect.createOneShot(12, 60))
+        else @Suppress("DEPRECATION") v?.vibrate(12)
     }
 }

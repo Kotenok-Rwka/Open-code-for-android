@@ -25,6 +25,7 @@ class OpenAiClient(
     private val caching: Boolean = false,
     /** Максимум токенов в ответе; 0 — не передавать, пусть решает провайдер. */
     private val maxTokens: Int = 0,
+    private val reasoning: ReasoningSpec? = null,
 ) : LlmClient {
 
     private class CallAcc {
@@ -116,6 +117,15 @@ class OpenAiClient(
                                 put("content", text)
                             }
                         }
+                    }
+                }
+            }
+            if (reasoning != null) {
+                reasoning.fields(model, baseUrl).forEach { (k, v) ->
+                    when (v) {
+                        is String -> put(k, v)
+                        is Int -> put(k, v)
+                        is Map<*, *> -> putJsonObject(k) { for ((kk, vv) in v) if (vv is Int) put(kk.toString(), vv) }
                     }
                 }
             }

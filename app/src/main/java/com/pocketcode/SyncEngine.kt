@@ -19,6 +19,12 @@ data class SyncConfig(
     val serverUrl: String = "http://192.168.1.10:8765",
     val includeFiles: Boolean = true,
     val wifiOnly: Boolean = true,
+    /** Токен для удалённого доступа: передаётся в заголовке X-PocketCode-Token. */
+    val token: String = "",
+    /** Пароль E2E-шифрования; пусто — без шифрования. */
+    val password: String = "",
+    val onlyChats: Boolean = false,
+    val onlyFiles: Boolean = false,
 )
 
 object SyncEngine {
@@ -56,10 +62,12 @@ object SyncEngine {
         return obj.toString()
     }
 
-    /** Отправка с backoff; ошибка не роняет вызывающий код. */
-    fun send(url: String, body: String): Result<String> = runCatching {
+    /** Отправка с backoff; ошибка не роняет вызывающий код. Токен нужен при доступе не из домашней сети. */
+    fun send(url: String, body: String, token: String = "", password: String = ""): Result<String> = runCatching {
+        val out = SyncCrypto.encrypt(body, password)
         val req = okhttp3.Request.Builder().url(url)
-            .post(body.toByteArray().toRequestBody("application/json".toMediaType()))
+            .apply { if (token.isNotBlank()) header("X-PocketCode-Token", token) }
+            .post(out.toByteArray().toRequestBody("application/json".toMediaType()))
             .build()
         okhttp3.OkHttpClient.Builder().callTimeout(20, TimeUnit.SECONDS).build()
             .newCall(req).execute().use { resp -> resp.body?.string().orEmpty() }

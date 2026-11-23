@@ -48,6 +48,8 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
+import androidx.compose.material3.Switch
 import com.pocketcode.ui.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -73,12 +75,14 @@ import com.pocketcode.session.UiItem
 fun ChatScreen(
     vm: ChatController,
     onOpenSettings: () -> Unit,
+    onOpenTools: () -> Unit = {},
     onOpenSessions: () -> Unit,
     onOpenProjects: () -> Unit,
     onOpenFiles: () -> Unit,
     onPickFolder: () -> Unit,
     onOpenContext: () -> Unit = {},
     onExport: () -> Unit = {},
+    onImport: () -> Unit = {},
     onOpenTerminal: () -> Unit = {},
     onOpenGit: () -> Unit = {},
     onMenu: () -> Unit = {},
@@ -115,7 +119,28 @@ fun ChatScreen(
     val pickImage = androidx.activity.compose.rememberLauncherForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.GetMultipleContents(),
     ) { uris -> if (uris.isNotEmpty()) vm.attachImages(uris) }
-    val listState = rememberLazyListState()
+    // Автопрокрутка вниз только если пользователь и так внизу; читая историю выше, он остаётся на месте.
+    var stick by remember { mutableStateOf(vm.chatScrollIndex() == 0) }
+    // Позиция списка переживает смену экранов: возврат к чату не сбрасывает чтение в начало.
+    val listState = rememberLazyListState(
+        initialFirstVisibleItemIndex = remember { vm.chatScrollIndex() },
+        initialFirstVisibleItemScrollOffset = remember { vm.chatScrollOffset() },
+    )
+    LaunchedEffect(listState) {
+        androidx.compose.runtime.snapshotFlow {
+            listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset
+        }.collect { (idx, off) -> vm.saveChatScroll(idx, off) }
+    }
+    // Новая беседа начинается сверху, а не на старом офсете предыдущей.
+    var lastChatId by remember { mutableStateOf(vm.currentId) }
+    LaunchedEffect(vm.currentId) {
+        if (vm.currentId != null && lastChatId != null && vm.currentId != lastChatId) {
+            vm.saveChatScroll(0, 0)
+            listState.scrollToItem(0)
+            stick = true
+        }
+        lastChatId = vm.currentId
+    }
     // Список сообщений меняется на каждый токен стрима. Читаем из него только нужные значения через derivedStateOf,
     // иначе весь экран (панель, чипы, поле ввода) перерисовывался бы на каждый токен.
     val hasItems by remember(vm) { androidx.compose.runtime.derivedStateOf { vm.items.isNotEmpty() } }
@@ -144,8 +169,7 @@ fun ChatScreen(
         }
     }
 
-    // Автопрокрутка вниз только если пользователь и так внизу; читая историю выше, он остаётся на месте
-    var stick by remember { mutableStateOf(true) }
+    // При возврате на экран не прыгаем вниз, если пользователь ушёл вверх.
     LaunchedEffect(listState) {
         androidx.compose.runtime.snapshotFlow { listState.isScrollInProgress to listState.canScrollForward }
             .collect { (inProgress, canForward) -> if (inProgress || !canForward) stick = !canForward }
@@ -202,11 +226,17 @@ fun ChatScreen(
                             DropdownMenuItem(text = { Text("Отмеченные ответы (${vm.stars.size})") }, onClick = { moreMenu = false; dlg = "stars" })
                             DropdownMenuItem(text = { Text("Отправить позже") }, onClick = { moreMenu = false; dlg = "later" })
                             DropdownMenuItem(text = { Text("Экспорт чата в Markdown") }, onClick = { moreMenu = false; onExport() })
+                            DropdownMenuItem(text = { Text("Импорт чата из Markdown") }, onClick = { moreMenu = false; onImport() })
+                            DropdownMenuItem(text = { Text("Альтернативный ответ") }, onClick = { moreMenu = false; dlg = "regen" })
+                            DropdownMenuItem(text = { Text("Сравнить варианты") }, onClick = { moreMenu = false; dlg = "compare" })
+                            DropdownMenuItem(text = { Text("Остановить всё") }, onClick = { moreMenu = false; vm.stopAll() })
+                            DropdownMenuItem(text = { Text("История инструментов") }, onClick = { moreMenu = false; dlg = "toolhistory" })
                             group("Действия")
                             DropdownMenuItem(text = { Text("Терминал") }, onClick = { moreMenu = false; onOpenTerminal() })
                             DropdownMenuItem(text = { Text("Заметки проекта") }, onClick = { moreMenu = false; notesDraft = vm.notesText(); dlg = "notes" })
                             DropdownMenuItem(text = { Text("Экспорт истории на ПК") }, onClick = { moreMenu = false; onSyncExport() })
                             DropdownMenuItem(text = { Text("Загрузить с ПК") }, onClick = { moreMenu = false; onSyncImport() })
+                            DropdownMenuItem(text = { Text("Ветки беседы (${vm.branches.size})") }, onClick = { moreMenu = false; dlg = "branches" })
                             if (vm.openCodeMode) {
                                 group("OpenCode")
                                 DropdownMenuItem(text = { Text("Сбросить (оставить последнее)") }, onClick = { moreMenu = false; vm.resetSessionAndChat(true) })
@@ -273,7 +303,7 @@ fun ChatScreen(
                             Column {
                                 if (item is UiItem.Error && vm.isErrorDismissed(i)) { /* скрыто пользователем */ }
                                 else if (item is UiItem.Questions) QuestionCardView(item, onAnswer = { vm.answerQuestionCards(i, it) })
-                                else ItemView(item, live = vm.running && i == lastItemIndex)
+                                else ItemView(item, live = vm.running && i == lastItemIndex, projectRoot = java.io.File(vm.workspacePath))
                                 if (item is UiItem.Assistant && !item.text.startsWith("⏳") && !(vm.running && i == lastItemIndex)) {
                                     Row {
                                         val star = vm.isStarred(item.text)
@@ -294,8 +324,13 @@ fun ChatScreen(
                                     }
                                 }
                                 if (item is UiItem.User && !vm.running) {
-                                    TextButton(onClick = { rewindAt = i }, contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp)) {
-                                        Text("↩ вернуться к этому месту", style = MaterialTheme.typography.labelSmall)
+                                    Row {
+                                        TextButton(onClick = { rewindAt = i }, contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp)) {
+                                            Text("↩ вернуться к этому месту", style = MaterialTheme.typography.labelSmall)
+                                        }
+                                        TextButton(onClick = { vm.forkChat(i) }, contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp)) {
+                                            Text("🌿 ветка", style = MaterialTheme.typography.labelSmall)
+                                        }
                                     }
                                 }
                             }
@@ -312,6 +347,19 @@ fun ChatScreen(
                     }
                 }
             }
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                TextButton(onClick = { dlg = "reasoning" }, contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp)) {
+                    Text(
+                        "🧠 ${if (vm.toolsConfig.reasoning) "глубина ${vm.toolsConfig.reasoningDepth}" else "выкл."}",
+                        style = MaterialTheme.typography.labelSmall,
+                    )
+                }
+                Text(vm.reasoningSupportLabel, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (vm.runStats.isNotBlank()) Text(vm.runStats, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.tertiary)
+            }
             if (vm.running || vm.queue.isNotEmpty()) {
                 Row(
                     Modifier.fillMaxWidth().padding(horizontal = 12.dp),
@@ -322,16 +370,18 @@ fun ChatScreen(
                         else if (vm.running) "Агент работает: «Уточнить сейчас» передаст текст на текущем шаге, ▲ поставит в очередь"
                         else "Задач в очереди нет",
                         style = MaterialTheme.typography.labelMedium,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f),
                     )
                     if (vm.queue.isNotEmpty()) {
                         if (!vm.running) TextButton(onClick = { vm.runQueue() }) { Text("Запустить") }
                         TextButton(onClick = { showQueue = true }) { Text("Очередь") }
                     }
-                    if (vm.running) {
+                    if (vm.running && input.isNotBlank()) {
                         TextButton(
                             onClick = { vm.sendWhileRunning(input); input = "" },
-                            enabled = input.isNotBlank(),
+                            enabled = true,
                         ) { Text("Уточнить сейчас") }
                     }
                 }
@@ -389,6 +439,7 @@ fun ChatScreen(
             }
             if (!vm.running && vm.lastRunFailed && vm.items.any { it is UiItem.User }) {
                 TextButton(onClick = { vm.retryLast() }, modifier = Modifier.padding(horizontal = 4.dp)) { Text("↻ Повторить последнее сообщение") }
+                TextButton(onClick = { vm.continueAnswer() }, modifier = Modifier.padding(horizontal = 4.dp)) { Text("➜ Продолжить ответ") }
             }
             if (vm.running) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -452,7 +503,6 @@ fun ChatScreen(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                if (vm.running) androidx.compose.material3.AssistChip(border = null, colors = chipColors(), onClick = { vm.stop() }, label = { Text("Остановить") })
                 Box {
                     androidx.compose.material3.AssistChip(border = null, colors = chipColors(), 
                         onClick = { modeMenu = true },
@@ -507,6 +557,24 @@ fun ChatScreen(
                 }
                 vm.lastPreview?.let { pv -> androidx.compose.material3.AssistChip(border = null, colors = chipColors(), onClick = { vm.previewUrl = pv }, label = { Text("Превью") }) }
                 androidx.compose.material3.AssistChip(border = null, colors = chipColors(), onClick = { showNewChat = true }, label = { Text("Новый чат") }, leadingIcon = { Icon(AppIcons.Plus, null, Modifier.size(16.dp)) })
+            }
+            val lastAnswer = vm.items.lastOrNull { it is UiItem.Assistant }?.let { (it as UiItem.Assistant).text }.orEmpty()
+            if (lastAnswer.isNotBlank() && input.isBlank() && !vm.running) {
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp)) {
+                    listOf("Объясни код выше" to "Объясни подробно последний ответ и код в нём.",
+                        "Найди баг" to "Найди возможные ошибки в последнем ответе/коде.",
+                        "Напиши тест" to "Напиши тесты для кода из последнего ответа.",
+                        "В заметки" to "Запомни главное из последнего ответа.").forEach { (label, prompt) ->
+                        androidx.compose.material3.AssistChip(
+                            onClick = {
+                                if (label == "В заметки") vm.saveNotes(lastAnswer.take(2000))
+                                else input = "$prompt\n\n\"\"\"\n${lastAnswer.take(3000)}\n\"\"\""
+                            },
+                            label = { Text(label, style = MaterialTheme.typography.labelSmall) },
+                            modifier = Modifier.padding(end = 6.dp),
+                        )
+                    }
+                }
             }
             androidx.compose.material3.Surface(
                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -755,9 +823,120 @@ fun ChatScreen(
             confirmButton = { TextButton(onClick = { dlg = "" }) { Text("Закрыть") } },
         )
     }
+    if (dlg == "toolhistory") {
+        val tools = vm.items.filterIsInstance<UiItem.Tool>().reversed()
+        AlertDialog(
+            onDismissRequest = { dlg = "" },
+            title = { Text("История инструментов") },
+            text = {
+                Column(Modifier.heightIn(max = 400.dp).verticalScroll(rememberScrollState())) {
+                    if (tools.isEmpty()) Text("Инструментов пока не вызывались.", style = MaterialTheme.typography.bodySmall)
+                    tools.forEach { t ->
+                        Text(
+                            "${if (t.isError) "✗" else "✓"} ${t.name}: ${t.description.take(80)}",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { dlg = "" }) { Text("Закрыть") } },
+        )
+    }
+    if (dlg == "compare") {
+        val answers = vm.items.filterIsInstance<UiItem.Assistant>().takeLast(2)
+        AlertDialog(
+            onDismissRequest = { dlg = "" },
+            title = { Text("Сравнение вариантов") },
+            text = {
+                Row(Modifier.horizontalScroll(rememberScrollState())) {
+                    answers.forEachIndexed { i, a ->
+                        Column(Modifier.width(260.dp).padding(end = 8.dp)) {
+                            Text("Вариант ${i + 1}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                            Text(a.text.take(2500), style = MaterialTheme.typography.bodySmall, modifier = Modifier.verticalScroll(rememberScrollState()).heightIn(max = 400.dp))
+                        }
+                    }
+                    if (answers.isEmpty()) Text("Пока нет ответов для сравнения.", style = MaterialTheme.typography.bodySmall)
+                }
+            },
+            confirmButton = { TextButton(onClick = { dlg = "" }) { Text("Закрыть") } },
+        )
+    }
+    if (dlg == "regen") {
+        AlertDialog(
+            onDismissRequest = { dlg = "" },
+            title = { Text("Альтернативный ответ") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("Старый ответ останется выше. Выбери модель для нового варианта.", style = MaterialTheme.typography.bodySmall)
+                    TextButton(onClick = { vm.regenerateAnswer(); dlg = "" }) { Text("Текущая модель: ${vm.profileLabel}") }
+                    vm.profiles.forEach { p ->
+                        TextButton(onClick = { vm.regenerateAnswer(p.id); dlg = "" }) { Text(p.label) }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { dlg = "" }) { Text("Отмена") } },
+        )
+    }
+    if (dlg == "reasoning") {
+        AlertDialog(
+            onDismissRequest = { dlg = "" },
+            title = { Text("Глубина размышлений") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(vm.reasoningSupportLabel, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (vm.capabilityInfo.isNotBlank()) Text(vm.capabilityInfo, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.tertiary)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Размышления", modifier = Modifier.weight(1f))
+                        Switch(checked = vm.toolsConfig.reasoning, onCheckedChange = { vm.setReasoningFromChat(it, vm.toolsConfig.reasoningDepth) })
+                    }
+                    if (vm.toolsConfig.reasoning) {
+                        Text(if (vm.reasoningNativeEnabled) "✓ На стороне провайдера" else "○ Провайдер не подтверждён — работает как инструкция", style = MaterialTheme.typography.bodySmall)
+                        TextButton(onClick = { dlg = ""; onOpenTools() }) { Text("Настроить модели и плагины →") }
+                        TextButton(onClick = {
+                            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch {
+                                val info = com.pocketcode.llm.ModelCapabilityProbe.probe(
+                                    vm.settings.baseUrl, vm.settings.apiKey, vm.settings.model,
+                                )
+                                vm.setCapabilityInfo(info.summary + if (info.raw.isNotBlank() && info.reasoning == null) " · ${info.raw.take(120)}" else "")
+                            }
+                        }) { Text("Узнать у провайдера") }
+                        Text("Глубина: ${vm.toolsConfig.reasoningDepth} (0 — кратко, 3 — вдумчиво)")
+                        Slider(
+                            value = vm.toolsConfig.reasoningDepth.toFloat(),
+                            onValueChange = { vm.setReasoningFromChat(true, it.toInt()) },
+                            valueRange = 0f..3f,
+                            steps = 2,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { dlg = "" }) { Text("Готово") } },
+        )
+    }
+    if (dlg == "branches") {
+        AlertDialog(
+            onDismissRequest = { dlg = "" },
+            title = { Text("Ветки беседы") },
+            text = {
+                Column(Modifier.heightIn(max = 400.dp).verticalScroll(rememberScrollState())) {
+                    if (vm.branches.isEmpty()) Text("Пока нет веток. Нажми «🌿 ветка» под сообщением, чтобы ответить с этого места по-другому.", style = MaterialTheme.typography.bodySmall)
+                    vm.branches.forEach { b ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            TextButton(onClick = { vm.loadBranch(b.id); dlg = "" }, modifier = Modifier.weight(1f)) {
+                                Text("🌿 ${b.title}", style = MaterialTheme.typography.bodySmall)
+                            }
+                            TextButton(onClick = { vm.deleteSession(b.id); vm.refreshBranches() }) { Text("✕") }
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { dlg = "" }) { Text("Закрыть") } },
+        )
+    }
     if (dlg == "fill") {
         val tpl = tplFill.orEmpty()
-        val names = Regex("\\{([^}]+)}").findAll(tpl).map { it.groupValues[1] }.distinct().toList()
+        val names = Regex("\\{([^}]+)\\}").findAll(tpl).map { it.groupValues[1] }.distinct().toList()
         AlertDialog(
             onDismissRequest = { dlg = "" },
             title = { Text("Подставь значения") },
@@ -867,7 +1046,7 @@ fun ChatScreen(
                     vm.promptTemplates.forEachIndexed { i, t ->
                         Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                             TextButton(onClick = {
-                                if (Regex("\\{[^}]+}").containsMatchIn(t)) { tplFill = t; fillVals = emptyMap(); dlg = "fill" }
+                                if (Regex("\\{[^}]+\\}").containsMatchIn(t)) { tplFill = t; fillVals = emptyMap(); dlg = "fill" }
                                 else { input = if (input.isBlank()) t else input.trimEnd() + "\n" + t; dlg = "" }
                             }, modifier = Modifier.weight(1f)) {
                                 Text(t, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.fillMaxWidth())
@@ -1050,7 +1229,7 @@ private fun EmptyHint(workspacePath: String, welcome: (@Composable () -> Unit)?,
 }
 
 @Composable
-private fun ItemView(item: UiItem, live: Boolean = false) {
+private fun ItemView(item: UiItem, live: Boolean = false, projectRoot: java.io.File? = null) {
     when (item) {
         is UiItem.Questions -> QuestionCardView(item, onAnswer = { answers -> /* ответ обрабатывается в списке чата */ })
         is UiItem.User -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
@@ -1061,17 +1240,22 @@ private fun ItemView(item: UiItem, live: Boolean = false) {
                     .clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp, bottomStart = 20.dp, bottomEnd = 6.dp))
                     .background(if (ios) cs.primary else cs.primaryContainer),
             ) {
-                SelectionContainer {
-                    Text(
-                        (if (item.images > 0) "🖼 ×${item.images}\n" else "") + item.text,
-                        color = if (ios) cs.onPrimary else cs.onPrimaryContainer,
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                    )
-                }
-                Row(Modifier.padding(horizontal = 10.dp, vertical = 2.dp)) {
-                    val time = MessageTime.format(item.ts)
-                    if (time.isNotBlank()) Text(time, style = MaterialTheme.typography.labelSmall, color = if (ios) cs.onPrimary.copy(alpha = 0.7f) else cs.onPrimaryContainer.copy(alpha = 0.7f), modifier = Modifier.padding(end = 4.dp))
-                    CopyButton(item.text, tint = if (ios) cs.onPrimary else cs.onPrimaryContainer)
+                Column {
+                    SelectionContainer {
+                        Text(
+                            (if (item.images > 0) "🖼 ×${item.images}\n" else "") + item.text,
+                            color = if (ios) cs.onPrimary else cs.onPrimaryContainer,
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                        )
+                    }
+                    Row(
+                        Modifier.padding(horizontal = 10.dp, vertical = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        val time = MessageTime.format(item.ts)
+                        if (time.isNotBlank()) Text(time, style = MaterialTheme.typography.labelSmall, color = if (ios) cs.onPrimary.copy(alpha = 0.7f) else cs.onPrimaryContainer.copy(alpha = 0.7f), modifier = Modifier.padding(end = 4.dp))
+                        CopyButton(item.text, tint = if (ios) cs.onPrimary else cs.onPrimaryContainer)
+                    }
                 }
             }
         }
@@ -1090,6 +1274,10 @@ private fun ItemView(item: UiItem, live: Boolean = false) {
                 // Пока текст дописывается, выделение не включаем: оно пересчитывается на каждый кадр и заметно тормозит
                 if (live && !LocalReduceMotion.current) SmoothMarkdown(item.text, modifier = Modifier.fillMaxWidth())
                 else SelectionContainer { MarkdownText(item.text, modifier = Modifier.fillMaxWidth()) }
+                if (projectRoot != null) {
+                    InlineChatImages(item.text, projectRoot, modifier = Modifier.fillMaxWidth())
+                    InlineChatVideos(item.text, projectRoot, modifier = Modifier.fillMaxWidth())
+                }
                 if (!live && item.text.isNotBlank()) {
                     Row(Modifier.padding(top = 2.dp)) {
                         val time = MessageTime.format(item.ts)

@@ -49,6 +49,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Image
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
@@ -74,7 +76,7 @@ import com.pocketcode.ui.ProjectsScreen
 import com.pocketcode.ui.SessionsScreen
 import com.pocketcode.ui.SettingsScreen
 
-private enum class Screen { CHAT, AUTOSYNC, TOOLS, APPEARANCE, HOWAI, LIVE, RUMBLE, STORAGE, USAGE, CONNECTIONS, LOCALMODELS, AGENTS, WIDGETS, MODELROLES, SETTINGS, SESSIONS, PROJECTS, FILES, DEVICES, PLUGINS, DIAG, COMPARE, CONTEXT, TERMINAL, GIT, OCSESSIONS, REMOTE, DIFF, SEARCH, HUB_PROJECT, HUB_AGENT, HUB_MORE, FIND, ROOT, PHONE, OCSETTINGS, MODELS, LINUX, UPDATE, BACKUP, VIDEO, LANGUAGE, SMART, LEARN, ASSISTANT, HOST, TOON, SUPPORT }
+private enum class Screen { CHAT, AUTOSYNC, TOOLS, APPEARANCE, HOWAI, LIVE, RUMBLE, STORAGE, USAGE, CONNECTIONS, LOCALMODELS, AGENTS, WIDGETS, MODELROLES, SETTINGS, SESSIONS, PROJECTS, FILES, DEVICES, PLUGINS, DIAG, COMPARE, CONTEXT, TERMINAL, GIT, OCSESSIONS, REMOTE, DIFF, SEARCH, HUB_PROJECT, HUB_AGENT, HUB_MORE, FIND, ROOT, PHONE, OCSETTINGS, MODELS, LINUX, UPDATE, BACKUP, VIDEO, LANGUAGE, SMART, LEARN, ASSISTANT, HOST, TOON, SUPPORT, REMINDERS, SECURITYCENTER, ACCOUNTS }
 
 class MainActivity : ComponentActivity() {
     private val controller: ChatController
@@ -141,6 +143,7 @@ class MainActivity : ComponentActivity() {
 
     private val exportSync = registerForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri -> if (uri != null) controller.exportSync(uri) }
     private val importSync = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> if (uri != null) controller.importSync(uri) }
+    private val importMd = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> if (uri != null) controller.importMarkdown(uri) }
 
     private val exportBackup =
         registerForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
@@ -351,12 +354,15 @@ class MainActivity : ComponentActivity() {
                             listOf(
                                 com.pocketcode.ui.hubHeader("Основное"),
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Sliders, "Настройки", "Тема и вид, безопасность, правила, общие параметры") { openFrom(Screen.HUB_MORE, Screen.SETTINGS) },
+                                com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Key, "Аккаунты сервисов", "ChatGPT, Claude, Gemini — подключение по токену") { openFrom(Screen.HUB_MORE, Screen.ACCOUNTS) },
+                                com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Shield, "Центр безопасности", "Все разрешения и режимы в одном месте") { openFrom(Screen.HUB_MORE, Screen.SECURITYCENTER) },
+                                com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Sparkles, "Напоминания", "Таймеры и уведомления, работают при закрытом приложении") { openFrom(Screen.HUB_MORE, Screen.REMINDERS) },
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Sparkles, "Умные функции", "Авто-режим, предохранитель, корзина, автовыбор модели, карта проекта", if (pocketApp.controller.rootAuto) "авто вкл" else null) { openFrom(Screen.HUB_MORE, Screen.SMART) },
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Terminal, "Среда Linux", "Установка мини-Linux, python, git, node", if (!pocketApp.controller.linuxInstalled && pocketApp.controller.linuxSupported) "не установлен" else null) { openFrom(Screen.HUB_MORE, Screen.LINUX) },
                                 com.pocketcode.ui.hubHeader("Вид и удобство"),
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Sparkles, "Оформление и темы", "14 палитр, свой цвет, шрифты, размеры, фоны, анимации") { openFrom(Screen.HUB_MORE, Screen.APPEARANCE) },
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Globe, "Язык интерфейса", com.pocketcode.ui.I18n.all.firstOrNull { it.code == com.pocketcode.ui.I18n.code }?.native ?: "") { openFrom(Screen.HUB_MORE, Screen.LANGUAGE) },
-                                com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Terminal, "Тактильные подсказки", "Вибрация на шагах агента и при ответе") { openFrom(Screen.HUB_MORE, Screen.RUMBLE) },
+                                com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Bolt, "Тактильные подсказки", "Вибрация на шагах агента и при ответе") { openFrom(Screen.HUB_MORE, Screen.RUMBLE) },
                                 com.pocketcode.ui.hubHeader("Расход и состояние"),
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Activity, "Использование и расход", "Токены, стоимость, изменения кода ИИ") { openFrom(Screen.HUB_MORE, Screen.USAGE) },
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Activity, "Проверка и расход", "Состояние приложения, токены и место") { openFrom(Screen.HUB_MORE, Screen.DIAG) },
@@ -391,6 +397,7 @@ class MainActivity : ComponentActivity() {
                             ChatScreen(
                                 vm,
                                 onOpenSettings = { screen = Screen.MODELS },
+                                onOpenTools = { openFrom(screen, Screen.TOOLS) },
                                 onOpenSessions = { screen = Screen.SESSIONS },
                                 onOpenProjects = { screen = Screen.PROJECTS },
                                 onOpenFiles = { screen = Screen.FILES },
@@ -422,6 +429,7 @@ class MainActivity : ComponentActivity() {
                                     }
                                 },
                                 onExport = { exportMd.launch("chat-" + vm.currentProject + ".md") },
+                                onImport = { importMd.launch(arrayOf("text/markdown", "text/plain", "*/*")) },
                                 onPickFolder = {
                                     pickFolderFresh = true
                                     pickFolderAsProject.launch(null)
@@ -474,6 +482,7 @@ class MainActivity : ComponentActivity() {
                             onSave = { s, p, a -> pv0.saveSettings(s, p, a) },
                             onResetContext = { vm.resetContext() },
                             onOpenCompare = { screen = Screen.COMPARE },
+                            onOpenAppearance = { openFrom(screen, Screen.APPEARANCE) },
                             onBack = { screen = backTo },
                         )
                         }
@@ -546,10 +555,12 @@ class MainActivity : ComponentActivity() {
                     Screen.LOCALMODELS -> {
                         BackHandler { screen = backTo }
                         com.pocketcode.ui.LocalModelsCatalogScreen(
+                            vm = controller,
                             onUse = { m ->
                                 controller.useLocalModel(m.id)
                                 screen = Screen.MODELS
                             },
+                            onInstall = { m -> controller.guideLocalModel(m) },
                             onBack = { screen = backTo },
                         )
                     }
@@ -587,6 +598,7 @@ class MainActivity : ComponentActivity() {
                     Screen.AUTOSYNC -> {
                         BackHandler { screen = backTo }
                         com.pocketcode.ui.AutoSyncScreen(
+                            vm = controller,
                             initial = controller.syncConfig,
                             status = controller.pcSyncStatus,
                             onSave = { controller.saveSyncConfig(it) },
@@ -598,6 +610,10 @@ class MainActivity : ComponentActivity() {
                         BackHandler { screen = backTo }
                         com.pocketcode.ui.ToolsScreen(
                             initial = controller.toolsConfig,
+                            vmReadOnly = controller.readOnlyMode,
+                            onReadOnlyChange = { controller.setReadOnly(it) },
+                            chatOnly = controller.chatOnlyMode,
+                            onChatOnlyChange = { controller.setChatOnly(it) },
                             linuxInstalled = controller.linuxInstalled,
                             onSave = { controller.saveToolsConfig(it) },
                             onBack = { screen = backTo },
@@ -607,6 +623,10 @@ class MainActivity : ComponentActivity() {
                         BackHandler { screen = backTo }
                         com.pocketcode.ui.AppearanceScreen(
                             initial = controller.appearance,
+                            themeMode = controller.themeMode,
+                            amoled = controller.amoled,
+                            onThemeMode = { controller.setThemeModeValue(it) },
+                            onAmoled = { controller.setAmoledValue(it) },
                             onSave = { controller.saveAppearance(it) },
                             onPickFont = { pickFont.launch(arrayOf("application/x-font-ttf", "font/ttf", "application/octet-stream")) },
                             onPickBackground = { pickBackgroundImage.launch(arrayOf("image/*")) },
@@ -733,6 +753,18 @@ class MainActivity : ComponentActivity() {
                         BackHandler { screen = backTo }
                         com.pocketcode.ui.UpdateScreen(pocketApp.controller, onBack = { screen = backTo })
                     }
+                    Screen.ACCOUNTS -> {
+                        BackHandler { screen = backTo }
+                        com.pocketcode.ui.AccountsScreen(controller, onBack = { screen = backTo })
+                    }
+                    Screen.SECURITYCENTER -> {
+                        BackHandler { screen = backTo }
+                        com.pocketcode.ui.SecurityCenterScreen(controller, onBack = { screen = backTo })
+                    }
+                    Screen.REMINDERS -> {
+                        BackHandler { screen = backTo }
+                        com.pocketcode.ui.RemindersScreen(onBack = { screen = backTo })
+                    }
                     Screen.BACKUP -> {
                         BackHandler { screen = backTo }
                         com.pocketcode.ui.BackupScreen(
@@ -831,16 +863,21 @@ private fun AppTheme(content: @Composable () -> Unit) {
     val dark = when ((context.applicationContext as PocketCodeApp).controller.themeMode) {
         "dark" -> true
         "light" -> false
+        "schedule" -> java.util.Calendar.getInstance().let { it.get(java.util.Calendar.HOUR_OF_DAY) !in 7..18 }
         else -> isSystemInDarkTheme()
     }
     val ctl = (context.applicationContext as PocketCodeApp).controller
     val appearance = ctl.appearance
     val themeAccent = com.pocketcode.ui.ThemeCatalog.accentFor(appearance.themeId, dark)
     val customAccent = com.pocketcode.ui.AppearanceCodec.parseColor(appearance.customColor)
-    val accent = if (customAccent != null) com.pocketcode.ui.Accent("custom", "Свой цвет", customAccent, customAccent)
-        else com.pocketcode.ui.accentById(ctl.palette)
-            ?: if (appearance.themeId == "default") null
-            else com.pocketcode.ui.Accent("theme", "Тема", themeAccent, themeAccent)
+    // Единственный источник палитры — экран «Оформление и темы». Старый palette больше не перемешивается.
+    val accent: com.pocketcode.ui.Accent? = when {
+        customAccent != null -> com.pocketcode.ui.Accent("custom", "Свой цвет", customAccent, customAccent)
+        appearance.accentId == "system" -> null // динамические цвета обоев Android 12+
+        appearance.themeId != "default" -> com.pocketcode.ui.Accent("theme", "Тема", themeAccent, themeAccent)
+        else -> com.pocketcode.ui.accentById(appearance.accentId)
+            ?: com.pocketcode.ui.ACCENTS.first()
+    }
     val style = com.pocketcode.ui.uiStyleById(ctl.uiStyle)
     val systemNoAnim = remember(context) {
         runCatching { android.provider.Settings.Global.getFloat(context.contentResolver, android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f }.getOrDefault(false)
@@ -885,7 +922,33 @@ private fun AppTheme(content: @Composable () -> Unit) {
         val bgCustom = com.pocketcode.ui.AppearanceCodec.parseColor(appearance.backgroundCustomColor)
         val bgColor = if (appearance.background == "color" && bgCustom != null) bgCustom
             else if (bgPreset.colors.isNotEmpty()) androidx.compose.ui.graphics.Color(bgPreset.colors.last()) else scheme.background
-        androidx.compose.foundation.layout.Box(modifier = Modifier.fillMaxSize().background(bgColor)) {
+        androidx.compose.foundation.layout.Box(modifier = Modifier.fillMaxSize()) {
+            // Фон: картинка поверх однотонного/градиентного фона; картинка сильнее всего.
+            if (appearance.background == "image" && appearance.backgroundImage.isNotBlank()) {
+                val bgFile = java.io.File(context.filesDir, "backgrounds/" + appearance.backgroundImage)
+                val bitmap = runCatching {
+                    android.graphics.BitmapFactory.decodeFile(bgFile.absolutePath)
+                }.getOrNull()
+                if (bitmap != null) {
+                    androidx.compose.foundation.Image(
+                        bitmap = bitmap.asImageBitmap(),
+                        contentDescription = null,
+                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+            }
+            if (appearance.background != "image" && bgPreset.colors.size > 1) {
+                androidx.compose.foundation.layout.Box(
+                    Modifier.fillMaxSize().background(
+                        androidx.compose.ui.graphics.Brush.linearGradient(
+                            bgPreset.colors.map { androidx.compose.ui.graphics.Color(it) },
+                        ),
+                    ),
+                )
+            } else if (bgColor != scheme.background) {
+                androidx.compose.foundation.layout.Box(Modifier.fillMaxSize().background(bgColor))
+            }
             MaterialTheme(
                 colorScheme = scheme,
                 typography = com.pocketcode.ui.appTypography(style),

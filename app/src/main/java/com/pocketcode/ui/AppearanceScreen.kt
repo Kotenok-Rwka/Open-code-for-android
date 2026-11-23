@@ -42,6 +42,10 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun AppearanceScreen(
     initial: AppearanceConfig,
+    themeMode: String = "dark",
+    amoled: Boolean = false,
+    onThemeMode: (String) -> Unit = {},
+    onAmoled: (Boolean) -> Unit = {},
     onSave: (AppearanceConfig) -> Unit,
     onPickFont: () -> Unit,
     onPickBackground: () -> Unit,
@@ -57,6 +61,19 @@ fun AppearanceScreen(
     var c by remember { mutableStateOf(initial) }
     fun update(block: (AppearanceConfig) -> AppearanceConfig) { c = block(c); onSave(c) }
     Column(Modifier.padding(pad).fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), Arrangement.spacedBy(10.dp)) {
+        SectionHeader("Режим темы", "Тёмная, светлая или как в системе")
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            listOf("dark" to "Тёмная", "light" to "Светлая", "system" to "Как в системе", "schedule" to "По времени").forEach { (v, l) ->
+                androidx.compose.material3.FilterChip(selected = themeMode == v, onClick = { onThemeMode(v) }, label = { Text(l) })
+            }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("AMOLED: чисто чёрный фон")
+                Text("Экономит заряд на OLED-экранах.", style = MaterialTheme.typography.bodySmall)
+            }
+            Switch(checked = amoled, onCheckedChange = onAmoled)
+        }
         SectionHeader("Тема", "${ThemeCatalog.presets.size} готовых палитр — применяются сразу")
         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             ThemeCatalog.presets.forEach { p ->
@@ -70,6 +87,22 @@ fun AppearanceScreen(
                     Text(p.title, style = MaterialTheme.typography.labelSmall)
                 }
             }
+        }
+        SectionHeader("Палитра", "Выбери цвет акцента — применяется сразу")
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            ACCENTS.forEach { a ->
+                FilterChip(
+                    selected = c.accentId == a.id && c.customColor.isBlank() && c.themeId == "default",
+                    onClick = { update { it.copy(accentId = a.id, customColor = "", themeId = "default") } },
+                    leadingIcon = { Box(Modifier.size(14.dp).clip(MaterialTheme.shapes.small).background(a.dark)) },
+                    label = { Text(a.title, style = MaterialTheme.typography.labelSmall) },
+                )
+            }
+            FilterChip(
+                selected = c.accentId == "system" && c.customColor.isBlank(),
+                onClick = { update { it.copy(accentId = "system", customColor = "") } },
+                label = { Text("Из обоев", style = MaterialTheme.typography.labelSmall) },
+            )
         }
         Text("Свой цвет акцента", style = MaterialTheme.typography.titleSmall)
         var hex by remember { mutableStateOf(c.customColor) }
@@ -120,7 +153,18 @@ fun AppearanceScreen(
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(onClick = onPickBackground) { Text("Своё изображение") }
+            Button(onClick = { update { it.copy(background = "color") } }) { Text("Свой цвет") }
             Button(onClick = { update { it.copy(background = "none", backgroundImage = "") } }) { Text("Без фона") }
+        }
+        if (c.background == "color") {
+            var bgHex by remember { mutableStateOf(c.backgroundCustomColor) }
+            OutlinedTextField(bgHex, { bgHex = it }, label = { Text("Цвет фона #RRGGBB") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = { update { it.copy(background = "color", backgroundCustomColor = bgHex.trim()) } }) { Text("Применить цвет") }
+                if (AppearanceCodec.parseColor(bgHex) != null) {
+                    Box(Modifier.size(28.dp).clip(MaterialTheme.shapes.small).background(AppearanceCodec.parseColor(bgHex)!!))
+                }
+            }
         }
         SectionHeader("Дополнительно", "Тонкая настройка внешнего вида")
         sliderRow("Скругление карточек", c.cornerRadius.toFloat(), 0f..28f) { v -> update { cfg -> cfg.copy(cornerRadius = v.toInt()) } }

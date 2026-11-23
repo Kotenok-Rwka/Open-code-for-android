@@ -110,4 +110,9 @@ app/src/main/java/com/pocketcode/
 В каждом перенесённом файле остаётся комментарий с указанием автора. Подробности: [THIRD_PARTY_MIKA.txt](THIRD_PARTY_MIKA.txt),
 полный текст лицензии: [licenses/Mika-LICENSE-Apache-2.0.txt](licenses/Mika-LICENSE-Apache-2.0.txt).
 Часть файлов помощника в свою очередь основана на [scrcpy](https://github.com/Genymobile/scrcpy) (Apache-2.0, Genymobile).
+Локальные GGUF-модели запускаются через встроенный нативный llama.cpp: бинарник `llama-server` собирается workflow `.github/workflows/build-llama.yml` и кладётся в `assets/native/arm64-v8a/`. Приложение распаковывает его, копирует в Linux rootfs и поднимает OpenAI-совместимый сервер на `127.0.0.1:8080/v1`.
+
+Отдельные идеи (ветки беседы, каталог локальных моделей, контроль качества, импорт/экспорт чата, настройки размышлений) реализованы заново по мотивам проектов
+[Agora](https://github.com/newo-ether/Agora) и [AndroidHarness](https://github.com/Sanuu7/AndroidHarness) (автор Sanuu7). Исходный код этих проектов не копировался. Подробности: [THIRD_PARTY_IDEAS.md](THIRD_PARTY_IDEAS.md).
+
 Остальной код PocketCode распространяется по лицензии MIT, см. [LICENSE](LICENSE).

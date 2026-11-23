@@ -65,23 +65,33 @@ fun LinuxScreen(vm: ChatController, onBack: () -> Unit) = Page("Среда Linux
     Text(vm.rootFsDescription, style = MaterialTheme.typography.bodySmall)
     Text(
         if (vm.linuxInstalled) {
-            "Linux установлен. Агент выполняет bash внутри него: настоящий sh, свои пакеты. Папка проекта доступна как /work."
+            "Установлен ${if (vm.rootFsChoice == com.pocketcode.linux.RootFsChoice.UBUNTU.name) "Ubuntu (apt)" else "Alpine (apk)"}. Агент выполняет bash внутри него: настоящий sh, свои пакеты. Папка проекта доступна как /work."
         } else {
             "Скачает выбранный образ и запустит его через proot. Alpine вшит в приложение и весит ≈4 МБ; Ubuntu скачивается отдельно и занимает больше места."
         },
         style = MaterialTheme.typography.bodyMedium,
     )
+    if (vm.linuxInstalled && !vm.linuxBusy && !vm.running &&
+        vm.rootFsChoice != vm.installedRootFs) {
+        Text("Внимание: сейчас установлен другой образ. Чтобы переключиться, удалите текущий Linux и установите заново.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+    }
     if (vm.linuxBusy) {
         LinearProgressIndicator(Modifier.fillMaxWidth())
         Text("Можно выйти с этого экрана и пользоваться приложением: установка продолжится, прогресс виден сверху на любом экране.", style = MaterialTheme.typography.bodySmall)
     }
-    if (!vm.linuxInstalled) {
+    if (!vm.linuxInstalled || vm.rootFsChoice != vm.installedRootFs) {
         Text(VPN_NOTE, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
         Button(
             onClick = { vm.installLinux() },
             enabled = !vm.linuxBusy && !vm.running,
             modifier = Modifier.fillMaxWidth(),
-        ) { Text(if (vm.linuxBusy) "Устанавливаю…" else "Установить Linux") }
+        ) {
+            Text(
+                if (vm.linuxBusy) "Устанавливаю…"
+                else if (!vm.linuxInstalled) "Установить Linux"
+                else "Переустановить под ${if (vm.rootFsChoice == com.pocketcode.linux.RootFsChoice.UBUNTU.name) "Ubuntu" else "Alpine"}"
+            )
+        }
     } else {
         Text("Где выполнять команды агента", style = MaterialTheme.typography.titleSmall)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

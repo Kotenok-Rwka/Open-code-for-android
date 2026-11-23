@@ -16,6 +16,8 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
@@ -33,7 +35,9 @@ import com.pocketcode.LocalModelCatalog
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LocalModelsCatalogScreen(
+    vm: ChatController,
     onUse: (LocalModelAdvice) -> Unit,
+    onInstall: (LocalModelAdvice) -> Unit,
     onBack: () -> Unit,
 ) = Scaffold(
     topBar = {
@@ -52,6 +56,8 @@ fun LocalModelsCatalogScreen(
     var vision by remember { mutableStateOf(false) }
     var fast by remember { mutableStateOf(false) }
     var limitRam by remember { mutableStateOf(false) }
+    var modelUrl by remember { mutableStateOf("") }
+    var externalUrl by remember { mutableStateOf("http://127.0.0.1:1234/v1") }
 
     val list = LocalModelCatalog.filter(
         query = query,
@@ -84,6 +90,44 @@ fun LocalModelsCatalogScreen(
                 FilterChip(selected = capability == c, onClick = { capability = c }, label = { Text(c.label) })
             }
         }
+        androidx.compose.material3.HorizontalDivider()
+        SectionHeader("Локальный рантайм", "GGUF работает через llama.cpp/Ollama внутри Linux на телефоне — свои модели, без облака")
+        OutlinedTextField(modelUrl, { modelUrl = it }, label = { Text("Своя ссылка на .gguf (необязательно)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        var gpu by remember { mutableStateOf(vm.localGpuLayers.toString()) }
+        var ctx by remember { mutableStateOf(vm.localContext.toString()) }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedTextField(gpu, { gpu = it }, label = { Text("GPU-слои (0 = CPU)") }, modifier = Modifier.weight(1f), singleLine = true)
+            OutlinedTextField(ctx, { ctx = it }, label = { Text("Контекст") }, modifier = Modifier.weight(1f), singleLine = true)
+        }
+        Button(onClick = {
+            vm.setLocalSettings(vm.localPort, gpu.toIntOrNull() ?: 0, ctx.toIntOrNull() ?: 8192, vm.localModel)
+        }, modifier = Modifier.fillMaxWidth()) { Text("Сохранить настройки сервера") }
+        Text(vm.localRuntimeStatus, style = MaterialTheme.typography.bodySmall)
+        val installed = remember(vm.localInstallStatus) { vm.localDownloader.installed() }
+        if (installed.isNotEmpty()) {
+            Text("Установленные модели:", style = MaterialTheme.typography.labelMedium)
+            installed.forEach { f ->
+                TextButton(onClick = { vm.setLocalSettings(vm.localPort, vm.localGpuLayers, vm.localContext, f.name) }) {
+                    Text("• ${f.name} — ${f.length() / 1024 / 1024} МБ${if (vm.localModel == f.name) " ✓" else ""}", style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        }
+        val log = vm.localServerLog()
+        if (log.isNotBlank()) {
+            Text("Лог сервера:", style = MaterialTheme.typography.labelMedium)
+            Text(log.takeLast(1200), style = MaterialTheme.typography.bodySmall, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(onClick = { vm.installLocalRuntime() }, enabled = !vm.localRuntimeBusy) { Text("Подготовить") }
+            OutlinedButton(onClick = { vm.startLocalServer() }, enabled = !vm.localRuntimeBusy) { Text("Запустить сервер") }
+            OutlinedButton(onClick = { vm.stopLocalServer() }) { Text("Остановить") }
+            OutlinedButton(onClick = { vm.connectLocalEndpoint("http://127.0.0.1:8080/v1", "local-model") }) { Text("Подключить") }
+        }
+        Text("Внешний сервер (LM Studio/Ollama):", style = MaterialTheme.typography.labelMedium)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedTextField(externalUrl, { externalUrl = it }, label = { Text("http://IP:Port/v1") }, singleLine = true, modifier = Modifier.weight(1f))
+            Button(onClick = { vm.connectLocalEndpoint(externalUrl, "local-model") }) { Text("Подключить") }
+        }
         Text("Найдено: ${list.size}", style = MaterialTheme.typography.bodySmall)
         list.forEach { m ->
             Card(Modifier.fillMaxWidth()) {
@@ -101,7 +145,11 @@ fun LocalModelsCatalogScreen(
                         style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Text(m.capabilities.joinToString(" · ") { it.label }, style = MaterialTheme.typography.labelSmall)
-                    Button(onClick = { onUse(m) }) { Text("Использовать") }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = { vm.downloadLocalModel(m.id, m.quant, modelUrl) }) { Text("Скачать GGUF") }
+                        TextButton(onClick = { onInstall(m) }) { Text("Как вручную") }
+                        OutlinedButton(onClick = { onUse(m) }) { Text("Использовать") }
+                    }
                 }
             }
         }

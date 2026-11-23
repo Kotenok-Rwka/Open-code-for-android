@@ -5,13 +5,17 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 NAME=pocketcode-desktop
-VER=$(sed -n 's/^VERSION_BASE=//p' ../version.properties | head -1 | tr -d '[:space:]' || true)
+VER=$(tr -d '[:space:]' < VERSION 2>/dev/null || true)
+[ -z "$VER" ] && VER=$(sed -n 's/^VERSION_BASE=//p' ../version.properties | head -1 | tr -d '[:space:]' || true)
 [ -z "$VER" ] && VER=4.0
-VER="$VER.${PC_PATCH:-1}"
-ARCH=$(dpkg --print-architecture 2>/dev/null || echo amd64)
+[ -z "${PC_PATCH:-}" ] || VER="$VER.$PC_PATCH"
+ARCH=${PC_ARCH:-amd64}  # для Debian/Ubuntu: amd64 или arm64; переопредели через PC_ARCH
 ROOT=$(mktemp -d)
+# dpkg-deb требует, чтобы каталоги package/DEBIAN были не уже 0700
+chmod 755 "$ROOT"
 PKG="$ROOT/$NAME"
 mkdir -p "$PKG/DEBIAN" "$PKG/usr/bin" "$PKG/usr/share/applications" "$PKG/usr/lib/pocketcode-desktop"
+chmod -R 755 "$PKG"
 
 cat > "$PKG/DEBIAN/control" <<EOF
 Package: $NAME

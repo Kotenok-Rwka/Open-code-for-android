@@ -33,27 +33,38 @@ data class StorageScan(val total: Long, val rows: List<StorageRow>)
 object StorageScanner {
     fun scan(base: File): StorageScan {
         val dirs = listOf(
-            "Данные приложения" to base,
             "Плагины" to File(base, "plugins"),
             "Навыки" to File(base, ".pocketcode/skills"),
             "Рабочие области" to File(base, "workspace"),
             "Пакеты Linux" to File(base, "linux"),
             "Локальные модели" to File(base, "models"),
             "Кэш" to File(base, "cache"),
+            "Остальные данные" to base,
         )
+        val counted = HashSet<String>()
         val rows = dirs.map { (name, dir) ->
             var bytes = 0L
             var count = 0
             fun walk(f: File) {
                 if (!f.exists()) return
+                val key = runCatching { f.canonicalPath }.getOrDefault(f.absolutePath)
+                if (!counted.add(key)) return
                 if (f.isFile) { bytes += f.length(); count++; return }
                 f.listFiles()?.forEach { walk(it) }
             }
             walk(dir)
             StorageRow(name, dir.absolutePath, bytes, count)
         }
-        return StorageScan(rows.first().bytes, rows)
+        return StorageScan(rows.sumOf { it.bytes }, rows)
     }
+}
+
+/** Человекочитаемый размер: КБ/МБ/ГБ вместо вечных «0.0 МБ». */
+fun formatBytes(bytes: Long): String = when {
+    bytes >= 1024L * 1024 * 1024 -> "%.2f ГБ".format(bytes / (1024.0 * 1024 * 1024))
+    bytes >= 1024L * 1024 -> "%.1f МБ".format(bytes / (1024.0 * 1024))
+    bytes >= 1024L -> "%.1f КБ".format(bytes / 1024.0)
+    else -> "$bytes Б"
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -73,12 +84,13 @@ fun StorageScreen(onBack: () -> Unit) = Scaffold(
     var expanded by remember { mutableStateOf<String?>(null) }
     val rows = scan.rows.filter { it.name.contains(query, ignoreCase = true) || it.path.contains(query, ignoreCase = true) }
         .let { if (sort == "largest") it.sortedByDescending { r -> r.bytes } else it }
+        .let { if (sort == "unknown") it.filter { r -> r.bytes == 0L } else it }
     Column(Modifier.padding(pad).fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), Arrangement.spacedBy(10.dp)) {
         Text("Хранилище устройства", style = MaterialTheme.typography.titleSmall)
         Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text("%.1f МБ".format(scan.total / 1024f / 1024f), style = MaterialTheme.typography.headlineMedium)
-                Text("Измерено на этом устройстве", style = MaterialTheme.typography.bodySmall)
+                Text(formatBytes(scan.total), style = MaterialTheme.typography.headlineMedium)
+                Text("Уникальные файлы без повторного счёта вложенных папок", style = MaterialTheme.typography.bodySmall)
             }
             Button(onClick = { scan = StorageScanner.scan(ctx.filesDir) }) { Text("Пересканировать") }
         }
@@ -93,9 +105,9 @@ fun StorageScreen(onBack: () -> Unit) = Scaffold(
                 Column(Modifier.padding(12.dp)) {
                     Row {
                         Text(r.name, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-                        Text("%.1f МБ".format(r.bytes / 1024f / 1024f), style = MaterialTheme.typography.labelMedium)
+                        Text(formatBytes(r.bytes), style = MaterialTheme.typography.labelMedium)
                     }
-                    Text("${r.count} элементов", style = MaterialTheme.typography.bodySmall)
+                    Text("${r.count} файлов", style = MaterialTheme.typography.bodySmall)
                     if (expanded == r.name) Text(r.path, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }

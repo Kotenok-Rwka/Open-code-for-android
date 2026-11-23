@@ -93,6 +93,7 @@ fun FilesScreen(
     var original by remember { mutableStateOf("") }
     var confirmLeave by remember { mutableStateOf(false) }
     var previewFile by remember { mutableStateOf<File?>(null) }
+    var showVersions by remember { mutableStateOf(false) }
     var toRename by remember { mutableStateOf<File?>(null) }
     var renameTo by remember { mutableStateOf("") }
     var showSearch by remember { mutableStateOf(false) }
@@ -171,7 +172,12 @@ fun FilesScreen(
         val f = editing ?: return
         val content = text
         scope.launch {
-            val r = withContext(Dispatchers.IO) { runCatching { f.writeText(content, Charsets.UTF_8) } }
+            val r = withContext(Dispatchers.IO) {
+                runCatching {
+                    com.pocketcode.tools.SafeFiles.rememberOriginal(f)
+                    require(com.pocketcode.tools.SafeFiles.atomicWrite(f, content)) { "не удалось записать файл" }
+                }
+            }
             r.onSuccess {
                 original = content
                 message = "Сохранено"
@@ -315,6 +321,7 @@ fun FilesScreen(
                     Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()).padding(horizontal = 8.dp),
                     horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(4.dp),
                 ) {
+                    TextButton(onClick = { showVersions = true }) { Text("Версии") }
                     TextButton(onClick = { showSearch = !showSearch }) { Text("Поиск") }
                     TextButton(onClick = { findDefinitions() }) { Text("Определение") }
                     if (checker != null) {
@@ -453,6 +460,48 @@ fun FilesScreen(
                 }
             }
         }
+    }
+
+    if (showVersions && editing != null) {
+        val f = editing!!
+        val versions = com.pocketcode.tools.SafeFiles.history(f)
+        AlertDialog(
+            onDismissRequest = { showVersions = false },
+            title = { Text("Версии файла") },
+            text = {
+                androidx.compose.foundation.layout.Column(
+                    Modifier.verticalScroll(rememberScrollState()),
+                ) {
+                    if (versions.isEmpty()) Text("Версий пока нет: они появляются после сохранения правок.", style = MaterialTheme.typography.bodySmall)
+                    versions.forEach { v ->
+                        var showDiff by remember { mutableStateOf(false) }
+                        Column {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                TextButton(onClick = { showDiff = !showDiff }, modifier = Modifier.weight(1f)) {
+                                    Text("${java.text.SimpleDateFormat("dd.MM HH:mm", java.util.Locale.getDefault()).format(java.util.Date(v.at))} · ${v.hash.take(8)}", style = MaterialTheme.typography.bodySmall)
+                                }
+                                TextButton(onClick = {
+                                    com.pocketcode.tools.SafeFiles.restore(f, v.file)
+                                    text = f.readText(Charsets.UTF_8)
+                                    editorValue = TextFieldValue(text)
+                                    original = text
+                                    showVersions = false
+                                    message = "Версия восстановлена"
+                                }) { Text("Вернуть") }
+                            }
+                            if (showDiff) {
+                                Text(
+                                    com.pocketcode.tools.lineDiff(v.file.readText(Charsets.UTF_8), f.readText(Charsets.UTF_8)),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    modifier = Modifier.padding(horizontal = 8.dp),
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showVersions = false }) { Text("Закрыть") } },
+        )
     }
 
     if (confirmLeave) {

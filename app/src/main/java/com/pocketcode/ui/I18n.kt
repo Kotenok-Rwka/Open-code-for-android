@@ -29,7 +29,8 @@ object I18n {
     /** Все языки, для которых есть файл перевода (русский встроен). */
     val all = listOf(
         Lang("ru", "Русский"), Lang("en", "English"), Lang("ar", "العربية", rtl = true),
-        Lang("es", "Español"), Lang("de", "Deutsch"), Lang("zh", "中文"), Lang("tr", "Türkçe"), Lang("uk", "Українська"),
+        Lang("es", "Español"), Lang("de", "Deutsch"), Lang("zh", "中文"), Lang("tr", "Türkçe"),
+        Lang("fr", "Français"), Lang("it", "Italiano"), Lang("pt", "Português"),
     )
 
     var code by mutableStateOf("ru")

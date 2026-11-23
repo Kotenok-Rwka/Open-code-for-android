@@ -290,9 +290,14 @@ class SettingsStore(context: Context) {
         rawPut("sshSecrets", Json.encodeToString(map + (name to value)))
     }
 
-    fun loadAppearance(): com.pocketcode.ui.AppearanceConfig =
-        rawGet("appearance")?.let { runCatching { Json.decodeFromString<com.pocketcode.ui.AppearanceConfig>(it) }.getOrNull() }
+    fun loadAppearance(): com.pocketcode.ui.AppearanceConfig {
+        val raw = rawGet("appearance")
+        val c = raw?.let { runCatching { Json.decodeFromString<com.pocketcode.ui.AppearanceConfig>(it) }.getOrNull() }
             ?: com.pocketcode.ui.AppearanceConfig()
+        // Перенос: раньше цвет акцента хранился отдельно («palette»). Если в новой настройке его ещё нет — берём прежний выбор.
+        val legacy = rawGet("palette")
+        return if (legacy != null && (raw == null || !raw.contains("\"accentId\""))) c.copy(accentId = legacy) else c
+    }
 
     fun saveAppearance(c: com.pocketcode.ui.AppearanceConfig) { rawPut("appearance", Json.encodeToString(c)) }
 

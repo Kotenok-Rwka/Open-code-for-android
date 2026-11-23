@@ -229,6 +229,10 @@ fun MarkdownText(text: String, modifier: Modifier = Modifier) {
                     modifier = Modifier.padding(top = 4.dp),
                 )
                 is MdBlock.Code -> {
+                    if (RichBlocks.isRich(block.lang, block.code)) {
+                        RichBlock(block.lang, block.code)
+                        continue
+                    }
                     val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
                     Column(
                         Modifier

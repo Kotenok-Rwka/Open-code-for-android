@@ -102,6 +102,10 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.6")
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.8.6")
     implementation("androidx.documentfile:documentfile:1.0.1")
+    // QR-код для быстрой настройки синхронизации с ПК
+    implementation("com.google.zxing:core:3.5.3")
+    // Сканирование QR настройки синхронизации
+    implementation("com.google.android.gms:play-services-mlkit-barcode-scanning:18.3.1")
     implementation("org.apache.commons:commons-compress:1.26.2")
 
     implementation(platform("androidx.compose:compose-bom:2024.12.01"))

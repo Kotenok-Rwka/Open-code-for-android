@@ -48,6 +48,12 @@ abstract class PhoneTool(
     }
 
     /** Выполняет действие: [fail] — причина неудачи (null — успех); после успеха возвращает текст нового экрана. */
+    /** Проверка свежести снимка: если экран мог смениться, просим агента сделать phone_look. */
+    protected fun freshNodeError(input: JsonObject): String? {
+        val n = input.node() ?: return null
+        return if (phone.nodeByIdFresh(n) == null) "Снимок экрана устарел или экран сменился. Вызови phone_look и повтори действие." else null
+    }
+
     protected suspend fun act(fail: suspend () -> String?): String {
         // на фоновом экране следим, не откроется ли приложение у пользователя на основном (см. PhoneController.beginAction)
         phone.beginAction()
@@ -100,7 +106,7 @@ class PhoneTapTool(phone: PhoneController, confirm: () -> PhoneConfirm) : PhoneT
     }
     override suspend fun run(input: JsonObject): String = act {
         val n = input.node()
-        if (n != null) { if (phone.tapNode(n)) null else "Не удалось нажать элемент $n. Вызови phone_look и проверь номер." }
+        if (n != null) { freshNodeError(input)?.let { return@act it }; if (phone.tapNode(n)) null else "Не удалось нажать элемент $n. Вызови phone_look и проверь номер." }
         else { val (x, y) = input.xy(); if (phone.tap(x, y)) null else "Не удалось нажать в точку ($x, $y)." }
     }
 }

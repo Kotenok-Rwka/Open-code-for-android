@@ -35,6 +35,15 @@ class QuestionCardsTest {
     }
 
     @Test
+    fun parsesRussianQuestionWord() {
+        val parsed = parseQuestionCards("ВОПРОСЫ\nВопрос: Что важнее?\nA: Скорость\nB: Качество\n/QUESTIONS")
+        assertNotNull(parsed)
+        assertEquals(1, parsed!!.questions.size)
+        assertEquals("Что важнее?", parsed.questions[0].question)
+        assertEquals(2, parsed.questions[0].options.size)
+    }
+
+    @Test
     fun parsesSeveralQuestionsAndRussianTag() {
         val text = """
             ВОПРОСЫ

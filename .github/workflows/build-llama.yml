@@ -1,0 +1,52 @@
+name: Build llama.cpp for PocketCode (arm64)
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/build-llama.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  llama:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install NDK
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;26.3.11579264" >/dev/null
+      - name: Fetch llama.cpp
+        run: |
+          git clone --depth 1 https://github.com/ggml-org/llama.cpp.git /tmp/llama.cpp
+      - name: Build native server (arm64-v8a)
+        run: |
+          set -euxo pipefail
+          export NDK="$ANDROID_HOME/ndk/26.3.11579264"
+          export TOOLCHAIN="$NDK/toolchains/llvm/prebuilt/linux-x86_64"
+          export TARGET=aarch64-linux-android24
+          export CC="$TOOLCHAIN/bin/aarch64-linux-android24-clang"
+          export CXX="$TOOLCHAIN/bin/aarch64-linux-android24-clang++"
+          mkdir -p "$GITHUB_WORKSPACE/build-llama" "$GITHUB_WORKSPACE/out/arm64-v8a"
+          cmake -S /tmp/llama.cpp -B "$GITHUB_WORKSPACE/build-llama" \
+            -DCMAKE_TOOLCHAIN_FILE="$NDK/build/cmake/android.toolchain.cmake" \
+            -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-24 \
+            -DANDROID_STL=c++_static -DCMAKE_BUILD_TYPE=Release \
+            -DGGML_CUDA=OFF -DLLAMA_CURL=OFF -DBUILD_SHARED_LIBS=OFF
+          cmake --build "$GITHUB_WORKSPACE/build-llama" -j4 --target llama-server llama-cli
+          cp $GITHUB_WORKSPACE/build-llama/bin/llama-server $GITHUB_WORKSPACE/out/arm64-v8a/
+          cp $GITHUB_WORKSPACE/build-llama/bin/llama-cli $GITHUB_WORKSPACE/out/arm64-v8a/
+          "$TOOLCHAIN/bin/llvm-strip" $GITHUB_WORKSPACE/out/arm64-v8a/* || true
+      - name: Commit binaries into APK assets
+        run: |
+          mkdir -p app/src/main/assets/native/arm64-v8a
+          cp $GITHUB_WORKSPACE/out/arm64-v8a/* app/src/main/assets/native/arm64-v8a/
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add app/src/main/assets/native
+          git commit -m "llama.cpp: встроенный нативный сервер для GGUF" || true
+          git push
+      - uses: actions/upload-artifact@v4
+        with:
+          name: llama-android-arm64
+          path: out

@@ -22,6 +22,7 @@ class AnthropicClient(
     private val caching: Boolean = false,
     /** Максимум токенов в одном ответе; 0 — 16384. */
     private val maxTokens: Int = 0,
+    private val reasoning: ReasoningSpec? = null,
 ) : LlmClient {
 
     private class Acc {
@@ -41,6 +42,9 @@ class AnthropicClient(
         val body = buildJsonObject {
             put("model", model)
             put("max_tokens", if (maxTokens > 0) maxTokens else 16384)
+            if (reasoning != null && reasoning.enabled && reasoning.depth >= 2) {
+                putJsonObject("thinking") { put("type", "enabled"); put("budget_tokens", 4000) }
+            }
             put("stream", true)
             if (caching) {
                 putJsonArray("system") {

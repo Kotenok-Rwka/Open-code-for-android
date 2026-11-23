@@ -74,11 +74,26 @@ class LinuxEnv(private val context: Context) {
     @Volatile
     var noLink = false
 
+    /** Какой образ установлен/выбран: ALPINE или UBUNTU. */
+    @Volatile
+    var flavor: String = RootFsChoice.ALPINE.name
+
     private val prootBin get() = File(nativeDir, "libproot.so")
 
     fun isSupported(): Boolean = prootBin.exists() && alpineArch() != null
-    // /bin/sh в Alpine — абсолютный симлинк, с хоста он «не существует», поэтому проверяем busybox
-    fun isInstalled(): Boolean = marker.exists() && File(rootfs, "bin/busybox").exists()
+    // /bin/sh в Alpine — абсолютный симлинк, с хоста он «не существует», поэтому проверяем busybox;
+    // в Ubuntu проверяем типичный для ubuntu-base путь.
+    fun isInstalled(): Boolean {
+        if (!marker.exists()) return false
+        val stored = runCatching { marker.readText().trim() }.getOrDefault("ok")
+        // Старые установки помечались «ok» — это всегда Alpine.
+        val installed = if (stored == "ok") RootFsChoice.ALPINE.name else stored
+        if (installed != flavor) return false
+        return when (flavor) {
+            RootFsChoice.UBUNTU.name -> File(rootfs, "bin/bash").exists() || File(rootfs, "usr/bin/bash").exists() || File(rootfs, "bin/busybox").exists()
+            else -> File(rootfs, "bin/busybox").exists()
+        }
+    }
 
     companion object {
         /** Имя вшитого в APK архива Alpine для архитектуры [arch] (aarch64 или armv7). */
@@ -134,6 +149,8 @@ class LinuxEnv(private val context: Context) {
     suspend fun install(onProgress: (String) -> Unit): String = withContext(Dispatchers.IO) {
         val arch = alpineArch() ?: error("Эта архитектура процессора не поддерживается")
         require(prootBin.exists()) { "В приложении нет proot для этого телефона" }
+        val ubuntu = flavor == RootFsChoice.UBUNTU.name
+        val distro = if (ubuntu) "Ubuntu" else "Alpine Linux"
         base.mkdirs()
         marker.delete()
         rootfs.deleteRecursively()
@@ -142,12 +159,12 @@ class LinuxEnv(private val context: Context) {
         val archive = File(base, "rootfs.tar.gz")
         val client = OkHttpClient.Builder()
             .connectTimeout(30, TimeUnit.SECONDS)
-            .readTimeout(60, TimeUnit.SECONDS)
+            .readTimeout(180, TimeUnit.SECONDS)
             .build()
         var lastError: String? = null
         var ok = false
-        // Alpine вшит в APK: интернет для установки не нужен. Если файла нет (сборка без него), скачиваем, как раньше.
-        val bundled = runCatching { context.assets.open(bundledAssetName(arch)) }.getOrNull()
+        // Alpine вшит в APK: интернет для установки не нужен. Ubuntu скачивается с официального зеркала.
+        val bundled = if (ubuntu) null else runCatching { context.assets.open(bundledAssetName(arch)) }.getOrNull()
         if (bundled != null) {
             onProgress("Беру Alpine Linux из приложения…")
             try {
@@ -157,13 +174,17 @@ class LinuxEnv(private val context: Context) {
                 lastError = e.message ?: e.javaClass.simpleName
             }
         }
-        for (url in urls(arch)) {
+        val imageUrls = if (ubuntu) {
+            val a = when (arch) { "aarch64" -> "arm64"; "armv7" -> "armhf"; else -> arch }
+            listOf(RootFsCatalog.ubuntuUrl(a), RootFsCatalog.ubuntuUrl(a, "jammy"))
+        } else urls(arch)
+        for (url in imageUrls) {
             if (ok) break
-            onProgress("Скачиваю Alpine Linux…")
+            onProgress("Скачиваю $distro…")
             try {
                 client.newCall(Request.Builder().url(url).build()).execute().use { resp ->
                     if (!resp.isSuccessful) {
-                        lastError = "HTTP ${resp.code}"
+                        lastError = "HTTP ${resp.code}: $url"
                         return@use
                     }
                     val body = resp.body ?: return@use
@@ -180,7 +201,7 @@ class LinuxEnv(private val context: Context) {
                                 done += n
                                 if (done - lastShown > 512 * 1024) {
                                     lastShown = done
-                                    onProgress("Скачиваю Alpine Linux: ${done / 1024} из ${if (total > 0) total / 1024 else "?"} КБ")
+                                    onProgress("Скачиваю $distro: ${done / 1024} из ${if (total > 0) total / 1024 else "?"} КБ")
                                 }
                             }
                         }
@@ -192,7 +213,7 @@ class LinuxEnv(private val context: Context) {
             }
             if (ok) break
         }
-        if (!ok) error("Не удалось скачать Alpine: $lastError")
+        if (!ok) error("Не удалось скачать $distro: $lastError")
 
         onProgress("Распаковываю…")
         extract(archive, rootfs)
@@ -216,12 +237,12 @@ class LinuxEnv(private val context: Context) {
             noSeccomp = false; noLink = false
             error("proot не запустился на этом телефоне (проверено 4 режима):\n" + log.toString().take(2800))
         }
-        marker.writeText("ok")
-        "Готово" + (if (noSeccomp) " (без seccomp)" else "") + (if (noLink) " (без link2symlink)" else "")
+        marker.writeText(flavor)
+        "Готово ($distro)" + (if (noSeccomp) " (без seccomp)" else "") + (if (noLink) " (без link2symlink)" else "")
     }
 
     private fun probe(): String {
-        val pb = processBuilder("echo pocketcode-ok; cat /etc/alpine-release", base, base)
+        val pb = processBuilder("echo pocketcode-ok; cat /etc/os-release", base, base)
         return try {
             val p = pb.start()
             p.outputStream.close()

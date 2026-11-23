@@ -30,6 +30,10 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun ToolsScreen(
     initial: ToolsConfig,
+    vmReadOnly: Boolean = false,
+    onReadOnlyChange: (Boolean) -> Unit = {},
+    chatOnly: Boolean = false,
+    onChatOnlyChange: (Boolean) -> Unit = {},
     linuxInstalled: Boolean,
     onSave: (ToolsConfig) -> Unit,
     onBack: () -> Unit,
@@ -56,6 +60,33 @@ fun ToolsScreen(
                 if (c.reasoning) {
                     Text("Глубина: ${c.reasoningDepth}", style = MaterialTheme.typography.bodySmall)
                     Slider(value = c.reasoningDepth.toFloat(), onValueChange = { v -> update { it.copy(reasoningDepth = v.toInt()) } }, valueRange = 0f..3f, steps = 2, modifier = Modifier.fillMaxWidth())
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Чат без проекта")
+                        Text("Модель отвечает без доступа к файлам, терминалу и телефону — только поиск в интернете и заметки.", style = MaterialTheme.typography.bodySmall)
+                    }
+                    Switch(checked = chatOnly, onCheckedChange = onChatOnlyChange)
+                }
+                Text("Протокол reasoning:", style = MaterialTheme.typography.labelMedium)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf("auto" to "Авто", "openai" to "OpenAI", "gemini" to "Gemini", "anthropic" to "Claude", "deepseek" to "DeepSeek", "off" to "Выкл").forEach { (v, l) ->
+                        FilterChip(selected = c.reasoningVendor == v, onClick = { update { it.copy(reasoningVendor = v) } }, label = { Text(l) })
+                    }
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Только чтение")
+                        Text("Агент сможет читать файлы и искать, но не сможет ничего менять или запускать команды.", style = MaterialTheme.typography.bodySmall)
+                    }
+                    Switch(checked = vmReadOnly, onCheckedChange = onReadOnlyChange)
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Контроль качества после правок")
+                        Text("Агент сам запускает diagnostics и тесты, перечитывает правки и сообщает, что не проверил.", style = MaterialTheme.typography.bodySmall)
+                    }
+                    Switch(checked = c.selfCheck, onCheckedChange = { v -> update { it.copy(selfCheck = v) } })
                 }
             }
         }
