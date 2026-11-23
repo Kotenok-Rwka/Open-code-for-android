@@ -409,6 +409,15 @@ class ChatController(
 
     /** Автоустановка GGUF: качаем в фоне с прогрессом, затем можно сразу запустить. */
     val localDownloader by lazy { com.pocketcode.linux.LocalModelDownloader(app) }
+
+    /** Отмена скачивания: обрывает соединение и удаляет недоскачанный .part, не трогая готовые модели. */
+    fun cancelLocalDownload() {
+        if (!localDownloader.isDownloading) return
+        localDownloader.cancel()
+        localInstallStatus = "Скачивание отменено. Частичный файл удалён."
+        localRuntimeBusy = false
+    }
+
     fun downloadLocalModel(id: String, quant: String, manualUrl: String = "") {
         if (localRuntimeBusy || running) return
         val target = localDownloader.target(id, quant)
@@ -580,6 +589,10 @@ class ChatController(
     }
 
     /** Применяет рекомендованную локальную модель к текущему профилю (OpenAI-совместимый endpoint). */
+    /**
+     * «Использовать» в каталоге моделей: сразу выбираем модель, поднимаем встроенный сервер
+     * и подключаем профиль, чтобы пользователь мог писать в чат, не переходя по экранам.
+     */
     fun useLocalModel(modelId: String) {
         val s = settings
         val p = profiles.firstOrNull { it.id == activeProfileId }
@@ -590,7 +603,11 @@ class ChatController(
         activeProfileId = np.id
         settings = s.copy(provider = com.pocketcode.Provider.OPENAI, model = modelId, baseUrl = np.baseUrl, apiKey = np.apiKey)
         settingsStore.save(settings)
+        setLocalSettings(localPort, localGpuLayers, localContext, modelId)
+        connectLocalEndpoint("http://127.0.0.1:$localPort/v1", modelId)
         agent = null
+        if (!localServerLog().contains(modelId, ignoreCase = true)) startLocalServer(localPort)
+        localInstallStatus = "Модель $modelId выбрана. Сервер запускается — можно писать в чат."
     }
 
     fun setPlanningProfile(id: String) {
@@ -1994,6 +2011,21 @@ class ChatController(
         send(next)
     }
 
+    /**
+     * Отправить первый task из очереди, не дожидаясь окончания текущей задачи.
+     * Текущая работа прерывается так же, как по кнопке «Стоп»; её изменения в файлах остаются,
+     * а остаток очереди сохраняется и продолжится после ответа.
+     */
+    fun runQueueNow() {
+        if (queue.isEmpty()) return
+        if (running) {
+            notes.clear()
+            markPendingInterrupted()
+            cancelRun()
+        }
+        runQueue()
+    }
+
     // ---------- откат ----------
 
     var snapshotList by mutableStateOf<List<SnapshotMeta>>(emptyList())
@@ -3175,10 +3207,33 @@ class ChatController(
     /** Кусок AGENTS.md для OpenCode: что установлено и как этим пользоваться. */
     fun toolsNotes(): String = extraTools.filter { it.id in toolsOn }.joinToString("\n\n") { it.notes }
 
+    /** Ставит Node 22 из официального tarball в /opt/node22, не меняя системные репозитории Alpine. */
+    private fun node22Command(): String =
+        "if node -v 2>/dev/null | grep -q '^v2[2-9]\\.'; then node -v; echo PC_OK; exit 0; fi; " +
+        "apk add --no-cache curl xz >/dev/null 2>&1; " +
+        "curl -fsSL https://nodejs.org/dist/latest-v22.x/SHASUMS256.txt -o /tmp/node22.sha 2>/dev/null || { echo 'Не удалось получить контрольные суммы Node'; exit 0; }; " +
+        "TAR=${'$'}(grep 'linux-arm64.tar.xz' /tmp/node22.sha | awk '{print ${'$'}2}'); " +
+        "[ -z \"${'$'}TAR\" ] && TAR=${'$'}(grep 'linux-x64.tar.xz' /tmp/node22.sha | awk '{print ${'$'}2}'); " +
+        "[ -z \"${'$'}TAR\" ] && { echo 'Не найден архив Node для этой архитектуры'; exit 0; }; " +
+        "curl -fsSL \"https://nodejs.org/dist/latest-v22.x/${'$'}TAR\" -o /tmp/node22.tar.xz || { echo 'Скачивание Node не удалось'; exit 0; }; " +
+        "mkdir -p /opt/node22 && tar -xJf /tmp/node22.tar.xz -C /opt/node22 --strip-components=1 && " +
+        "ln -sf /opt/node22/bin/node /usr/local/bin/node && ln -sf /opt/node22/bin/npm /usr/local/bin/npm && " +
+        "ln -sf /opt/node22/bin/npx /usr/local/bin/npx && hash -r && node -v && npm -v && echo PC_OK"
+
     private fun toolCmd(id: String, action: String): Pair<String, Long> {
         val ver = """OUT=${'$'}( (%s) 2>&1 ); RC=${'$'}?; echo "${'$'}OUT" | head -n 3; [ ${'$'}RC -eq 0 ] && echo PC_OK"""
         return when (id to action) {
-            "trail" to "install" -> ("apk add --no-cache nodejs npm git python3 make g++ 2>&1 | tail -n 3; npm install -g @trailhq/trail-code 2>&1 | tail -n 20; " + ver.format("trail --version || graft --version")) to 2400L
+            // Node 20 давал EBADENGINE, а бинарники npm иногда остаются без +x — чиним оба случая.
+            "trail" to "install" -> ("apk add --no-cache nodejs npm git python3 make g++ 2>&1 | tail -n 3; " +
+                "NV=${'$'}(node -v 2>/dev/null | sed 's/^v\\([0-9]*\\).*/\\1/'); " +
+                "if [ -z \"${'$'}NV\" ] || [ \"${'$'}NV\" -lt 22 ]; then echo \"NEEDS_NODE22: нужен Node 22 или новее, сейчас: ${'$'}{NV:-нет}\"; exit 0; fi; " +
+                "export DO_NOT_TRACK=1; npm install -g @trailhq/trail-code 2>&1 | tail -n 20; " +
+                "BIN=${'$'}(npm root -g)/@trailhq/trail-code/bin; " +
+                "for f in \"${'$'}BIN\"/*; do [ -f \"${'$'}f\" ] && chmod +x \"${'$'}f\" 2>/dev/null; done; " +
+                "command -v trail >/dev/null || ln -sf \"${'$'}BIN/trail\" /usr/local/bin/trail 2>/dev/null; " +
+                "command -v graft >/dev/null || ln -sf \"${'$'}BIN/graft\" /usr/local/bin/graft 2>/dev/null; " +
+                ver.format("trail --version || graft --version")) to 2400L
+            "trail" to "node22" -> node22Command() to 3000L
             "trail" to "check" -> ver.format("trail --version || graft --version") to 60L
             "trail" to "init" -> "cd /work && (trail init </dev/null 2>&1 | tail -n 30); echo PC_OK" to 300L
             "trail" to "remove" -> "npm uninstall -g @trailhq/trail-code 2>&1 | tail -n 3; echo PC_OK" to 300L
@@ -3186,8 +3241,7 @@ class ChatController(
                 "if [ -z \"${'$'}NV\" ] || [ \"${'$'}NV\" -lt 22 ]; then echo \"NEEDS_NODE22: нужен Node 22 или новее, сейчас: ${'$'}{NV:-нет}\"; exit 0; fi; " +
                 "npm install -g @dzhng/jevgrep 2>&1 | tail -n 20; " + ver.format("jg --version || jg --help")) to 1500L
             "jevgrep" to "check" -> ver.format("jg --version || jg --help") to 60L
-            "jevgrep" to "node22" -> ("sed -i 's#/alpine/v3\\.[0-9]*/#/alpine/v3.21/#g' /etc/apk/repositories; apk update 2>&1 | tail -n 2; apk upgrade --available 2>&1 | tail -n 5; " +
-                "apk add --no-cache nodejs npm 2>&1 | tail -n 3; node -v && echo PC_OK") to 3000L
+            "jevgrep" to "node22" -> node22Command() to 3000L
             "jevgrep" to "remove" -> "npm uninstall -g @dzhng/jevgrep 2>&1 | tail -n 3; echo PC_OK" to 300L
             else -> "echo неизвестное действие" to 10L
         }
@@ -3210,7 +3264,7 @@ class ChatController(
             val ok = out.contains("PC_OK")
             val shown = Secrets.mask(out.replace("PC_OK", "").trim()).takeLast(1200)
             toolStatus[id] = when {
-                out.contains("NEEDS_NODE22") -> shown + "\n\nНажми «Поставить Node 22»."
+                out.contains("NEEDS_NODE22") -> shown + "\n\nНажми «Поставить Node 22», затем повтори установку."
                 ok && action == "install" -> "Установлено и запускается.\n$shown"
                 ok && action == "check" -> "Работает.\n$shown"
                 ok && action == "remove" -> "Удалено."
@@ -5998,7 +6052,7 @@ class ChatController(
                 }
             },
         )
-        val helper: LlmClient? = s.helperModel.trim().takeIf { it.isNotEmpty() }?.let { makeLlm(s, it) }
+        val helper: LlmClient? = s.helperModel.trim().takeIf { it.isNotEmpty() && !smart.leanCalls }?.let { makeLlm(s, it) }
         val explorer = SubagentTool(
             helper ?: llm,
             listOf(ReadFileTool(workspace), ListDirTool(workspace), GrepTool(workspace), WebSearchTool(), WebFetchTool()),
@@ -6047,7 +6101,7 @@ class ChatController(
             instructions = listOfNotNull(
                 runCatching { extensions.projectInstructions() }.getOrNull(),
                 runCatching { extensions.projectNotes() }.getOrNull()?.let { "[Заметки проекта, записаны агентом ранее]\n$it" },
-                if (smart.memoryOn) {
+                if (smart.memoryOn && !smart.leanCalls) {
                     runCatching { ProjectMap.build(workspace.root) }.getOrNull()?.takeIf { it.isNotBlank() }
                         ?.let { "[Карта проекта: собрана автоматически при начале чата и может устареть, перед важными правками проверяй инструментами]\n$it" }
                 } else {
