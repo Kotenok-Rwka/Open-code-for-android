@@ -46,6 +46,11 @@ class SmartFeatures(private val store: SettingsStore) {
     var memoryOn by mutableStateOf(flag("sf_memory", false))
         private set
 
+    /** Не тратить токены на фоновые вызовы:helper-модель, карта проекта и сводки отключаются, основной ответ не меняется. */
+    var leanCalls by mutableStateOf(flag("sf_leancalls", false))
+        private set
+    fun changeLeanCalls(v: Boolean) { leanCalls = v; save("sf_leancalls", v) }
+
     /** Длинный вывод инструментов режется с сохранением начала и конца. */
     var smartTrim by mutableStateOf(flag("sf_trim", true))
         private set

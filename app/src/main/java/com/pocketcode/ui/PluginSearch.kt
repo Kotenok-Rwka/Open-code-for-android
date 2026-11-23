@@ -58,7 +58,7 @@ object PluginSearch {
      * URL поиска. Ключевые слова ищутся в названии, описании и README, чтобы не терять навыки,
      * у которых нужное слово есть только в README. Неизвестный sort не отправляется вовсе.
      */
-    fun url(query: String, category: String = "Все", sort: String = "stars", page: Int = 1, perPage: Int = 20): String {
+    fun url(query: String, category: String = "Все", sort: String = "stars", page: Int = 1, perPage: Int = 50): String {
         val words = mutableListOf(query.trim())
         val cat = categoryWord(category)
         if (cat.isNotBlank()) words += cat

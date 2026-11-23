@@ -18,11 +18,19 @@ object RootFsCatalog {
     }
 
     /**
-     * Ubuntu rootfs для proot. По умолчанию используется официальный ubuntu-base
-     *omen из mirrors; пользователь может заменить URL в настройках.
+     * Ubuntu rootfs для proot. cdimage.ubuntu.com держит только числовые релизы
+     * (22.04 и точечные 22.04.x); пути с кодовыми именами noble/jammy теперь дают 404.
      */
-    fun ubuntuUrl(arch: String, release: String = "noble"): String =
+    fun ubuntuUrl(arch: String, release: String = "22.04"): String =
         "https://cdimage.ubuntu.com/ubuntu-base/releases/$release/release/ubuntu-base-$release-base-$arch.tar.gz"
+
+    /** Несколько запасных зеркал на случай, если основной числовой релиз переехал. */
+    fun ubuntuUrls(arch: String): List<String> = listOf(
+        ubuntuUrl(arch, "22.04.5"),
+        ubuntuUrl(arch, "22.04"),
+        ubuntuUrl(arch, "22.04.4"),
+        "https://cdimage.ubuntu.com/ubuntu-base/releases/22.04.3/release/ubuntu-base-22.04.3-base-$arch.tar.gz",
+    ).distinct()
 
     fun validateUrl(url: String): String? = when {
         !url.startsWith("https://") -> "Нужен HTTPS-адрес образа"

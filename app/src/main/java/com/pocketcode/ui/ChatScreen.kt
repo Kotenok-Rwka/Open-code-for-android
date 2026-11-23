@@ -269,8 +269,11 @@ fun ChatScreen(
                     }
                 }
             }
-            RateStatusLine()
-            if (vm.contextUsed > 0) {
+            // Пока агент работает и пользователь ничего не пишет, убираем разреженные блоки —
+            // остаётся максимум места для хода работы и ответа.
+            val quietRunning = vm.running && input.isBlank()
+            if (!quietRunning) RateStatusLine()
+            if (vm.contextUsed > 0 && !quietRunning) {
                 val limit = vm.effectiveContext.coerceAtLeast(1)
                 val frac = (vm.contextUsed.toFloat() / limit).coerceIn(0f, 1f)
                 fun k(n: Int) = if (n >= 1000) "${n / 1000}к" else "$n"
@@ -306,7 +309,7 @@ fun ChatScreen(
                                 else if (item is UiItem.Questions) QuestionCardView(item, onAnswer = { vm.answerQuestionCards(i, it) })
                                 else ItemView(item, live = vm.running && i == lastItemIndex, projectRoot = java.io.File(vm.workspacePath))
                                 if (item is UiItem.Assistant && !item.text.startsWith("⏳") && !(vm.running && i == lastItemIndex)) {
-                                    Row {
+                                    Row(Modifier.fillMaxWidth().padding(start = 4.dp, top = 2.dp)) {
                                         val star = vm.isStarred(item.text)
                                         TextButton(onClick = { vm.toggleStar(item.text) }, contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp)) { Text(if (star) "★" else "☆", style = MaterialTheme.typography.labelMedium) }
                                         TextButton(onClick = { clip.setText(androidx.compose.ui.text.AnnotatedString(item.text)) }, contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp)) { Text("Копировать", style = MaterialTheme.typography.labelSmall) }
@@ -383,7 +386,7 @@ fun ChatScreen(
                         modifier = Modifier.weight(1f),
                     )
                     if (vm.queue.isNotEmpty()) {
-                        if (!vm.running) TextButton(onClick = { vm.runQueue() }) { Text("Запустить") }
+                        TextButton(onClick = { vm.runQueueNow() }) { Text("Отправить сейчас") }
                         TextButton(onClick = { showQueue = true }) { Text("Очередь") }
                     }
                     if (vm.running && input.isNotBlank()) {
@@ -394,7 +397,7 @@ fun ChatScreen(
                     }
                 }
             }
-            if (showTodos && vm.todos.isNotEmpty()) {
+            if (showTodos && vm.todos.isNotEmpty() && !quietRunning) {
                 Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
                     vm.todos.forEach { t ->
                         val mark = when {
@@ -1307,11 +1310,23 @@ private fun ItemView(item: UiItem, live: Boolean = false, projectRoot: java.io.F
                     InlineChatImages(item.text, projectRoot, modifier = Modifier.fillMaxWidth())
                     InlineChatVideos(item.text, projectRoot, modifier = Modifier.fillMaxWidth())
                 }
-                if (!live && item.text.isNotBlank()) {
-                    Row(Modifier.padding(top = 2.dp)) {
+                // Метаданные вынесены за пределы пузыря сообщения: поверх текста они его перекрывали.
+                // Кнопка появляется только по нажатию на время — в обычном режиме ничего не накладывается.
+                var metaOpen by remember { mutableStateOf(false) }
+                if (!live && item.text.isNotBlank() && (metaOpen || MessageTime.format(item.ts).isNotBlank())) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(top = 6.dp),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
                         val time = MessageTime.format(item.ts)
-                        if (time.isNotBlank()) Text(time, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(end = 4.dp))
-                        CopyButton(item.text)
+                        if (time.isNotBlank()) Text(
+                            time,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.clickable { metaOpen = !metaOpen }.padding(horizontal = 4.dp, vertical = 2.dp),
+                        )
+                        if (metaOpen) CopyButton(item.text)
                     }
                 }
             }

@@ -158,7 +158,12 @@ fun LocalModelsCatalogScreen(
                 if (vm.localRuntimeStatus.isNotBlank()) {
                     Text(vm.localRuntimeStatus, style = MaterialTheme.typography.bodySmall)
                 }
-                vm.localInstallStatus?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary) }
+                vm.localInstallStatus?.let {
+                    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                        Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.weight(1f))
+                        if (vm.localDownloader.isDownloading) TextButton(onClick = { vm.cancelLocalDownload() }) { Text("Отмена") }
+                    }
+                }
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(onClick = { vm.installLocalRuntime() }, enabled = !vm.localRuntimeBusy) { Text("Подготовить") }
                     Button(onClick = { vm.startLocalServer(vm.localPort) }, enabled = !vm.localRuntimeBusy) { Text("Запустить сервер") }
@@ -230,8 +235,12 @@ fun LocalModelsCatalogScreen(
                     )
                     Text(m.capabilities.joinToString(" · ") { it.label }, style = MaterialTheme.typography.labelSmall)
                     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(onClick = { vm.downloadLocalModel(m.id, m.quant, modelUrl) }, enabled = !vm.localRuntimeBusy) {
-                            Text(if (vm.localRuntimeBusy) "Скачиваю…" else "Скачать GGUF")
+                        if (vm.localRuntimeBusy && vm.localDownloader.isDownloading) {
+                            Button(onClick = { vm.cancelLocalDownload() }) { Text("Отменить скачивание") }
+                        } else {
+                            Button(onClick = { vm.downloadLocalModel(m.id, m.quant, modelUrl) }, enabled = !vm.localRuntimeBusy) {
+                                Text(if (vm.localRuntimeBusy) "Скачиваю…" else "Скачать GGUF")
+                            }
                         }
                         OutlinedButton(onClick = { onUse(m) }) { Text("Использовать") }
                         TextButton(onClick = { onInstall(m) }) { Text("Как вручную") }
