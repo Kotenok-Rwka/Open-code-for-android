@@ -29,54 +29,104 @@ SYNC_EVENTS = SYNC / "events.jsonl"
 SYNC_STATE = SYNC / "state.json"
 SYNC_FILES = SYNC / "files"
 
-PAGE = """<!doctype html><html lang="ru"><meta charset="utf-8"><title>PocketCode Desktop</title>
+PAGE = """<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>PocketCode Desktop · Aurora</title>
 <style>
- body{background:#111318;color:#e8eaf0;font:15px system-ui;margin:0;padding:18px;max-width:900px;margin:auto}
- h1{font-size:19px} textarea,input,select,button{font:14px system-ui;background:#1d2027;color:#e8eaf0;border:1px solid #343945;border-radius:8px;padding:9px}
- textarea{width:100%;min-height:120px;box-sizing:border-box} button{background:#395bd6;border:0;cursor:pointer;padding:10px 16px}
- .row{display:flex;gap:8px;margin:8px 0} .row>*{flex:1} .msg{padding:10px;border-radius:9px;margin:6px 0;background:#1b1e24;white-space:pre-wrap}
- small{color:#9aa3b2} nav button{background:#262b36}
-</style><h1>PocketCode Desktop</h1>
-<nav class="row"><button onclick="tab('chat')">Чат</button><button onclick="tab('profiles')">Провайдеры</button><button onclick="tab('sync')">Обмен с телефоном</button><button onclick="tab('agents')">Агенты и роли</button><button onclick="tab('autosync')">Автосинхронизация</button></nav>
-<div id="chat"><div id="log"></div><textarea id="q" placeholder="Задача или сообщение"></textarea><div class="row"><button onclick="send()">Отправить</button><button onclick="clearChat()">Очистить чат</button></div></div>
-<div id="profiles" hidden><div class="row"><input id="pname" placeholder="Имя"><input id="purl" placeholder="http://localhost:1234/v1"><input id="pmodel" placeholder="local-model"></div>
-<div class="row"><input id="pkey" placeholder="Ключ (для локального — любой)"><button onclick="saveProfile()">Сохранить</button></div><div id="plist"></div></div>
-<div id="sync" hidden><p>Экспортируй задачи с телефона в JSON и вставь сюда, чтобы продолжить на ПК — и наоборот.</p>
-<textarea id="imp" placeholder="JSON задач"></textarea><div class="row"><button onclick="importTasks()">Импортировать</button><button onclick="exportTasks()">Экспортировать</button></div><pre id="tasks"></pre></div>
-<div id="agents" hidden><h2>Агенты Chat</h2><div id="agentsList"></div><div class="row"><input id="aname" placeholder="Имя"><input id="agoal" placeholder="Цель"></div><button onclick="saveAgent()">Создать агента</button>
-<h2>Роли моделей</h2><div class="row"><input id="aplan" placeholder="Модель планирования"><input id="aexec" placeholder="Модель выполнения"></div><button onclick="saveRoles()">Сохранить роли</button>
-<h2>Локальные виджеты</h2><div id="widgets"></div></div>
-<div id="autosync" hidden><h2>Автосинхронизация с телефоном</h2>
-<p>Телефон отправляет события и снимки на этот адрес: <code>http://&lt;IP ПК&gt;:8765/api/sync/push</code>. Запустите компаньон с <code>--host 0.0.0.0</code>, чтобы телефон в той же сети мог подключиться.</p>
-<div class="row"><label>Интервал (мин) <input id="syncInterval" type="number" min="1" value="15"></label><button onclick="saveSyncConfig()">Сохранить</button></div>
-<div class="row"><button onclick="loadSyncStatus()">Обновить статус</button><button onclick="syncNow()">Отправить сейчас</button><button onclick="showToken()">Показать токен</button></div>
-<pre id="tokenBox"></pre>
-<pre id="syncStatus"></pre></div>
+:root{--bg:#0b1620;--bg2:#0f2027;--panel:#122532;--panel2:#17303f;--line:rgba(147,220,255,.13);--line2:rgba(147,220,255,.24);--txt:#eaf6ff;--dim:#8fb3c7;--accent:#4fd1c5;--accent2:#6aa8ff;--glow:rgba(79,209,197,.16);--radius:16px}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;color:var(--txt);font:15px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif;background:
+ radial-gradient(1000px 600px at 8% -10%,rgba(79,209,197,.16),transparent 60%),
+ radial-gradient(900px 700px at 105% 10%,rgba(106,168,255,.15),transparent 55%),
+ linear-gradient(160deg,var(--bg),var(--bg2) 55%,#0a141d);background-attachment:fixed}
+#app{display:grid;grid-template-columns:236px 1fr;grid-template-rows:auto 1fr;gap:18px;max-width:1500px;min-height:100vh;margin:auto;padding:20px}
+header{grid-column:1/-1;display:flex;align-items:center;gap:14px;padding:12px 18px;border:1px solid var(--line);border-radius:var(--radius);background:linear-gradient(90deg,rgba(18,37,50,.92),rgba(16,31,42,.7));backdrop-filter:blur(14px);box-shadow:0 12px 40px rgba(0,0,0,.25)}
+.logo{width:38px;height:38px;border-radius:12px;display:grid;place-items:center;font-weight:800;font-size:17px;color:#06222a;background:linear-gradient(135deg,var(--accent),var(--accent2));box-shadow:0 0 24px var(--glow)}
+header h1{font-size:17px;margin:0;letter-spacing:.2px}
+header .sub{color:var(--dim);font-size:12px}
+header .status{margin-left:auto;display:flex;align-items:center;gap:8px;color:var(--dim);font-size:12px}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--accent);box-shadow:0 0 12px var(--accent)}
+nav{display:flex;flex-direction:column;gap:6px;position:sticky;top:20px;align-self:start}
+nav button{display:flex;align-items:center;gap:10px;text-align:left;padding:11px 14px;border-radius:12px;border:1px solid transparent;background:transparent;color:var(--dim);cursor:pointer;font:inherit;transition:.18s}
+nav button:hover{background:rgba(79,209,197,.07);color:var(--txt)}
+nav button.on{background:linear-gradient(90deg,rgba(79,209,197,.16),rgba(106,168,255,.08));border-color:var(--line2);color:var(--txt);box-shadow:inset 3px 0 0 var(--accent)}
+main{border:1px solid var(--line);border-radius:var(--radius);background:linear-gradient(180deg,rgba(18,37,50,.94),rgba(13,27,37,.92));backdrop-filter:blur(10px);padding:20px;min-width:0;box-shadow:0 20px 60px rgba(0,0,0,.28)}
+section[hidden]{display:none!important}
+h2{font-size:19px;margin:0 0 14px}h3{font-size:15px;margin:22px 0 10px;color:var(--accent)}
+p,small,.hint{color:var(--dim)}
+.hint{font-size:12px;margin:6px 0 14px}
+input,select,textarea{width:100%;padding:10px 12px;border-radius:10px;border:1px solid var(--line2);background:rgba(8,20,28,.75);color:var(--txt);font:inherit;outline:none;transition:.15s}
+input:focus,textarea:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--glow)}
+textarea{min-height:110px;resize:vertical}
+button.act,button.ghost{border-radius:10px;padding:10px 16px;font:inherit;cursor:pointer;transition:.15s}
+button.act{border:1px solid transparent;color:#06222a;font-weight:700;background:linear-gradient(135deg,var(--accent),var(--accent2));box-shadow:0 6px 22px var(--glow)}
+button.act:hover{filter:brightness(1.1);transform:translateY(-1px)}
+button.ghost{background:rgba(79,209,197,.07);border:1px solid var(--line2);color:var(--txt)}
+button.ghost:hover{background:rgba(79,209,197,.14)}
+.row{display:flex;gap:10px;margin:10px 0;align-items:center}.row>*{flex:1}.row button{flex:0 0 auto}
+.card{border:1px solid var(--line);border-radius:13px;background:linear-gradient(160deg,rgba(23,48,63,.8),rgba(16,34,45,.55));padding:12px 14px;margin:9px 0}
+.msg{white-space:pre-wrap;overflow-wrap:anywhere}
+.msg b{color:var(--accent)}
+.msg.user{border-left:3px solid var(--accent2)}.msg.assistant{border-left:3px solid var(--accent)}
+#log{max-height:56vh;overflow:auto;padding-right:6px;margin-bottom:14px}
+#log::-webkit-scrollbar{width:8px}#log::-webkit-scrollbar-thumb{background:var(--line2);border-radius:8px}
+pre{white-space:pre-wrap;overflow-wrap:anywhere;padding:12px;border-radius:10px;background:rgba(6,16,23,.75);border:1px solid var(--line);color:#c9e6f2;max-height:45vh;overflow:auto}
+code{color:var(--accent)}
+.pill{display:inline-block;padding:3px 9px;border-radius:99px;border:1px solid var(--line2);font-size:11px;color:var(--dim);margin-left:6px}
+@media(max-width:850px){#app{grid-template-columns:1fr;padding:12px;gap:12px}nav{flex-direction:row;overflow:auto;position:static}nav button{white-space:nowrap}main{padding:14px}}
+</style></head><body><div id="app">
+<header><div class="logo">PC</div><div><h1>PocketCode Desktop <span class="pill">Aurora</span></h1><div class="sub">Мост между телефоном, моделями и проектами</div></div><div class="status"><span class="dot"></span><span id="clock">локально</span></div></header>
+<nav id="nav">
+<button class="on" data-tab="chat" onclick="tab('chat')">◉ Чат</button>
+<button data-tab="profiles" onclick="tab('profiles')">◇ Провайдеры</button>
+<button data-tab="sync" onclick="tab('sync')">⇄ Обмен с телефоном</button>
+<button data-tab="agents" onclick="tab('agents')">✦ Агенты и роли</button>
+<button data-tab="autosync" onclick="tab('autosync')">↻ Автосинхронизация</button>
+</nav>
+<main>
+<section id="chat"><h2>Чат</h2><p class="hint">Полные ответы без обрезки. Сообщения остаются на этом ПК.</p><div id="log"></div><textarea id="q" placeholder="Задача или сообщение"></textarea><div class="row"><button class="act" onclick="send()">Отправить</button><button class="ghost" onclick="clearChat()">Очистить чат</button></div></section>
+<section id="profiles" hidden><h2>Провайдеры</h2><p class="hint">Локальная модель: base_url вида http://localhost:1234/v1, ключ — любой.</p>
+<div class="row"><input id="pname" placeholder="Имя"><input id="purl" placeholder="http://localhost:1234/v1"><input id="pmodel" placeholder="local-model"></div>
+<div class="row"><input id="pkey" placeholder="Ключ (для локального — любой)"><button class="act" onclick="saveProfile()">Сохранить</button></div><div id="plist"></div></section>
+<section id="sync" hidden><h2>Обмен с телефоном</h2><p>Экспортируй задачи с телефона в JSON и вставь сюда, чтобы продолжить на ПК — и наоборот.</p>
+<textarea id="imp" placeholder="JSON задач"></textarea><div class="row"><button class="act" onclick="importTasks()">Импортировать</button><button class="ghost" onclick="exportTasks()">Экспортировать</button></div><pre id="tasks"></pre></section>
+<section id="agents" hidden><h2>Агенты Chat</h2><div id="agentsList"></div><div class="row"><input id="aname" placeholder="Имя"><input id="agoal" placeholder="Цель"></div><div class="row"><button class="act" onclick="saveAgent()">Создать агента</button></div>
+<h3>Роли моделей</h3><div class="row"><input id="aplan" placeholder="Модель планирования"><input id="aexec" placeholder="Модель выполнения"></div><div class="row"><button class="ghost" onclick="saveRoles()">Сохранить роли</button></div>
+<h3>Локальные виджеты</h3><div id="widgets"></div></section>
+<section id="autosync" hidden><h2>Автосинхронизация с телефоном</h2>
+<p>Телефон отправляет события и снимки на адрес <code>http://&lt;IP ПК&gt;:8765/api/sync/push</code>. Запусти компаньон с <code>--host 0.0.0.0</code>, чтобы телефон в той же сети мог подключиться.</p>
+<div class="row"><label>Интервал (мин) <input id="syncInterval" type="number" min="1" value="15"></label><button class="ghost" onclick="saveSyncConfig()">Сохранить</button></div>
+<div class="row"><button class="ghost" onclick="loadSyncStatus()">Обновить статус</button><button class="ghost" onclick="syncNow()">Отправить сейчас</button><button class="ghost" onclick="showToken()">Показать токен</button></div>
+<pre id="tokenBox"></pre><pre id="syncStatus"></pre></section>
+</main></div>
 <script>
+"use strict";
 let profiles={};
-function tab(t){for(const x of ['chat','profiles','sync','agents','autosync'])document.getElementById(x).hidden=x!==t;if(t==='chat')load();if(t==='profiles')loadProfiles();if(t==='sync')loadTasks();if(t==='agents')loadAgents();if(t==='autosync')loadSyncStatus()}
-async function get(u){return (await fetch(u)).json()}
-async function post(u,b){return (await fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)})).json()}
-async function load(){const m=await get('/api/messages');document.getElementById('log').innerHTML=m.map(x=>'<div class="msg"><b>'+x.role+'</b>: '+esc(x.text)+'</div>').join('')}
-function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
-async function send(){const q=document.getElementById('q');if(!q.value.trim())return;const text=q.value;q.value='';const r=await post('/api/chat',{text});await load();if(r.error){alert(r.error);q.value=text}}
+const byId=id=>document.getElementById(id);
+function tab(t){for(const x of ['chat','profiles','sync','agents','autosync'])byId(x).hidden=x!==t;document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('on',b.dataset.tab===t));if(t==='chat')load();if(t==='profiles')loadProfiles();if(t==='sync')loadTasks();if(t==='agents')loadAgents();if(t==='autosync')loadSyncStatus()}
+async function get(u){const r=await fetch(u);if(!r.ok)throw new Error('HTTP '+r.status);return r.json()}
+async function post(u,b){const r=await fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});if(!r.ok)throw new Error('HTTP '+r.status);return r.json()}
+function el(tag,cls,text){const e=document.createElement(tag);if(cls)e.className=cls;if(text!==undefined)e.textContent=text;return e}
+function card(){return el('div','card')}
+async function load(){try{const m=await get('/api/messages');const log=byId('log');log.replaceChildren();m.forEach(x=>{const c=card();c.classList.add('msg',x.role==='user'?'user':'assistant');c.append(el('b','',x.role+': '),document.createTextNode(x.text));log.append(c)});log.scrollTop=log.scrollHeight}catch(e){alert('Не удалось загрузить чат: '+e.message)}}
+async function send(){const q=byId('q');if(!q.value.trim())return;const text=q.value;q.value='';try{const r=await post('/api/chat',{text});await load();if(r.error)alert(r.error)}catch(e){q.value=text;alert('Ошибка отправки: '+e.message)}}
 async function clearChat(){await post('/api/clear',{});await load()}
-async function loadProfiles(){profiles=await get('/api/profiles');document.getElementById('plist').innerHTML=Object.entries(profiles).filter(([k,v])=>k!=='_active'&&v&&typeof v==='object').map(([k,v])=>'<div class="msg">'+esc(k)+' · '+esc(v.base_url)+' · '+esc(v.model)+' <button onclick="useProfile(decodeURIComponent(\\''+encodeURIComponent(k)+'\\'))">'+(k===profiles._active?'Выбран':'Выбрать')+'</button></div>').join('')}
-async function saveProfile(){const n=document.getElementById('pname').value.trim();if(!n)return;await post('/api/profiles',{name:n,base_url:document.getElementById('purl').value.trim(),model:document.getElementById('pmodel').value.trim(),api_key:document.getElementById('pkey').value.trim()});loadProfiles()}
+async function loadProfiles(){profiles=await get('/api/profiles');const box=byId('plist');box.replaceChildren();Object.entries(profiles).filter(([k,v])=>k!=='_active'&&v&&typeof v==='object').forEach(([k,v])=>{const c=card();c.append(el('b','',k),document.createTextNode(' · '+v.base_url+' · '+v.model));const b=el('button','ghost',k===profiles._active?'Выбран':'Выбрать');b.onclick=()=>useProfile(k);c.append(b);box.append(c)})}
+async function saveProfile(){const n=byId('pname').value.trim();if(!n){alert('Введи имя профиля');return}await post('/api/profiles',{name:n,base_url:byId('purl').value.trim(),model:byId('pmodel').value.trim(),api_key:byId('pkey').value.trim()});loadProfiles()}
 async function useProfile(n){await post('/api/use',{name:n});alert('Выбран профиль '+n)}
-async function loadTasks(){document.getElementById('tasks').textContent=JSON.stringify(await get('/api/tasks'),null,2)}
-async function importTasks(){let v;try{v=JSON.parse(document.getElementById('imp').value)}catch(e){alert('Это не JSON: '+e.message);return}const r=await post('/api/tasks/import',v);if(r.error)alert(r.error);loadTasks()}
-async function exportTasks(){document.getElementById('imp').value=JSON.stringify(await get('/api/tasks'))}
-async function loadAgents(){const a=await get('/api/agents');document.getElementById('agentsList').innerHTML=a.map(x=>'<div class="msg"><b>'+esc(x.name)+'</b> '+esc(x.goal)+'</div>').join('');const r=await get('/api/roles');document.getElementById('aplan').value=r.planning||'';document.getElementById('aexec').value=r.execution||'';const w=await get('/api/widgets');document.getElementById('widgets').innerHTML=w.map(x=>'<div class="msg"><a href="'+esc(x.url)+'" target="_blank">'+esc(x.name)+'</a> <small>'+esc(x.note)+'</small></div>').join('')}
-async function saveAgent(){await post('/api/agents',{name:document.getElementById('aname').value,goal:document.getElementById('agoal').value});loadAgents()}
-async function saveRoles(){await post('/api/roles',{planning:document.getElementById('aplan').value,execution:document.getElementById('aexec').value});alert('Роли сохранены')}
-async function syncStatus(){return await get('/api/sync/status')}
-async function loadSyncStatus(){const x=await syncStatus();document.getElementById('syncStatus').textContent=JSON.stringify(x,null,2)}
-async function saveSyncConfig(){const n=document.getElementById('syncInterval').value;await post('/api/sync/config',{interval_min:parseInt(n||'15')});loadSyncStatus()}
+async function loadTasks(){byId('tasks').textContent=JSON.stringify(await get('/api/tasks'),null,2)}
+async function importTasks(){let v;try{v=JSON.parse(byId('imp').value)}catch(e){alert('Это не JSON: '+e.message);return}const r=await post('/api/tasks/import',v);if(r.error)alert(r.error);loadTasks()}
+async function exportTasks(){byId('imp').value=JSON.stringify(await get('/api/tasks'))}
+async function loadAgents(){const a=await get('/api/agents');const list=byId('agentsList');list.replaceChildren();a.forEach(x=>{const c=card();c.append(el('b','',x.name),document.createTextNode(' '+x.goal));list.append(c)});const r=await get('/api/roles');byId('aplan').value=r.planning||'';byId('aexec').value=r.execution||'';const w=await get('/api/widgets');const wb=byId('widgets');wb.replaceChildren();w.forEach(x=>{const c=card();const a2=el('a','',x.name);a2.href=x.url;a2.target='_blank';a2.rel='noopener noreferrer';c.append(a2,el('small','',' '+x.note));wb.append(c)})}
+async function saveAgent(){await post('/api/agents',{name:byId('aname').value,goal:byId('agoal').value});loadAgents()}
+async function saveRoles(){await post('/api/roles',{planning:byId('aplan').value,execution:byId('aexec').value});alert('Роли сохранены')}
+async function loadSyncStatus(){byId('syncStatus').textContent=JSON.stringify(await get('/api/sync/status'),null,2)}
+async function saveSyncConfig(){const n=byId('syncInterval').value;await post('/api/sync/config',{interval_min:parseInt(n||'15')});loadSyncStatus()}
 async function syncNow(){await post('/api/sync/push',{v:2,type:'status',seq:0,device:'desktop',project:'',ts:Date.now(),kind:'status',data:{text:'sync requested'}});loadSyncStatus()}
-async function showToken(){const r=await get('/api/sync/token');document.getElementById('tokenBox').textContent=r.token?('Токен для телефона (X-PocketCode-Token): '+r.token):('Недоступно: '+(r.error||'только с этого ПК'))}
-load();loadSyncStatus();
-</script></html>"""
+async function showToken(){const r=await get('/api/sync/token');byId('tokenBox').textContent=r.token?('Токен для телефона (X-PocketCode-Token): '+r.token):('Недоступно: '+(r.error||'только с этого ПК'))}
+byId('clock').textContent=new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+load().catch(()=>{});loadSyncStatus().catch(()=>{});
+</script></html>
+"""
 
 
 # Один сервер обслуживает несколько потоков: записи в файлы идут под замком,
