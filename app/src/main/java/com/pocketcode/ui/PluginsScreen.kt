@@ -61,6 +61,7 @@ fun PluginsScreen(vm: ChatController, onBack: () -> Unit) {
         if (vm.pluginSearchResults.isEmpty() && vm.pluginSearchStatus == null) vm.searchPlugins(ghQuery, ghSort, ghCategory)
     }
     var confirmDel by remember { mutableStateOf<com.pocketcode.agent.Skill?>(null) }
+    var mcpRepo by remember { mutableStateOf<com.pocketcode.ui.GitHubRepoHit?>(null) }
     LaunchedEffect(Unit) { vm.refreshExtensions() }
 
     Scaffold(
@@ -235,7 +236,12 @@ fun PluginsScreen(vm: ChatController, onBack: () -> Unit) {
                             OutlinedButton(onClick = { vm.toolAction("trail", "init") }, enabled = vm.toolBusy == null, modifier = Modifier.fillMaxWidth()) { Text("Подключить к текущему проекту (trail init)") }
                         }
                         if (t.id == "jevgrep" || t.id == "trail") {
-                            OutlinedButton(onClick = { nodeTool = t.id; confirmNode = true }, enabled = vm.toolBusy == null, modifier = Modifier.fillMaxWidth()) { Text("Поставить Node 22 (обновит Linux до Alpine 3.21)") }
+                            OutlinedButton(onClick = { nodeTool = t.id; confirmNode = true }, enabled = vm.toolBusy == null, modifier = Modifier.fillMaxWidth()) {
+                                Text(
+                                    if (vm.rootFsChoice == com.pocketcode.linux.RootFsChoice.UBUNTU.name) "Поставить Node 22"
+                                    else "Поставить Node 22 (обновит Linux до Alpine 3.21)",
+                                )
+                            }
                         }
                     }
                 }
@@ -339,8 +345,9 @@ fun PluginsScreen(vm: ChatController, onBack: () -> Unit) {
             if (tab == 4) {
                 Text("Поиск навыков и плагинов на GitHub", style = MaterialTheme.typography.titleMedium)
                 Text(
-                    "Ищет репозитории с навыками, агентами, MCP-серверами и плагинами. Запрос проверяется в названии, описании и README; " +
-                        "если по всей фразе пусто, приложение само пробует короче. Без токена GitHub разрешает 10 запросов в минуту, с токеном — больше " +
+                    "Ищет репозитории с навыками, агентами, MCP-серверами и плагинами. Запрос проверяется в названии, описании и README, " +
+                        "а результаты не по теме (общие подборки, обычные программы) отсеиваются. Если по всей фразе пусто, приложение пробует короче. " +
+                        "MCP-сервер подключается по адресу из README, а не скачиванием репозитория. Без токена GitHub разрешает 10 запросов в минуту, с токеном — больше " +
                         "(токен: Настройки → GitHub).",
                     style = MaterialTheme.typography.bodySmall,
                 )
@@ -403,6 +410,8 @@ fun PluginsScreen(vm: ChatController, onBack: () -> Unit) {
                 }
                 val shown = vm.pluginSearchResults.let { list -> if (ghSort == "name") list.sortedBy { it.fullName.lowercase() } else list }
                 if (shown.isNotEmpty()) Text("Найдено: ${shown.size}", style = MaterialTheme.typography.labelMedium)
+                // Итог установки виден сразу здесь, а не только во вкладке «Плагины и MCP».
+                vm.pluginMessage?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
                 var translateHits by remember(shown) { mutableStateOf(false) }
                 if (shown.isNotEmpty() && I18n.code != "ru") {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -437,11 +446,31 @@ fun PluginsScreen(vm: ChatController, onBack: () -> Unit) {
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.primary,
                             )
+                            // Состояние у каждой карточки своё: установка одного репозитория не блокирует остальные.
+                            val repoName = com.pocketcode.ui.PluginSearch.repoName(hit.url)
+                            val installed = repoName in vm.installedPluginNames
+                            val installing = hit.url in vm.pluginInstalling
+                            val mcp = ghCategory == "MCP"
+                            if (mcp) {
+                                Text(
+                                    "MCP — это сетевой адрес сервера, а не файлы репозитория: адрес обычно указан в README.",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            if (installing) androidx.compose.material3.LinearProgressIndicator(Modifier.fillMaxWidth())
                             Row(
                                 Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                             ) {
-                                Button(onClick = { vm.installPlugin(hit.url) }, enabled = !vm.pluginBusy) { Text("Установить") }
+                                if (mcp) {
+                                    Button(onClick = { mcpRepo = hit }) { Text("Подключить") }
+                                } else {
+                                    Button(
+                                        onClick = { vm.installPlugin(hit.url) },
+                                        enabled = !installed && !installing,
+                                    ) { Text(if (installed) "Установлено" else if (installing) "Скачиваю…" else "Установить") }
+                                }
                                 OutlinedButton(onClick = { vm.previewUrl = hit.url }) { Text("Открыть на GitHub") }
                             }
                         }
@@ -468,11 +497,54 @@ fun PluginsScreen(vm: ChatController, onBack: () -> Unit) {
         )
     }
 
+    mcpRepo?.let { hit ->
+        var repoMcpName by remember(hit) { mutableStateOf(com.pocketcode.ui.PluginSearch.repoName(hit.url)) }
+        var repoMcpUrl by remember(hit) { mutableStateOf("") }
+        var repoMcpHeaders by remember(hit) { mutableStateOf("") }
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { mcpRepo = null },
+            title = { Text("Подключить MCP-сервер") },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "Репозиторий «${hit.fullName}» — это код сервера. Агенту нужен его рабочий адрес (Streamable HTTP), он указан в README репозитория. " +
+                            "Вставь адрес сюда. Если сервер требует токен, добавь строку заголовка.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    OutlinedTextField(
+                        value = repoMcpName, onValueChange = { repoMcpName = it },
+                        label = { Text("Имя сервера") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+                    )
+                    OutlinedTextField(
+                        value = repoMcpUrl, onValueChange = { repoMcpUrl = it },
+                        label = { Text("Адрес (https://…)") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+                    )
+                    OutlinedTextField(
+                        value = repoMcpHeaders, onValueChange = { repoMcpHeaders = it },
+                        label = { Text("Заголовки, по строке (необязательно)") }, modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = { vm.addMcp(repoMcpName, repoMcpUrl, repoMcpHeaders); mcpRepo = null; tab = 2 },
+                    enabled = repoMcpName.isNotBlank() && repoMcpUrl.startsWith("http") && !vm.mcpBusy,
+                ) { Text("Подключить") }
+            },
+            dismissButton = { TextButton(onClick = { mcpRepo = null }) { Text("Отмена") } },
+        )
+    }
+
     if (confirmNode) {
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { confirmNode = false },
-            title = { Text("Обновить Linux до Alpine 3.21?") },
-            text = { Text("Нужно для Node 22. Скачается около 100–150 МБ, займёт 5–10 минут. Это меняет систему внутри приложения. Если что-то пойдёт не так, Linux можно удалить и поставить заново (Ещё → Среда Linux), проекты не пострадают.") },
+            title = { Text(if (vm.rootFsChoice == com.pocketcode.linux.RootFsChoice.UBUNTU.name) "Поставить Node 22?" else "Обновить Linux до Alpine 3.21?") },
+            text = {
+                Text(
+                    "Нужно для Node 22. Скачается около 100–150 МБ, займёт 5–10 минут. Это меняет систему внутри приложения. " +
+                        "Если что-то пойдёт не так, Linux можно удалить и поставить заново (Ещё → Среда Linux), проекты не пострадают.",
+                )
+            },
             confirmButton = { TextButton(onClick = { confirmNode = false; vm.toolAction(nodeTool, "node22") }) { Text("Обновить") } },
             dismissButton = { TextButton(onClick = { confirmNode = false }) { Text("Отмена") } },
         )

@@ -5,12 +5,17 @@ import com.pocketcode.tools.Workspace
 import com.pocketcode.tools.runProcess
 import java.io.File
 
-/** Shell, выполняющий команды внутри Alpine Linux (proot). Папка проекта — /work. */
+/** Shell, выполняющий команды внутри Linux (proot). Папка проекта — /work. */
 class LinuxShell(private val env: LinuxEnv, private val ws: Workspace) : Shell {
-    override val info =
-        "Linux Alpine (proot, эмуляция root): настоящий sh, apk (например `apk add python3 py3-pip nodejs npm git build-base`), " +
-            "пакеты ставятся из интернета. Папка проекта смонтирована как /work, команды стартуют в ней. " +
-            "Файлы вне /work живут в закрытом rootfs. Нет systemd и демонов, интерактивный ввод не поддерживается."
+    /** Описание зависит от образа: агент должен знать, apk перед ним или apt. */
+    override val info: String
+        get() {
+            val example = LinuxPkgs.installHint(env.flavor).replace("<пакет>", LinuxPkgs.packageNames(env.flavor))
+            return "Linux ${LinuxPkgs.distroName(env.flavor)} (proot, эмуляция root): настоящий sh, " +
+                "${LinuxPkgs.manager(env.flavor)} (например `$example`), пакеты ставятся из интернета. " +
+                "Папка проекта смонтирована как /work, команды стартуют в ней. Файлы вне /work живут в закрытом rootfs. " +
+                "Нет systemd и демонов, интерактивный ввод не поддерживается."
+        }
 
     override suspend fun run(command: String, cwd: File, timeoutSec: Long): String =
         runProcess(builder(command, cwd), timeoutSec)

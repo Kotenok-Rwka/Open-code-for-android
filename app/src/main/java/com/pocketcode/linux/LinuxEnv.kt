@@ -2,6 +2,7 @@ package com.pocketcode.linux
 
 import android.content.Context
 import android.os.Build
+import com.pocketcode.formatSize
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -40,6 +41,59 @@ if [ -f "§D/§ID.out" ]; then
 fi
 echo "PENDING §ID: пользователь ещё не ответил в приложении PocketCode. Подожди и вызови: pcroot --wait §ID"
 exit 3
+"""
+
+private const val APK_COMPAT = """#!/bin/sh
+# PocketCode: apk-совместимость для Ubuntu. Старые скрипты приложения зовут apk, а apt не понимает его флаги.
+map() {
+  case "§1" in
+    py3-pip) echo python3-pip ;;
+    build-base|make|gcc|g++) echo build-essential ;;
+    android-tools) echo adb ;;
+    font-dejavu) echo fonts-dejavu-core ;;
+    openjdk17) echo openjdk-17-jdk-headless ;;
+    gcompat) echo libc6 ;;
+    libstdc++) echo libstdc++6 ;;
+    *) echo "§1" ;;
+  esac
+}
+CMD="§1"
+shift 2>/dev/null
+case "§CMD" in
+  add)
+    PKGS=""
+    for a in "§@"; do
+      case "§a" in
+        --no-cache|--update-cache|-q|--quiet) ;;
+        --virtual) ;;
+        *) PKGS="§PKGS §(map "§a")" ;;
+      esac
+    done
+    [ -z "§PKGS" ] && exit 0
+    apt-get update -qq >/dev/null 2>&1
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -qq §PKGS
+    ;;
+  info)
+    for a in "§@"; do
+      case "§a" in -e|--exists) ;; *) dpkg -s "§(map "§a")" >/dev/null 2>&1 || exit 1 ;; esac
+    done
+    ;;
+  search)
+    exit 1
+    ;;
+  del|remove)
+    for a in "§@"; do
+      case "§a" in -q) ;; *) apt-get remove -y -qq "§(map "§a")" >/dev/null 2>&1 ;; esac
+    done
+    ;;
+  update)
+    apt-get update -qq
+    ;;
+  *)
+    echo "apk (совместимость Ubuntu): команда §CMD не поддерживается" >&2
+    exit 127
+    ;;
+esac
 """
 
 private const val AGENTS_MD = """# PocketCode: как выйти на сам Android
@@ -204,9 +258,9 @@ class LinuxEnv(private val context: Context) {
                                 if (n < 0) break
                                 out.write(buf, 0, n)
                                 done += n
-                                if (done - lastShown > 512 * 1024) {
+                                if (done - lastShown > 1024 * 1024) {
                                     lastShown = done
-                                    onProgress("Скачиваю $distro: ${done / 1024} из ${if (total > 0) total / 1024 else "?"} КБ")
+                                    onProgress("Скачиваю $distro: ${formatSize(done)}" + if (total > 0) " из ${formatSize(total)}" else "")
                                 }
                             }
                         }
@@ -223,6 +277,7 @@ class LinuxEnv(private val context: Context) {
         onProgress("Распаковываю…")
         extract(archive, rootfs)
         archive.delete()
+        if (ubuntu) installApkCompat()
         File(rootfs, "etc").mkdirs()
         File(rootfs, "etc/resolv.conf").writeText("nameserver 8.8.8.8\nnameserver 1.1.1.1\n")
         File(rootfs, "tmp").mkdirs()
@@ -292,6 +347,20 @@ class LinuxEnv(private val context: Context) {
     fun uninstall() {
         marker.delete()
         rootfs.deleteRecursively()
+    }
+
+    /**
+     * Совместимость со старыми инструкциями приложения: встроенные скрипты (OpenCode, Android SDK,
+     * ffmpeg) зовут apk. В Ubuntu кладём крошечный apk→apt переходник, чтобы они продолжали работать,
+     * а агент при этом получает apt в промпте и подсказках.
+     */
+    private fun installApkCompat() {
+        val bin = File(rootfs, "usr/local/bin").apply { mkdirs() }
+        val shim = File(bin, "apk")
+        shim.writeText(APK_COMPAT.replace('§', '$'))
+        shim.setReadable(true, false)
+        shim.setWritable(true, true)
+        shim.setExecutable(true, false)
     }
 
     private fun extract(archive: File, dest: File) {

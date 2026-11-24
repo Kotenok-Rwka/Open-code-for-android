@@ -187,7 +187,7 @@ fun LocalModelsCatalogScreen(
                     Row(Modifier.padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                         TextButton(onClick = { vm.setLocalSettings(vm.localPort, vm.localGpuLayers, vm.localContext, f.name) }, modifier = Modifier.weight(1f)) {
                             Text(
-                                "• ${f.name} — ${f.length() / 1024 / 1024} МБ" + if (vm.localModel == f.name) "  ✓ выбрана" else "",
+                                "• ${f.name} — ${com.pocketcode.formatSize(f.length())}" + if (vm.localModel == f.name) "  ✓ выбрана" else "",
                                 style = MaterialTheme.typography.bodySmall,
                             )
                         }

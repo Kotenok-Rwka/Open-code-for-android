@@ -80,7 +80,7 @@ class AdbTool(
         val sel = if (addr != null) "-s $addr " else ""
         val out = linux.run(wrapAdb("${connect}adb $sel$a"), ws.root, timeout)
         return if (out.contains("adb: not found") || out.contains("adb: command not found")) {
-            "$out\nadb не установлен в Linux. Пользователю нужно нажать «Установить ADB» на экране «Устройства» или выполнить apk add android-tools."
+            "$out\nadb не установлен в Linux. Пользователю нужно нажать «Установить ADB» на экране «Устройства» или выполнить apk add android-tools (Alpine) / apt-get install -y adb (Ubuntu)."
         } else out
     }
 }

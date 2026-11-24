@@ -51,9 +51,32 @@ class PluginSearchTest {
         val list = PluginSearch.fallbacks("claude code skills", "Навыки")
         assertEquals("claude code skills", list.first())
         assertTrue(list.contains("claude code"))
-        assertTrue(list.any { it == "skills" })
+        // Одно слово категории в конце давало public-apis и фоторедакторы — такого шага больше нет.
+        assertFalse(list.contains("skills"))
         assertTrue(list.size <= 5)
         assertTrue(PluginSearch.fallbacks("   ").isEmpty())
+    }
+
+    @Test
+    fun irrelevantRepositoriesAreFilteredOut() {
+        val json = """{"items":[
+            {"full_name":"public-apis/public-apis","description":"A collective list of free APIs","stargazers_count":501114,"html_url":"https://github.com/public-apis/public-apis"},
+            {"full_name":"storytold/photocraft","description":"PhotoCraft: an open-source photo editor written in pure Rust","stargazers_count":81247,"html_url":"https://github.com/storytold/photocraft"},
+            {"full_name":"acme/claude-skills","description":"Agent skills for Claude Code","stargazers_count":120,"html_url":"https://github.com/acme/claude-skills"}
+        ]}"""
+        val hits = PluginSearch.relevant(PluginSearch.parse(json), "claude code skills", "Навыки")
+        assertEquals(listOf("acme/claude-skills"), hits.map { it.fullName })
+    }
+
+    @Test
+    fun mcpCategoryOnlyShowsMcpServers() {
+        val json = """{"items":[
+            {"full_name":"org/photo","description":"Photo editor","stargazers_count":10,"html_url":"https://github.com/org/photo"},
+            {"full_name":"org/github-mcp","description":"MCP server for GitHub","stargazers_count":5,"html_url":"https://github.com/org/github-mcp"}
+        ]}"""
+        val hits = PluginSearch.relevant(PluginSearch.parse(json), "github", "MCP")
+        assertEquals(listOf("org/github-mcp"), hits.map { it.fullName })
+        assertEquals("github-mcp", PluginSearch.repoName("https://github.com/org/github-mcp"))
     }
 
     @Test

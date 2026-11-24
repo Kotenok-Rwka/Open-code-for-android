@@ -74,23 +74,49 @@ object PluginSearch {
     }
 
     /**
-     * Запросы от точного к широкому: GitHub считает все слова обязательными, поэтому длинная фраза
-     * часто даёт ноль результатов. Пробуем короче, пока что-то не найдётся.
+     * Запросы от точного к короткому: GitHub считает все слова обязательными, поэтому длинная фраза
+     * часто даёт ноль. Но последним шагом не должно быть одно слово категории — иначе в списке
+     * оказываются public-apis и фоторедакторы, вообще не связанные с запросом.
      */
     fun fallbacks(query: String, category: String = "Все"): List<String> {
         val base = query.trim()
         if (base.isEmpty()) return emptyList()
         val words = base.split(Regex("\\s+")).filter { it.isNotBlank() }
-        val cat = categoryWord(category)
         val out = LinkedHashSet<String>()
         out += base
         if (words.size > 2) out += words.take(2).joinToString(" ")
-        if (cat.isNotBlank()) {
-            if (words.size > 1) out += words.first() + " " + cat
-            out += cat
-        }
         if (words.size > 1) out += words.first()
         return out.toList()
+    }
+
+    /** Имя репозитория из адреса GitHub: owner/repo -> repo. */
+    fun repoName(url: String): String = url.trimEnd('/').substringAfterLast('/').removeSuffix(".git")
+
+    private fun queryWords(query: String): List<String> =
+        query.lowercase().split(Regex("[^\\p{L}\\p{N}+#._-]+")).filter { it.length >= 2 }
+
+    /** Категория должна быть видна в названии или описании, а не только в подставленном слове запроса. */
+    private fun categoryMatches(hit: GitHubRepoHit, category: String): Boolean {
+        val text = (hit.fullName + " " + hit.description).lowercase()
+        return when (category) {
+            "Навыки" -> Regex("\\bskills?\\b").containsMatchIn(text)
+            "Агенты" -> Regex("\\bagents?\\b").containsMatchIn(text)
+            "MCP" -> Regex("\\bmcp\\b").containsMatchIn(text)
+            "Плагины" -> Regex("\\bplugins?\\b|\\bextensions?\\b").containsMatchIn(text)
+            else -> true
+        }
+    }
+
+    /**
+     * Оставляет только репозитории по теме запроса. GitHub сортирует по звёздам и на «claude code skills»
+     * легко отдаёт общие списки и обычные программы — их отсекаем до показа пользователю.
+     */
+    fun relevant(hits: List<GitHubRepoHit>, query: String, category: String = "Все"): List<GitHubRepoHit> {
+        val words = queryWords(query)
+        return hits.filter { hit ->
+            val text = (hit.fullName + " " + hit.description).lowercase()
+            (words.isEmpty() || words.any { text.contains(it) }) && categoryMatches(hit, category)
+        }
     }
 
     /** Локальный фильтр: навыки/команды/плагины по названию и описанию. */

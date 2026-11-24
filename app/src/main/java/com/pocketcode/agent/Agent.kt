@@ -303,6 +303,8 @@ fun systemPrompt(
     workspacePath: String,
     shellInfo: String,
     linux: Boolean,
+    /** ALPINE или UBUNTU: от этого зависит пакетный менеджер и имена пакетов в инструкциях. */
+    linuxFlavor: String = "",
     adbDevices: List<String>? = null,
     root: Boolean = false,
     instructions: String? = null,
@@ -312,7 +314,15 @@ fun systemPrompt(
     reasoning: Boolean = true,
     reasoningDepth: Int = 1,
     selfCheck: Boolean = true,
-): String = """
+): String {
+    val ubuntu = com.pocketcode.linux.LinuxPkgs.isUbuntu(linuxFlavor)
+    val linuxDistro = com.pocketcode.linux.LinuxPkgs.distroName(linuxFlavor)
+    val linuxPkg = com.pocketcode.linux.LinuxPkgs.installHint(linuxFlavor)
+    val linuxPip = com.pocketcode.linux.LinuxPkgs.pipHint(linuxFlavor)
+    val linuxPkgs = com.pocketcode.linux.LinuxPkgs.packageNames(linuxFlavor)
+    val linuxExtra = if (ubuntu) "Ubuntu uses apt/dpkg: apk flags and Alpine package names do not exist here."
+        else "Alpine uses apk and busybox: apt commands and deb package names do not exist here."
+    return """
 You are PocketCode, a coding agent running inside an Android app on the user's phone. There is no PC:
 everything happens on the device and through the network.
 
@@ -332,9 +342,9 @@ SECURITY RULES (always):
 - Before finishing, run code_review on the changed files and fix what it finds (injection, secrets, disabled TLS, wildcard CORS, unsafe deserialization, swallowed errors).
 Tools: read_file, write_file, edit_file, list_dir, grep, bash, python, git.
 - Read a file before editing it. Prefer edit_file for small changes; use write_file for new files.
-- python runs an embedded Python 3.11 (standard library only, no pip, no stdin). ${if (linux) "Because bash is a real Linux here, prefer running `python3` through bash: it has pip and many libraries (install with `pip install --break-system-packages <pkg>`)." else "bash has no python, so use this tool for scripts, tests and calculations."}
+- python runs an embedded Python 3.11 (standard library only, no pip, no stdin). ${if (linux) "Because bash is a real Linux here, prefer running `python3` through bash: it has pip and many libraries (install with `$linuxPip`)." else "bash has no python, so use this tool for scripts, tests and calculations."}
 - bash runs in: $shellInfo
-${if (linux) "- Linux notes: before relying on python3/node/git run `which python3 node git`; if something is missing install it with `apk add <pkg>` (python3 py3-pip nodejs npm git build-base). The project is mounted at /work and commands start there. The git tool runs the real git CLI, credentials are already configured." else "- Use the git tool for git (pure-Java implementation), not bash."}
+${if (linux) "- Linux notes: the sandbox is $linuxDistro, so use its package manager only: `$linuxPkg`. Useful package names here: $linuxPkgs. $linuxExtra Before relying on python3/node/git run `which python3 node git` and install what is missing. There is no systemd and no real root outside the proot sandbox. The project is mounted at /work and commands start there. The git tool runs the real git CLI, credentials are already configured." else "- Use the git tool for git (pure-Java implementation), not bash."}
 ${if (linux) "- Building Android apps: users do ask for APKs, so never refuse and never say a phone cannot build. Check `ls /opt/android-sdk`. If it is missing, ask the user to tap 'Установить Android SDK' in Project -> Terminal (it installs JDK 17, the SDK and the aapt2 check). With the SDK present run `export ANDROID_HOME=/opt/android-sdk ANDROID_SDK_ROOT=/opt/android-sdk; ./gradlew assembleDebug --no-daemon` in the project. If Gradle fails on aapt2 (an x86_64 binary does not run on an ARM phone), do not retry in circles: build in the cloud. Add .github/workflows/android.yml (setup-java 17, ./gradlew assembleDebug, upload the APK as an artifact and as a GitHub Release), push it with the github tool, watch the run with the github tool, and give the user the Release link." else ""}
 ${if (adbDevices != null) "- adb controls other Android devices over ADB (Wi-Fi), like on a PC. Saved devices: " + (if (adbDevices.isEmpty()) "none (the user can add some on the Devices screen; you may also pass ip:port)" else adbDevices.joinToString("; ")) + ". Pass device by label or ip:port, never -s. Project files are at /work inside adb push/install paths. Read-only commands run without asking, everything else asks the user." else ""}
 ${if (root) "- root runs a command as root on THIS phone, outside the app sandbox. Every call needs the user's approval. Use it only when really necessary, never touch anything outside the task, and prefer the project folder tools otherwise." else ""}
@@ -384,3 +394,4 @@ QUALITY CONTROL (must follow after any code change):
 - If a check cannot be run here, answer with an explicit line "НЕ ПРОВЕРЕНО: <what exactly was not verified and why>". Never claim a build or device test you did not perform.
 """ else ""}
 """.trimIndent()
+}

@@ -53,9 +53,11 @@ object TermHints {
     )
 
     /** Команды, которые могут исправить ошибку в выводе (не больше трёх). linux — запуск внутри Alpine. */
-    fun fixes(cmd: String, out: String, linux: Boolean): List<String> {
+    fun fixes(cmd: String, out: String, linux: Boolean, flavor: String = ""): List<String> {
         val res = LinkedHashSet<String>()
-        val pipFlag = if (linux) " --break-system-packages" else ""
+        val ubuntu = flavor == com.pocketcode.linux.RootFsChoice.UBUNTU.name
+        // В Ubuntu 22.04 pip старый и флаг --break-system-packages не знает.
+        val pipFlag = if (linux && !ubuntu) " --break-system-packages" else ""
 
         Regex("""No module named ['"]([A-Za-z0-9_.\-]+)['"]""").find(out)?.let {
             val mod = it.groupValues[1].substringBefore('.')
@@ -73,7 +75,8 @@ object TermHints {
         if (linux) {
             Regex("""(?m)^(?:sh: |/bin/sh: \d+: |bash: )?([A-Za-z0-9_.+\-]+): (?:command )?not found""").find(out)?.let {
                 val name = it.groupValues[1]
-                res += "apk add ${apkNames[name] ?: name}"
+                val pkg = com.pocketcode.linux.LinuxPkgs.packageFor(flavor, apkNames[name] ?: name)
+                res += if (ubuntu) "apt-get install -y $pkg" else "apk add $pkg"
             }
         }
         Regex("""(?:sh|bash|/bin/sh)(?:: \d+)?: (\.?/[^\s:]+): [Pp]ermission denied""").find(out)?.let {

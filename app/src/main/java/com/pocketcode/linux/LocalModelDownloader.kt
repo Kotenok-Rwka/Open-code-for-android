@@ -1,5 +1,7 @@
 package com.pocketcode.linux
 
+import com.pocketcode.formatSize
+
 import android.content.Context
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -136,7 +138,7 @@ class LocalModelDownloader(private val context: Context) {
                             out.write(buf, 0, n); done += n
                             if (done - last > 1024 * 1024) {
                                 last = done
-                                onProgress("${done / 1024 / 1024} МБ" + if (total > 0) " / ${total / 1024 / 1024} МБ" else "")
+                                onProgress(formatSize(done) + if (total > 0) " / " + formatSize(total) else "")
                             }
                         }
                     }

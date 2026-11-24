@@ -93,7 +93,7 @@ class SshTool(
 private suspend fun Shell.command(args: List<String>, password: String): String {
     if (password.isEmpty()) return run(args.joinToString(" ") { quote(it) }, File("/"), 120)
     require(run("command -v sshpass >/dev/null 2>&1; echo \$?", File("/"), 15).trim() == "0") {
-        "Для пароля нужен sshpass. Выполни в Linux: apk add openssh-client sshpass"
+        "Для пароля нужен sshpass. Выполни в Linux: apk add openssh-client sshpass (Alpine) или apt-get install -y openssh-client sshpass (Ubuntu)."
     }
     return run("sshpass -p " + quote(password) + " " + args.joinToString(" ") { quote(it) }, File("/"), 120)
 }

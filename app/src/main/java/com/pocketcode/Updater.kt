@@ -111,7 +111,7 @@ class Updater(private val context: Context) {
                         done += n
                         if (done - shown > 1024 * 1024) {
                             shown = done
-                            onProgress("Скачиваю: ${done / 1048576} из ${if (total > 0) total / 1048576 else "?"} МБ")
+                            onProgress("Скачиваю: ${formatSize(done)}" + if (total > 0) " из ${formatSize(total)}" else "")
                         }
                     }
                 }

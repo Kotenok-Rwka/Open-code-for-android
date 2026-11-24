@@ -12,7 +12,7 @@ class LinuxGitTool(private val ws: Workspace, private val shell: Shell) : Tool {
     override val description =
         "Запускает настоящий git (в Linux) в папке проекта. Передай args — всё, что идёт после слова git, " +
             "например: status | log --oneline -5 | add -A | commit -m \"текст\" | clone https://github.com/user/repo | push | pull. " +
-            "Имя автора и токен GitHub уже настроены. Если git не установлен, поставь его: apk add git."
+            "Имя автора и токен GitHub уже настроены. Если git не установлен, поставь его пакетным менеджером среды: `apk add git` в Alpine или `apt-get install -y git` в Ubuntu."
     override val schema = objSchema(
         Prop("args", "string", "Аргументы git"),
         Prop("timeout_sec", "integer", "Таймаут в секундах (по умолчанию 120, максимум 600)", required = false),
@@ -36,7 +36,7 @@ class LinuxGitTool(private val ws: Workspace, private val shell: Shell) : Tool {
         val timeout = (input.int("timeout_sec") ?: 120).coerceIn(1, 600).toLong()
         val out = shell.run("git $a", ws.root, timeout)
         return if (out.contains("git: not found") || out.contains("git: command not found")) {
-            "$out\nGit не установлен в Linux. Выполни в bash: apk add git"
+            "$out\nGit не установлен в Linux. Выполни в bash: apk add git (Alpine) или apt-get install -y git (Ubuntu)."
         } else out
     }
 }

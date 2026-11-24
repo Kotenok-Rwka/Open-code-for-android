@@ -99,7 +99,7 @@ fun LinuxScreen(vm: ChatController, onBack: () -> Unit) = Page("Среда Linux
             FilterChip(selected = !vm.linuxEnabled, onClick = { vm.chooseLinuxShell(false) }, label = { Text("bash Android") })
         }
         Text(
-            if (vm.linuxEnabled) "Сейчас команды агента идут в настоящий Linux: можно ставить программы (apk add), есть python, git, node."
+            if (vm.linuxEnabled) "Сейчас команды агента идут в настоящий Linux: можно ставить программы (${com.pocketcode.linux.LinuxPkgs.installHint(vm.rootFsChoice)}), есть python, git, node. Агент знает, что это ${com.pocketcode.linux.LinuxPkgs.distroName(vm.rootFsChoice)}, и использует ${com.pocketcode.linux.LinuxPkgs.manager(vm.rootFsChoice)}."
             else "Сейчас команды идут в простую оболочку Android: только базовые команды, без python, git и node.",
             style = MaterialTheme.typography.bodySmall,
         )

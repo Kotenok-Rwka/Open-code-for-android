@@ -212,14 +212,20 @@ fun AppNavigationBar(compact: Boolean = false, content: @Composable RowScope.() 
     val style = LocalUiStyle.current
     val ios = style == UiStyle.IOS
     val aurora = style == UiStyle.AURORA
+    // С фоном поверхности становятся полупрозрачными. Для плавающей панели это плохо: сквозь неё
+    // просвечивает картинка и подписи теряются. Поэтому панель всегда непрозрачная, а с фоном — ещё и с тенью.
+    val backdrop = LocalBackdropActive.current
     val side = if (compact) 8.dp else 14.dp
     Box(Modifier.fillMaxWidth().navigationBarsPadding().padding(start = side, end = side, top = if (compact) 2.dp else 6.dp, bottom = if (compact) 2.dp else 10.dp)) {
         Surface(
             shape = RoundedCornerShape(if (ios) 34.dp else if (aurora) 28.dp else 30.dp),
-            color = cs.surfaceContainerHigh,
-            tonalElevation = 0.dp,
-            shadowElevation = if (aurora) 4.dp else 10.dp,
-            border = BorderStroke(if (aurora) 1.dp else 0.5.dp, if (aurora) cs.primary.copy(alpha = 0.18f) else cs.outlineVariant),
+            color = cs.surfaceContainerHigh.copy(alpha = 1f),
+            tonalElevation = if (backdrop) 3.dp else 0.dp,
+            shadowElevation = if (backdrop) 12.dp else if (aurora) 4.dp else 10.dp,
+            border = BorderStroke(
+                if (aurora) 1.dp else 0.5.dp,
+                if (aurora) cs.primary.copy(alpha = if (backdrop) 0.35f else 0.18f) else cs.outlineVariant,
+            ),
             modifier = Modifier.fillMaxWidth(),
         ) {
             Row(

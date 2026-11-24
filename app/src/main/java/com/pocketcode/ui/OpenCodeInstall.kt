@@ -71,7 +71,7 @@ for B in https://registry.npmjs.org https://registry.npmmirror.com; do
   tar -xzf /tmp/oc-dl/oc.tgz -C /tmp/oc-dl 2>&1 | tail -n 3
   F=/tmp/oc-dl/package/bin/opencode
   [ -s "§F" ] || { echo "В архиве нет bin/opencode"; continue; }
-  echo "Размер бинарника: §(wc -c < "§F") байт"
+  echo "Размер бинарника: §(( §(wc -c < "§F") / 1048576 )) МБ"
   mkdir -p @LINK@
   rm -f @LINK@/opencode
   mv -f "§F" @LINK@/opencode 2>/dev/null || cp "§F" @LINK@/opencode

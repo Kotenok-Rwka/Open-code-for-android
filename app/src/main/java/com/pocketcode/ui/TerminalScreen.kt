@@ -95,7 +95,7 @@ fun TerminalScreen(vm: ChatController, onBack: () -> Unit, onOpenHost: () -> Uni
                             )
                         }
                         if (e === vm.term.lastOrNull() && e.done && (e.code ?: 0) != 0 && !vm.termBusy && !e.cmd.startsWith("cd")) {
-                            val fixes = remember(e.out) { TermHints.fixes(e.cmd, e.out, vm.termInLinux) }
+                            val fixes = remember(e.out, vm.rootFsChoice) { TermHints.fixes(e.cmd, e.out, vm.termInLinux, vm.rootFsChoice) }
                             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 AssistChip(onClick = { vm.termAskAssistant(e); onOpenChat() }, label = { Text("Спросить ассистента") })
                                 fixes.forEach { f -> AssistChip(onClick = { vm.termRun(f, 600, false) }, label = { Text("▶ " + f.take(34)) }) }

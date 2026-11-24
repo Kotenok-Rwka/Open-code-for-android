@@ -183,37 +183,54 @@ class ChatController(
     var pluginMessage by mutableStateOf<String?>(null)
     var pluginBusy by mutableStateOf(false)
         private set
+    /** Какие адреса сейчас скачиваются: состояние у каждой карточки своё, а не общий флаг на весь список. */
+    var pluginInstalling by mutableStateOf<Set<String>>(emptySet())
+        private set
+    /** Имена уже установленных плагинов — по ним карточка поиска решает, показывать ли кнопку. */
+    var installedPluginNames by mutableStateOf<Set<String>>(emptySet())
+        private set
 
     fun refreshExtensions() {
         scope.launch(Dispatchers.IO) {
             val sk = runCatching { extensions.skills(all = true) }.getOrDefault(emptyList())
             val cm = runCatching { extensions.commands() }.getOrDefault(emptyList())
-            withContext(Dispatchers.Main) { skillList = sk; commandList = cm }
+            withContext(Dispatchers.Main) {
+                skillList = sk
+                commandList = cm
+                installedPluginNames = installedPlugins().map { it.first }.toSet()
+            }
         }
     }
 
     fun installPlugin(rawUrl: String) {
-        if (pluginBusy) return
         var url = rawUrl.trim()
         if (url.isEmpty()) return
         if (!url.contains("://")) url = "https://" + if (url.startsWith("github.com/")) url else "github.com/$url"
         val name = sanitize(url.trimEnd('/').substringAfterLast('/').removeSuffix(".git"))
         val target = File(extensions.pluginsDir, name)
         if (name.isEmpty() || target.exists()) { pluginMessage = "Плагин «$name» уже установлен или адрес неверен."; return }
-        pluginBusy = true
-        pluginMessage = "Скачиваю $url…"
+        if (url in pluginInstalling) return
+        pluginInstalling = pluginInstalling + url
+        pluginMessage = "Скачиваю «$name»…"
         scope.launch {
             val r = withContext(Dispatchers.IO) { runCatching { GitOps.clone(url, target, settings.githubToken, homeDir) } }
-            pluginBusy = false
             val e = r.exceptionOrNull()
-            if (e != null) { target.deleteRecursively(); pluginMessage = "Не удалось скачать: ${e.message ?: e}"; return@launch }
+            if (e != null) {
+                target.deleteRecursively()
+                pluginInstalling = pluginInstalling - url
+                pluginMessage = "Не удалось скачать «$name»: ${e.message ?: e}. Проверь адрес и интернет, затем попробуй ещё раз."
+                return@launch
+            }
             File(target, ".git").deleteRecursively()
             agent = null
-            refreshExtensions()
             val sk = withContext(Dispatchers.IO) { extensions.skills().count { it.source == "плагин $name" } }
             val cm = withContext(Dispatchers.IO) { extensions.commands().count { it.source == "плагин $name" } }
-            pluginMessage = if (sk + cm == 0) "Скачано, но навыков/команд не найдено. Ожидаются SKILL.md (регистр не важен) в папке skills/<имя>/ или commands/*.md внутри плагина."
-            else "Установлено: навыков $sk, команд $cm."
+            refreshExtensions()
+            pluginInstalling = pluginInstalling - url
+            installedPluginNames = installedPluginNames + name
+            pluginMessage = if (sk + cm == 0)
+                "«$name» скачан, но навыков и команд в нём нет. Плагин — это репозиторий с SKILL.md в skills/<имя>/ или файлами commands/*.md. Обычная программа (например фоторедактор) плагином не станет: удали её в списке плагинов."
+            else "Готово: «$name» — навыков $sk, команд $cm. Они уже в списке во вкладке «Навыки и команды»."
         }
     }
 
@@ -423,7 +440,7 @@ class ChatController(
         val target = localDownloader.target(id, quant)
         if (target.exists() && target.length() > 1024 * 1024) {
             setLocalSettings(localPort, localGpuLayers, localContext, target.name)
-            localInstallStatus = "Модель уже скачана: ${target.name} (${target.length() / 1024 / 1024} МБ). Нажми «Запустить сервер»."
+            localInstallStatus = "Модель уже скачана: ${target.name} (${com.pocketcode.formatSize(target.length())}). Нажми «Запустить сервер»."
             return
         }
         localRuntimeBusy = true
@@ -456,7 +473,7 @@ class ChatController(
                 localInstallStatus = r.fold(
                     onSuccess = {
                         setLocalSettings(localPort, localGpuLayers, localContext, it.name)
-                        "Готово: ${it.name} (${it.length() / 1024 / 1024} МБ). Файл виден Linux как /root/.pocketcode/models/${it.name}. Нажми «Запустить сервер»." },
+                        "Готово: ${it.name} (${com.pocketcode.formatSize(it.length())}). Файл виден Linux как /root/.pocketcode/models/${it.name}. Нажми «Запустить сервер»." },
                     onFailure = { "Не удалось скачать: ${it.message}. Проверь ссылку и место на диске." },
                 )
             }
@@ -517,7 +534,7 @@ class ChatController(
                 val bundled = com.pocketcode.linux.BundledLlama.install(app)
                 withContext(Dispatchers.Main) {
                     localRuntimeStatus = when {
-                        bundled != null -> "llama-server готов (${bundled.length() / 1024 / 1024} МБ). Скачай модель в каталоге ниже или положи .gguf в папку моделей, затем нажми «Запустить сервер»."
+                        bundled != null -> "llama-server готов (${com.pocketcode.formatSize(bundled.length())}). Скачай модель в каталоге ниже или положи .gguf в папку моделей, затем нажми «Запустить сервер»."
                         com.pocketcode.linux.BundledLlama.assetName() == null ->
                             "В этой сборке нет llama-server для процессора телефона (бинарник только для arm64). Скачивание моделей работает, а запустить их можно через LM Studio/Ollama по адресу — поле «Внешний сервер» ниже."
                         else -> "Встроенного llama-server нет: в APK не попал бинарник (нужна сборка с workflow build-llama). Пока можно подключить LM Studio/Ollama по адресу ниже."
@@ -727,11 +744,7 @@ class ChatController(
         linuxStatus = "Устанавливаю python, git, nodejs… Это может занять несколько минут."
         scope.launch(Dispatchers.IO) {
             try {
-                val pkg = if (rootFsChoice == com.pocketcode.linux.RootFsChoice.UBUNTU.name) {
-                    "apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq bash git python3 python3-pip nodejs npm curl"
-                } else {
-                    "apk add --no-cache bash git python3 py3-pip nodejs npm curl"
-                }
+                val pkg = com.pocketcode.linux.LinuxPkgs.install(rootFsChoice, "bash", "git", "python3", "pip", "nodejs", "npm", "curl")
                 val out = linuxShell.run("$pkg 2>&1 | tail -n 15", linuxEnv.rootfs, 900)
                 withContext(Dispatchers.Main) { linuxStatus = "Результат:\n$out" }
             } catch (e: Exception) {
@@ -1757,7 +1770,7 @@ class ChatController(
     private suspend fun linuxRun(cmd: String, timeout: Long) = linuxShell.run(cmd, linuxEnv.rootfs, timeout)
 
     fun installAdb() = deviceTask("Устанавливаю ADB…") {
-        "Результат:\n" + linuxRun("apk add --no-cache android-tools 2>&1 | tail -n 8", 600)
+        "Результат:\n" + linuxRun(com.pocketcode.linux.LinuxPkgs.install(rootFsChoice, "android-tools") + " 2>&1 | tail -n 8", 600)
     }
 
     fun adbPair(address: String, code: String) {
@@ -3210,7 +3223,7 @@ class ChatController(
     /** Ставит Node 22 из официального tarball в /opt/node22, не меняя системные репозитории Alpine. */
     private fun node22Command(): String =
         "if node -v 2>/dev/null | grep -q '^v2[2-9]\\.'; then node -v; echo PC_OK; exit 0; fi; " +
-        "apk add --no-cache curl xz >/dev/null 2>&1; " +
+        com.pocketcode.linux.LinuxPkgs.install(rootFsChoice, "curl", "xz") + " >/dev/null 2>&1; " +
         "curl -fsSL https://nodejs.org/dist/latest-v22.x/SHASUMS256.txt -o /tmp/node22.sha 2>/dev/null || { echo 'Не удалось получить контрольные суммы Node'; exit 0; }; " +
         "TAR=${'$'}(grep 'linux-arm64.tar.xz' /tmp/node22.sha | awk '{print ${'$'}2}'); " +
         "[ -z \"${'$'}TAR\" ] && TAR=${'$'}(grep 'linux-x64.tar.xz' /tmp/node22.sha | awk '{print ${'$'}2}'); " +
@@ -3224,7 +3237,7 @@ class ChatController(
         val ver = """OUT=${'$'}( (%s) 2>&1 ); RC=${'$'}?; echo "${'$'}OUT" | head -n 3; [ ${'$'}RC -eq 0 ] && echo PC_OK"""
         return when (id to action) {
             // Node 20 давал EBADENGINE, а бинарники npm иногда остаются без +x — чиним оба случая.
-            "trail" to "install" -> ("apk add --no-cache nodejs npm git python3 make g++ 2>&1 | tail -n 3; " +
+            "trail" to "install" -> (com.pocketcode.linux.LinuxPkgs.install(rootFsChoice, "nodejs", "npm", "git", "python3", "make", "g++") + " 2>&1 | tail -n 3; " +
                 "NV=${'$'}(node -v 2>/dev/null | sed 's/^v\\([0-9]*\\).*/\\1/'); " +
                 "if [ -z \"${'$'}NV\" ] || [ \"${'$'}NV\" -lt 22 ]; then echo \"NEEDS_NODE22: нужен Node 22 или новее, сейчас: ${'$'}{NV:-нет}\"; exit 0; fi; " +
                 "export DO_NOT_TRACK=1; npm install -g @trailhq/trail-code 2>&1 | tail -n 20; " +
@@ -3237,7 +3250,7 @@ class ChatController(
             "trail" to "check" -> ver.format("trail --version || graft --version") to 60L
             "trail" to "init" -> "cd /work && (trail init </dev/null 2>&1 | tail -n 30); echo PC_OK" to 300L
             "trail" to "remove" -> "npm uninstall -g @trailhq/trail-code 2>&1 | tail -n 3; echo PC_OK" to 300L
-            "jevgrep" to "install" -> ("command -v node >/dev/null || apk add --no-cache nodejs npm >/dev/null 2>&1; NV=${'$'}(node -v 2>/dev/null | sed 's/^v\\([0-9]*\\).*/\\1/'); " +
+            "jevgrep" to "install" -> ("command -v node >/dev/null || " + com.pocketcode.linux.LinuxPkgs.install(rootFsChoice, "nodejs", "npm") + " >/dev/null 2>&1; NV=${'$'}(node -v 2>/dev/null | sed 's/^v\\([0-9]*\\).*/\\1/'); " +
                 "if [ -z \"${'$'}NV\" ] || [ \"${'$'}NV\" -lt 22 ]; then echo \"NEEDS_NODE22: нужен Node 22 или новее, сейчас: ${'$'}{NV:-нет}\"; exit 0; fi; " +
                 "npm install -g @dzhng/jevgrep 2>&1 | tail -n 20; " + ver.format("jg --version || jg --help")) to 1500L
             "jevgrep" to "check" -> ver.format("jg --version || jg --help") to 60L
@@ -4009,7 +4022,7 @@ class ChatController(
         runCatching { runFull("npm cache clean --force; rm -rf /root/.npm/_cacache /root/.npm/_logs; apk cache clean 2>/dev/null; rm -rf /tmp/* 2>/dev/null; echo ok", 300) }
         val after = withContext(Dispatchers.IO) { dirSize(linuxEnv.rootfs) }
         val freed = (before - after).coerceAtLeast(0)
-        return "Освобождено ≈ ${freed / (1024 * 1024)} МБ."
+        return "Освобождено ≈ ${com.pocketcode.formatSize(freed)}."
     }
 
     /** Удаляет старые чаты (кроме закреплённых и текущего) и старые снимки (оставляя по одному на проект). */
@@ -4279,6 +4292,7 @@ class ChatController(
                 .callTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
                 .build()
             var lastError: String? = null
+            var irrelevant = 0
             try {
                 // Фраза целиком часто даёт ноль совпадений: GitHub требует все слова сразу.
                 // Идём от точного запроса к короткому, пока что-то не найдётся.
@@ -4303,15 +4317,25 @@ class ChatController(
                         lastError = "GitHub вернул HTTP $code: ${body.take(200)}"
                         continue
                     }
-                    val hits = com.pocketcode.ui.PluginSearch.parse(body)
+                    val found = com.pocketcode.ui.PluginSearch.parse(body)
+                    // GitHub по длинной фразе часто отдаёт общие списки и программы: оставляем только то,
+                    // что действительно относится к запросу и категории.
+                    val hits = com.pocketcode.ui.PluginSearch.relevant(found, clean, category)
                     if (hits.isNotEmpty()) {
                         pluginSearchResults = hits
                         pluginSearchStatus = if (q != clean) "По «$clean» ничего нет — показаны результаты по «$q»." else null
                         return@launch
                     }
+                    if (found.isNotEmpty()) irrelevant++
                 }
                 pluginSearchResults = emptyList()
-                pluginSearchStatus = lastError ?: "Ничего не найдено. Попробуй короче: «skills», «mcp», «agent»."
+                pluginSearchStatus = lastError ?: (
+                    if (irrelevant > 0) {
+                        "GitHub вернул только посторонние репозитории (общие подборки, обычные программы) — по запросу «$clean» подходящего нет. Уточни запрос: «mcp server github», «claude skills»."
+                    } else {
+                        "Ничего не найдено. Попробуй короче: «skills», «mcp», «agent»."
+                    }
+                    )
             } catch (e: Throwable) {
                 pluginSearchStatus = "Ошибка поиска: ${Secrets.mask(e.message ?: e.javaClass.simpleName)}"
             } finally {
@@ -6096,6 +6120,7 @@ class ChatController(
         val activeTools = tools.filter { toolAvailable(it.name) && (!chatOnlyMode || it.name in chatOnlyAllowed) }
         val sysPrompt = systemPrompt(
             workspace.root.absolutePath, shell.info, linuxActive,
+            linuxFlavor = if (linuxActive) rootFsChoice else "",
             adbDevices = if (linuxActive) devices.map { "${it.label} (${it.address})" } else null,
             root = rootEnabled,
             instructions = listOfNotNull(
