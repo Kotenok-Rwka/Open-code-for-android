@@ -107,6 +107,25 @@ class DesktopLogicTest(unittest.TestCase):
         self.assertTrue(valid)
         self.assertEqual(value, payload)
 
+    def test_translate_query_ru_en(self):
+        query, changed = self.m.translate_query("современные сайты и темы")
+        self.assertTrue(changed)
+        self.assertIn("modern", query)
+        self.assertIn("websites", query)
+        self.assertIn("themes", query)
+
+    def test_trim_history_limits_messages(self):
+        messages = [{"role": "user", "text": "x" * 500} for _ in range(40)]
+        out = self.m.trim_history(messages, 5, 1800)
+        self.assertLessEqual(len(out), 5)
+        self.assertTrue(all(isinstance(m.get("content"), str) for m in out))
+
+    def test_builtin_skills_cover_modern_ui_and_themes(self):
+        names = " ".join(s["name"] for s in self.m.load_skills())
+        self.assertIn("сайты", names)
+        self.assertIn("Аврора", names)
+        self.assertIn("Темы", names)
+
     def test_tools_notes_only_enabled(self):
         self.m.save_json(self.m.SKILLS, [{"name": "a", "enabled": True}, {"name": "b", "enabled": False}])
         self.m.save_json(self.m.AGENTS, [{"name": "c", "enabled": True}, {"name": "d", "enabled": False}])

@@ -27,8 +27,9 @@ Depends: python3 (>= 3.8)
 Recommends: python3-cryptography
 Maintainer: PocketCode <noreply@example.com>
 Description: PocketCode Desktop companion
- Local companion for PocketCode: chat with local and cloud OpenAI-compatible
- models, sync sessions with your phone, and manage tasks from an IDE.
+ Same coding agent as the Android app: tools, projects and undo, sessions,
+ skills and plugins, local models with cancellable downloads, token saving,
+ Aurora UI, and two-way sync with the phone.
 EOF
 
 cp pocketcode_desktop.py ide_bridge.py aurora.html "$PKG/usr/lib/pocketcode-desktop/"
