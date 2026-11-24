@@ -23,20 +23,23 @@ Version: $VER
 Section: utils
 Priority: optional
 Architecture: $ARCH
-Depends: python3 (>= 3.8)
+Depends: python3 (>= 3.8), python3-tk
 Recommends: python3-cryptography
 Maintainer: PocketCode <noreply@example.com>
 Description: PocketCode Desktop companion
- Same coding agent as the Android app: tools, projects and undo, sessions,
- skills and plugins, local models with cancellable downloads, token saving,
- Aurora UI, and two-way sync with the phone.
+ Native desktop app (no browser): same coding agent as the Android app,
+ tools, projects and undo, sessions, skills and plugins, local models with
+ cancellable downloads, token saving, Aurora UI, and two-way sync so work
+ continues from any connected device.
 EOF
 
-cp pocketcode_desktop.py ide_bridge.py aurora.html "$PKG/usr/lib/pocketcode-desktop/"
+cp pocketcode_desktop.py pocketcode_app.py ide_bridge.py version.py "$PKG/usr/lib/pocketcode-desktop/"
 cat > "$PKG/usr/bin/pocketcode-desktop" <<'EOF'
 #!/usr/bin/env bash
-exec python3 /usr/lib/pocketcode-desktop/pocketcode_desktop.py "$@"
+export PC_VERSION="__VER__"
+exec python3 /usr/lib/pocketcode-desktop/pocketcode_app.py "$@"
 EOF
+sed -i "s/__VER__/$VER/" "$PKG/usr/bin/pocketcode-desktop"
 chmod +x "$PKG/usr/bin/pocketcode-desktop"
 
 cat > "$PKG/usr/share/applications/pocketcode-desktop.desktop" <<'EOF'

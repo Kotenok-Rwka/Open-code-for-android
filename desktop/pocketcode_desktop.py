@@ -4,9 +4,11 @@
 Чат с агентом и инструментами (файлы, поиск, bash, git), проекты и правки с
 откатом, сессии, навыки и плагины, локальные модели со скачиванием и отменой,
 поиск по GitHub с переводом и постраничной выдачей, экономия токенов и
-двусторонняя синхронизация с телефоном. Интерфейс — тема «Аврора».
+двусторонняя синхронизация с телефоном. Интерфейс — нативное окно «Аврора»
+(pocketcode_app.py), браузер не нужен.
 
-Запуск: python3 pocketcode_desktop.py  (браузер откроется сам: http://127.0.0.1:8765)
+Этот модуль — движок и HTTP-эндпоинт синхронизации.
+Запуск только сервера (без окна): python3 pocketcode_desktop.py --serve
 Зависимостей нет: только стандартная библиотека Python 3.
 """
 
@@ -26,7 +28,6 @@ import threading
 import time
 import urllib.error
 import urllib.request
-import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, quote, urlparse
@@ -61,7 +62,6 @@ SYNC_CONFIG = SYNC / "config.json"
 TOKEN_FILE = SYNC / "token.txt"
 LOCK = threading.RLock()
 
-PAGE = ""  # загружается ниже из aurora.html
 SKIP_DIRS = {".git", ".gradle", "build", "__pycache__", "node_modules", "dist", ".venv", "venv", ".idea", ".next", "target", ".pytest_cache", "snapshots"}
 SKIP_FILE = re.compile(r"(^\.env.*|.*\.(pem|key|keystore|jks|p12|pyc|class|apk|aab|zip|so|gguf)$|^id_(rsa|ed25519).*)", re.I)
 MAX_FILE = 2_000_000
@@ -95,21 +95,6 @@ DANGER = re.compile(
     r"git\s+push\s+--force|chmod\s+777\s+/|>\s*/dev/sd|format\s+[a-z]:|del\s+/[sq]|rd\s+/s)",
     re.I,
 )
-
-
-def load_page():
-    """HTML интерфейса лежит отдельным файлом; в PyInstaller он попадает через --add-data."""
-    candidates = [Path(__file__).resolve().parent / "aurora.html", HOME / "aurora.html"]
-    for p in candidates:
-        try:
-            if p.is_file() and p.stat().st_size > 100:
-                return p.read_text(encoding="utf-8")
-        except OSError:
-            continue
-    return "<!doctype html><meta charset=utf-8><title>PocketCode</title><p>Не найден файл интерфейса aurora.html</p>"
-
-
-PAGE = load_page()
 
 
 def app_version():
@@ -1541,15 +1526,6 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self):
-        if self.path in ("/", "/index.html") or self.path.startswith("/index"):
-            raw = PAGE.encode("utf-8")
-            self.send_response(200)
-            self.send_header("Content-Type", "text/html; charset=utf-8")
-            self.send_header("Content-Length", str(len(raw)))
-            self.send_header("Cache-Control", "no-store")
-            self.end_headers()
-            self.wfile.write(raw)
-            return
         if not self.local_or_token():
             return
         parsed = urlparse(self.path)
@@ -2011,8 +1987,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.send({"ok": True, "imported": len(items)})
             elif path == "/api/sync/config":
                 cfg = load_json(SYNC_CONFIG, {})
-                cfg.update(b)
-                cfg.pop("token", None)
+                # Пустой token не затирает сохранённый: он нужен для отправки на телефон.
+                cfg.update({k: v for k, v in b.items() if k != "token" or str(v).strip()})
                 save_json(SYNC_CONFIG, cfg)
                 self.send({"ok": True})
             elif path == "/api/sync/test":
@@ -2272,33 +2248,47 @@ def bootstrap():
     }
 
 
-def main():
+def start_server(host="0.0.0.0", port=8765):
+    """HTTP-эндпоинт только для синхронизации: интерфейс приложения нативный."""
     global thread_sync
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--port", type=int, default=8765)
-    ap.add_argument("--host", default="127.0.0.1")
-    ap.add_argument("--no-browser", action="store_true", help="не открывать браузер")
-    a = ap.parse_args()
-    try:
-        server = ThreadingHTTPServer((a.host, a.port), Handler)
-        server.daemon_threads = True
-    except OSError as e:
-        print(f"Не удалось занять порт {a.port}: {e}. Возможно, компаньон уже запущен — открой http://127.0.0.1:{a.port}/")
-        sys.exit(1)
-    stop = threading.Event()
-    if load_json(SYNC_CONFIG, {}).get("enabled"):
-        thread_sync = threading.Thread(target=sync_loop, args=(stop,), daemon=True)
+    server = ThreadingHTTPServer((host, port), Handler)
+    server.daemon_threads = True
+    if load_json(SYNC_CONFIG, {}).get("enabled") and (thread_sync is None or not thread_sync.is_alive()):
+        thread_sync = threading.Thread(target=sync_loop, args=(threading.Event(),), daemon=True)
         thread_sync.start()
-    url = f"http://127.0.0.1:{a.port}/"
-    print(f"PocketCode Desktop {app_version()}: http://{a.host}:{a.port}/  (Ctrl+C — выход)")
-    if not a.no_browser:
-        threading.Timer(0.8, lambda: webbrowser.open(url)).start()
+    return server
+
+
+def start_server_async(host="0.0.0.0", port=8765):
+    """Поднять сервер в фоне. Возвращает (server, "") или (None, текст ошибки)."""
     try:
-        server.serve_forever()
+        server = start_server(host, port)
+    except OSError as e:
+        return None, str(e)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return server, ""
+
+
+def main():
+    ap = argparse.ArgumentParser(description="PocketCode Desktop: сервер синхронизации без окна")
+    ap.add_argument("--port", type=int, default=8765)
+    ap.add_argument("--host", default="0.0.0.0")
+    ap.add_argument("--serve", action="store_true", help="только сервер, без окна")
+    a = ap.parse_args()
+    if not a.serve:
+        print("Окно приложения запускается через pocketcode_app.py; сейчас поднимаю только сервер синхронизации.")
+    server, error = start_server_async(a.host, a.port)
+    if error:
+        print(f"Не удалось занять порт {a.port}: {error}. Возможно, приложение уже запущено.")
+        sys.exit(1)
+    print(f"PocketCode Desktop {app_version()}: синхронизация на http://{a.host}:{a.port}/  (Ctrl+C — выход)")
+    try:
+        while True:
+            time.sleep(1)
     except KeyboardInterrupt:
         print("\nВыход по Ctrl+C")
     finally:
-        stop.set()
+        server.shutdown()
         server.server_close()
 
 

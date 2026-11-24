@@ -138,3 +138,24 @@ class DesktopLogicTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class NativeAppTest(unittest.TestCase):
+    """Нативное окно: все разделы навигации имеют построители, браузер не запускается."""
+
+    def test_nav_sections_have_builders(self):
+        import importlib.util as ilu
+        path = Path(__file__).resolve().parent / "pocketcode_app.py"
+        spec = ilu.spec_from_file_location("pocketcode_app_test", path)
+        mod = ilu.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        keys = [k for _, items in mod.NAV for k, _ in items]
+        self.assertIn("chat", keys)
+        self.assertEqual(len(keys), len(set(keys)), "разделы навигации не должны повторяться")
+        for key in keys:
+            self.assertTrue(hasattr(mod.App, "build_" + key), "нет построителя раздела " + key)
+
+    def test_no_browser_launch(self):
+        text = (Path(__file__).resolve().parent / "pocketcode_desktop.py").read_text(encoding="utf-8")
+        self.assertNotIn("webbrowser", text)
+        self.assertEqual(hasattr(load_module(), "start_server_async"), True)

@@ -1,4 +1,4 @@
-# PocketCode Desktop — сборка portable .exe для Windows 10/11
+# PocketCode Desktop — сборка portable .exe для Windows 10/11 (нативное окно, без браузера)
 # Требования: Python 3.10+ (https://python.org), интернет для pip install pyinstaller
 # Запуск: powershell -ExecutionPolicy Bypass -File build_windows.ps1
 
@@ -9,8 +9,8 @@ python -m pip install --upgrade pyinstaller cryptography
 python -m PyInstaller --noconfirm --onefile --windowed `
   --name PocketCodeDesktop `
   --add-data "pocketcode_desktop.py;." `
-  --add-data "aurora.html;." `
-  pocketcode_desktop.py
+  --add-data "version.py;." `
+  pocketcode_app.py
 
 # Версия — из version.properties и числа коммитов (та же, что у APK), не из ручного файла.
 $ver = (& python (Join-Path $PSScriptRoot "version.py")).Trim()
