@@ -34,6 +34,8 @@ object ThemeCatalog {
         ThemePreset("matcha", "Матча", Color(0xFF558B2F), Color(0xFFAED581), 0xFFF6FBE9, 0xFF18240F),
         ThemePreset("sunset", "Закат", Color(0xFFEF6C00), Color(0xFFFFB74D), 0xFFFFF3E0, 0xFF2B1608),
         ThemePreset("rosepine", "Rosé Pine", Color(0xFF286983), Color(0xFFEBBCBA), 0xFFFAF4ED, 0xFF191724),
+        ThemePreset("nord", "Норд", Color(0xFF5E81AC), Color(0xFF88C0D0), 0xFFECF0F6, 0xFF2E3440),
+        ThemePreset("dracula", "Дракула", Color(0xFFBD93F9), Color(0xFFFF79C6), 0xFFFDF6E3, 0xFF282A36),
     )
 
     fun byId(id: String): ThemePreset? = presets.firstOrNull { it.id == id }
