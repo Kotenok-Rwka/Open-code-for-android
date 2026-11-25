@@ -9,7 +9,10 @@ import json
 import os
 import platform as platform_module
 import re
-import resource
+try:
+    import resource
+except ImportError:
+    resource = None
 import shlex
 import shutil
 import socket
@@ -303,7 +306,8 @@ def run_sandboxed(cmd, workdir, timeout=20):
     env = {k: os.environ[k] for k in ("PATH", "HOME", "LANG", "LC_ALL", "TMPDIR") if k in os.environ}
     try:
         p = subprocess.run([str(c) for c in cmd], cwd=str(wd), env=env, timeout=timeout,
-                           capture_output=True, text=True, errors="replace", preexec_fn=limits)
+                           capture_output=True, text=True, errors="replace",
+                           preexec_fn=limits if resource is not None else None)
         return {"rc": p.returncode, "stdout": p.stdout[-8000:], "stderr": p.stderr[-8000:]}
     except subprocess.TimeoutExpired:
         return {"rc": -1, "stdout": "", "stderr": "превышен таймаут %ss" % timeout}
