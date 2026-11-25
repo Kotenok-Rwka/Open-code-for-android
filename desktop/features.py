@@ -38,7 +38,7 @@ def slug(name):
 
 # ---------- 1/8. память и правила проекта ----------
 def _dotfile(project, name):
-    p = Path(project) if str(project).startswith("/") else None
+    p = Path(project) if Path(project).is_absolute() else None
     if p is None or not p.exists():
         return None
     d = p / ".pocketcode"
@@ -104,7 +104,7 @@ def critique_plan(plan):
             s = str(f if isinstance(f, str) else (f or {}).get("path", ""))
             if not s:
                 issues.append("Пустой путь файла в плане")
-            elif s.startswith("/") or ".." in Path(s).parts:
+            elif Path(s).is_absolute() or ".." in Path(s).parts:
                 issues.append("Небезопасный путь: " + s)
     if not plan.get("checklist"):
         issues.append("Нет чек-листа проверки (checklist)")
@@ -452,7 +452,7 @@ def skill_install(name, skills_dir):
 
 # ---------- 5. PR из задачи ----------
 def create_pr(project, title):
-    root = Path(project) if str(project).startswith("/") else None
+    root = Path(project) if Path(project).is_absolute() else None
     if root is None or not root.exists():
         return {"error": "Нет такого проекта"}
     if not (root / ".git").exists():
@@ -489,7 +489,7 @@ def snapshot_dir(project, n):
 
 
 def make_snapshot(project):
-    root = Path(project) if str(project).startswith("/") else None
+    root = Path(project) if Path(project).is_absolute() else None
     if root is None or not root.exists():
         return {"error": "Нет такого проекта"}
     snaps = _snapshot_root(project)
@@ -523,7 +523,7 @@ def list_snapshots(project):
 
 
 def restore_snapshot(project, n):
-    root = Path(project) if str(project).startswith("/") else None
+    root = Path(project) if Path(project).is_absolute() else None
     src = snapshot_dir(project, n or 0)
     if root is None or not root.exists() or not src.exists():
         return {"error": "Нет проекта или снапшота"}
@@ -3068,7 +3068,7 @@ def snapshot_save(project, rel):
         return {"error": "файл не найден"}
     d = _pc_json(project, "snapshots")
     d.mkdir(parents=True, exist_ok=True)
-    base = str(safe).replace("/", "_").replace("\\", "_")
+    base = re.sub(r"[^0-9A-Za-z._-]", "_", str(safe))
     stamp = int(time.time() * 1000)
     dst = d / ("%s.%d.bak" % (base, stamp))
     shutil.copy2(str(src), str(dst))
@@ -3082,7 +3082,7 @@ def snapshot_list(project, rel):
     safe = _safe_join(project, rel)
     if safe is None:
         return {"error": "путь вне проекта"}
-    base = str(safe).replace("/", "_").replace("\\", "_")
+    base = re.sub(r"[^0-9A-Za-z._-]", "_", str(safe))
     d = _pc_json(project, "snapshots")
     if not d.exists():
         return {"snapshots": []}
