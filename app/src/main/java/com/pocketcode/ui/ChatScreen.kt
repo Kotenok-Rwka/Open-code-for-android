@@ -672,7 +672,7 @@ fun ChatScreen(
                                 Text(
                                     vm.projectPath(name),
                                     style = MaterialTheme.typography.labelSmall,
-                                    fontFamily = FontFamily.Monospace,
+                                    fontFamily = com.pocketcode.ui.LocalMonoFontFamily.current,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                 )
@@ -767,10 +767,10 @@ fun ChatScreen(
             text = {
                 Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Агент приостановлен и ждёт тебя: он хочет выйти за пределы папки проекта. Решай без спешки, окно не закроется само, чат не завершится.", style = MaterialTheme.typography.bodySmall)
-                    req.forEach { Text("• ${it.target}", fontFamily = FontFamily.Monospace) }
+                    req.forEach { Text("• ${it.target}", fontFamily = com.pocketcode.ui.LocalMonoFontFamily.current) }
                     if (req.first().command.isNotBlank()) {
                         Text("Команда:", style = MaterialTheme.typography.labelMedium)
-                        Text(req.first().command.take(800), fontFamily = FontFamily.Monospace, fontSize = 12.sp)
+                        Text(req.first().command.take(800), fontFamily = com.pocketcode.ui.LocalMonoFontFamily.current, fontSize = 12.sp)
                         dangerNote(req.first().command)?.let { Text("⚠ $it", color = MaterialTheme.colorScheme.error) }
                     }
                     Text(
@@ -1144,7 +1144,7 @@ fun ChatScreen(
                                 if (color != null) withStyle(androidx.compose.ui.text.SpanStyle(color = color)) { append(line) } else append(line)
                             }
                         },
-                        fontFamily = FontFamily.Monospace,
+                        fontFamily = com.pocketcode.ui.LocalMonoFontFamily.current,
                         fontSize = 12.sp,
                     )
                     if (rootInfo != null) RootNoteView(rootInfo, vm.rootDelay)
@@ -1244,7 +1244,7 @@ private fun EmptyHint(workspacePath: String, welcome: (@Composable () -> Unit)?,
         Text(
             "Рабочая папка: $workspacePath",
             style = MaterialTheme.typography.labelSmall,
-            fontFamily = FontFamily.Monospace,
+            fontFamily = com.pocketcode.ui.LocalMonoFontFamily.current,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(top = 24.dp),
         )
@@ -1349,7 +1349,7 @@ private fun ItemView(item: UiItem, live: Boolean = false, projectRoot: java.io.F
                     Text(item.name, style = MaterialTheme.typography.labelLarge)
                     Text(
                         toolTitle(item.description),
-                        fontFamily = FontFamily.Monospace,
+                        fontFamily = com.pocketcode.ui.LocalMonoFontFamily.current,
                         fontSize = 12.sp,
                         color = cs.onSurfaceVariant,
                         maxLines = if (expanded) Int.MAX_VALUE else 1,
@@ -1367,7 +1367,7 @@ private fun ItemView(item: UiItem, live: Boolean = false, projectRoot: java.io.F
                     SelectionContainer {
                         Text(
                             item.description.trim(),
-                            fontFamily = FontFamily.Monospace,
+                            fontFamily = com.pocketcode.ui.LocalMonoFontFamily.current,
                             fontSize = 11.sp,
                             modifier = Modifier.padding(top = 6.dp),
                         )
@@ -1379,14 +1379,14 @@ private fun ItemView(item: UiItem, live: Boolean = false, projectRoot: java.io.F
                     expanded -> SelectionContainer {
                         Text(
                             output,
-                            fontFamily = FontFamily.Monospace,
+                            fontFamily = com.pocketcode.ui.LocalMonoFontFamily.current,
                             fontSize = 11.sp,
                             modifier = Modifier.padding(top = 6.dp),
                         )
                     }
                     else -> Text(
                         output.trim().lines().filter { it.isNotBlank() }.take(2).joinToString("\n"),
-                        fontFamily = FontFamily.Monospace,
+                        fontFamily = com.pocketcode.ui.LocalMonoFontFamily.current,
                         fontSize = 11.sp,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,

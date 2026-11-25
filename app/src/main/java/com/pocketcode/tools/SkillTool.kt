@@ -13,8 +13,15 @@ class SkillTool(private val ext: Extensions) : Tool {
     override fun describe(input: JsonObject) = "навык ${input.str("name") ?: ""}"
     override suspend fun run(input: JsonObject): String {
         val n = input.need("name").trim()
-        val skill = ext.skills().firstOrNull { it.name == n }
-            ?: throw IllegalArgumentException("Нет навыка «$n». Доступны: " + ext.skills().joinToString { it.name })
+        val available = ext.skills()
+        val skill = available.firstOrNull { it.name == n }
+            ?: throw IllegalArgumentException(
+                if (ext.skills(all = true).any { it.name == n }) {
+                    "Навык «$n» выключен пользователем. Включить можно в «Агент → Навыки, команды, MCP»."
+                } else {
+                    "Нет навыка «$n». Доступны: " + available.joinToString { it.name }
+                },
+            )
         return ext.readSkill(skill)
     }
 }

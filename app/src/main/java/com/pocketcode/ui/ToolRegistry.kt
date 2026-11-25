@@ -22,7 +22,16 @@ data class ToolsConfig(
     /** После правок агент сам запускает диагностику и тесты (идея AndroidHarness/Agora — своим кодом). */
     val selfCheck: Boolean = true,
     val reasoningVendor: String = "auto",
-)
+    /**
+     * Режим под силу модели: AUTO — обычный промпт; SCAFFOLD — жёсткие строительные леса для слабых
+     * моделей (план → один файл → проверка → ревью по чек-листу); FOCUSED — дисциплина контекста
+     * для моделей, слабых в больших проектах (точечные чтения, карта проекта, субагенты).
+     */
+    val agentMode: String = "auto",
+) {
+    val scaffoldMode: Boolean get() = agentMode == "scaffold"
+    val focusedMode: Boolean get() = agentMode == "focused"
+}
 
 object ToolRegistry {
     /** Статический каталог инструментов, которые агент может получить. */

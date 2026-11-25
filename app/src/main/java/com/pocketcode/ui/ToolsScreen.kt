@@ -88,6 +88,20 @@ fun ToolsScreen(
                     }
                     Switch(checked = c.selfCheck, onCheckedChange = { v -> update { it.copy(selfCheck = v) } })
                 }
+                Text("Режим под силу модели:", style = MaterialTheme.typography.labelMedium)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf("auto" to "Обычный", "scaffold" to "Слабая модель", "focused" to "Большой проект").forEach { (v, l) ->
+                        FilterChip(selected = c.agentMode == v, onClick = { update { it.copy(agentMode = v) } }, label = { Text(l) })
+                    }
+                }
+                Text(
+                    when (c.agentMode) {
+                        "scaffold" -> "Жёсткие строительные леса: план до кода, один файл за раз с проверкой, только реальные сигнатуры, ревью по чек-листу. Для простых/дешёвых моделей."
+                        "focused" -> "Дисциплина контекста: навигация по карте и grep вместо чтения файлов, субагенты для обзора, минимальные диффы. Для моделей, слабых в больших проектах."
+                        else -> "Стандартный системный промпт без дополнительных ограничений."
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                )
             }
         }
         SectionHeader("Доступные инструменты", "${ToolRegistry.all.size} инструментов. Отключённые не передаются модели в запросе.")

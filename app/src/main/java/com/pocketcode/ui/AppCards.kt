@@ -98,7 +98,7 @@ fun EmptyState(
 /** Три пульсирующие точки: агент думает или работает. */
 @Composable
 fun ThinkingDots(modifier: Modifier = Modifier) {
-    if (LocalReduceMotion.current) {
+    if (LocalReduceMotion.current || !LocalMotionConfig.current.pulseIndicators) {
         Row(modifier, horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
             for (i in 0 until 3) Box(Modifier.size(7.dp).alpha(0.6f).clip(CircleShape).background(MaterialTheme.colorScheme.primary))
         }
@@ -127,10 +127,11 @@ fun rememberTick(): () -> Unit {
 
 /** Рамка для блока кода и строк инструментов: в iOS тоньше и без тени. */
 @Composable
-fun hairline(): BorderStroke = BorderStroke(
-    if (LocalUiStyle.current == UiStyle.IOS) 0.5.dp else 1.dp,
-    MaterialTheme.colorScheme.outlineVariant,
-)
+fun hairline(): BorderStroke {
+    val user = LocalStrokeWidth.current
+    val base = if (LocalUiStyle.current == UiStyle.IOS) 0.5f else 1f
+    return BorderStroke((if (user > base) user else base).dp, MaterialTheme.colorScheme.outlineVariant)
+}
 
 /** Строка-подпись под значком в карточке инструмента: цвет состояния. */
 fun toolStateLabel(running: Boolean, error: Boolean): String = when {
@@ -154,13 +155,14 @@ fun TapRow(onClick: () -> Unit, modifier: Modifier = Modifier, content: @Composa
 /** Серые «заглушки» строк списка, пока данные грузятся. Мерцают, если анимации не уменьшены. */
 @Composable
 fun SkeletonRows(count: Int = 6, modifier: Modifier = Modifier) {
+    val pulseOn = !LocalReduceMotion.current && LocalMotionConfig.current.pulseIndicators
     val t = rememberInfiniteTransition(label = "skeleton")
     val pulse = t.animateFloat(
         initialValue = 0.35f, targetValue = 0.75f,
         animationSpec = infiniteRepeatable(tween(durationMillis = 900), RepeatMode.Reverse),
         label = "skeletonAlpha",
     )
-    val still = LocalReduceMotion.current
+    val still = !pulseOn
     val c = MaterialTheme.colorScheme.surfaceContainerHighest
     Column(modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         for (i in 0 until count) {

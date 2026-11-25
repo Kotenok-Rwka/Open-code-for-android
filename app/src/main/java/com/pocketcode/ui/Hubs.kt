@@ -158,8 +158,10 @@ private fun Md3Hub(title: String, subtitle: String, items: List<HubItem>, onSear
             }
             androidx.compose.animation.AnimatedVisibility(
                 visible = true,
-                enter = androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(Motion.ms(220))) +
-                    androidx.compose.animation.slideInVertically(androidx.compose.animation.core.tween(Motion.ms(220))) { it / 4 },
+                enter = if (com.pocketcode.ui.LocalMotionConfig.current.listAnimations)
+                    androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(Motion.ms(220))) +
+                        androidx.compose.animation.slideInVertically(androidx.compose.animation.core.tween(Motion.ms(220))) { it / 4 }
+                else androidx.compose.animation.EnterTransition.None,
             ) {
             Card(
                 onClick = { entry.onClick(); hapticTap(ctx) },

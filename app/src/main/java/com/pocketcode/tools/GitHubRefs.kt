@@ -15,6 +15,13 @@ object GitHubRefs {
         return m.groupValues[1] + "/" + m.groupValues[2]
     }
 
+    /** Адрес ведёт на GitHub по https: только такому серверу можно отправлять токен GitHub. */
+    fun isGitHubHttps(scheme: String?, host: String?): Boolean {
+        if (!scheme.equals("https", ignoreCase = true)) return false
+        val h = host?.lowercase()?.trimEnd('.') ?: return false
+        return h == "github.com" || h.endsWith(".github.com")
+    }
+
     /** Кодирует одну часть адреса: пробелы — %20, а не «+». */
     fun enc(s: String): String = URLEncoder.encode(s, "UTF-8").replace("+", "%20")
 

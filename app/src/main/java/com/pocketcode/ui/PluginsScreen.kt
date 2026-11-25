@@ -251,7 +251,8 @@ fun PluginsScreen(vm: ChatController, onBack: () -> Unit) {
 
             if (tab == 2) {
             Text("Плагины", style = MaterialTheme.typography.titleMedium)
-            vm.installedPlugins().forEach { (name, enabled) ->
+            if (vm.pluginList.isEmpty() && vm.pluginMessage == null) Text("Плагинов нет. Найди на GitHub или вставь адрес ниже.", style = MaterialTheme.typography.bodySmall)
+            vm.pluginList.forEach { (name, enabled) ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(if (enabled) name else "$name (отключён)", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
                     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {

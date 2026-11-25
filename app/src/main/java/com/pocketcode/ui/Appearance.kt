@@ -1,6 +1,7 @@
 package com.pocketcode.ui
 
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
 
 /** Готовая цветовая тема: пары акцентов для светлой и тёмной схемы. */
 data class ThemePreset(
@@ -32,9 +33,16 @@ object ThemeCatalog {
         ThemePreset("ocean", "Океан", Color(0xFF0277BD), Color(0xFF4FC3F7), 0xFFE8F6FF, 0xFF0A1F2E),
         ThemePreset("matcha", "Матча", Color(0xFF558B2F), Color(0xFFAED581), 0xFFF6FBE9, 0xFF18240F),
         ThemePreset("sunset", "Закат", Color(0xFFEF6C00), Color(0xFFFFB74D), 0xFFFFF3E0, 0xFF2B1608),
+        ThemePreset("rosepine", "Rosé Pine", Color(0xFF286983), Color(0xFFEBBCBA), 0xFFFAF4ED, 0xFF191724),
     )
 
     fun byId(id: String): ThemePreset? = presets.firstOrNull { it.id == id }
+
+    /** Цвет подложки темы; null — у темы нет своего фона и остаётся фон стиля интерфейса. */
+    fun backgroundFor(id: String, dark: Boolean): Color? {
+        val p = byId(id) ?: return null
+        return (if (dark) p.backgroundDark else p.backgroundLight)?.let { Color(it) }
+    }
     fun accentFor(id: String, dark: Boolean): Color {
         val p = byId(id) ?: return if (dark) Color(0xFF8AB4F8) else Color(0xFF2F5DA8)
         return if (dark) p.dark else p.light
@@ -165,4 +173,60 @@ object AppearanceCodec {
         val v = s.toULongOrNull(16) ?: return null
         return if (s.length == 6) Color((0xFF000000uL or v).toLong()) else Color(v.toLong())
     }
+}
+
+/** Шрифт, выбранный в «Оформлении»: файл из filesDir/fonts; null — оставить системный. */
+fun appearanceTypeface(name: String, filesDir: java.io.File): android.graphics.Typeface? {
+    if (name.isBlank() || name == "system") return null
+    val f = java.io.File(filesDir, "fonts/$name")
+    return if (f.isFile) runCatching { android.graphics.Typeface.createFromFile(f) }.getOrNull() else null
+}
+
+/**
+ * Типографика с пользовательским шрифтом, масштабом чата и режимом чтения.
+ * Шрифт применяется ко всем стилям; масштаб и увеличенный интерлиньяж — к основному тексту (body).
+ */
+fun styledTypography(
+    base: androidx.compose.material3.Typography,
+    family: androidx.compose.ui.text.font.FontFamily?,
+    chatScale: Float,
+    readingMode: Boolean,
+): androidx.compose.material3.Typography {
+    val mul = chatScale.coerceIn(0.7f, 2f) * if (readingMode) 1.15f else 1f
+    val lh = if (readingMode) 1.3f else 1f
+    if (family == null && mul == 1f && lh == 1f) return base
+    fun s(t: androidx.compose.ui.text.TextStyle, body: Boolean) = t.copy(
+        fontFamily = family ?: t.fontFamily,
+        fontSize = if (body) t.fontSize * mul else t.fontSize,
+        lineHeight = if (body) t.lineHeight * mul * lh else t.lineHeight,
+    )
+    return androidx.compose.material3.Typography(
+        displayLarge = s(base.displayLarge, false),
+        displayMedium = s(base.displayMedium, false),
+        displaySmall = s(base.displaySmall, false),
+        headlineLarge = s(base.headlineLarge, false),
+        headlineMedium = s(base.headlineMedium, false),
+        headlineSmall = s(base.headlineSmall, false),
+        titleLarge = s(base.titleLarge, false),
+        titleMedium = s(base.titleMedium, false),
+        titleSmall = s(base.titleSmall, false),
+        bodyLarge = s(base.bodyLarge, true),
+        bodyMedium = s(base.bodyMedium, true),
+        bodySmall = s(base.bodySmall, false),
+        labelLarge = s(base.labelLarge, false),
+        labelMedium = s(base.labelMedium, false),
+        labelSmall = s(base.labelSmall, false),
+    )
+}
+
+/** Скругления из «Оформления»: единая шкала от радиуса large. */
+fun appearanceShapes(radius: Int): androidx.compose.material3.Shapes {
+    val r = radius.coerceIn(0, 40)
+    return androidx.compose.material3.Shapes(
+        extraSmall = androidx.compose.foundation.shape.RoundedCornerShape((r / 4).coerceAtLeast(2).dp),
+        small = androidx.compose.foundation.shape.RoundedCornerShape((r / 2).dp),
+        medium = androidx.compose.foundation.shape.RoundedCornerShape((r * 3 / 4).dp),
+        large = androidx.compose.foundation.shape.RoundedCornerShape(r.dp),
+        extraLarge = androidx.compose.foundation.shape.RoundedCornerShape((r * 3 / 2).dp),
+    )
 }

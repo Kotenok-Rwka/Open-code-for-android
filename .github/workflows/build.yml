@@ -126,7 +126,7 @@ jobs:
         run: |
           cp app/build/outputs/apk/debug/*.apk PocketCode.apk
           # Что изменилось с прошлой сборки: темы коммитов между прошлым релизом и этим
-          PREV=$(gh release list --limit 1 --json tagName -q '.[0].tagName' || true)
+          PREV=$(gh release list --limit 1 --json tagName -q '.[0].tagName // ""')
           if [ -n "$PREV" ] && git rev-parse -q --verify "refs/tags/$PREV" >/dev/null; then
             RANGE="$PREV..HEAD"; FROM="с $PREV"
           else

@@ -11,10 +11,30 @@ import sys
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib.parse import urlparse
 
 DESKTOP = "http://127.0.0.1:8765"
 QUEUE = Path.home() / ".pocketcode-desktop" / "ide_queue.jsonl"
 QUEUE.parent.mkdir(exist_ok=True)
+LOOPBACK_HOSTS = ("127.0.0.1", "::1", "localhost")
+
+
+def _loopback_name(value):
+    try:
+        host = urlparse(value if "://" in value else "//" + value).hostname
+    except ValueError:
+        return False
+    return (host or "").lower() in LOOPBACK_HOSTS
+
+
+def request_is_local(client_ip, headers):
+    """Локальный адрес клиента, локальный Host и локальный Origin (если браузер его прислал)."""
+    if client_ip not in ("127.0.0.1", "::1", "::ffff:127.0.0.1"):
+        return False
+    if not _loopback_name(headers.get("Host") or ""):
+        return False
+    origin = headers.get("Origin")
+    return origin is None or _loopback_name(origin)
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -25,17 +45,20 @@ class Handler(BaseHTTPRequestHandler):
         raw = json.dumps(value, ensure_ascii=False).encode()
         self.send_response(code)
         self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
-        self.send_header("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
         self.send_header("Content-Length", str(len(raw)))
         self.end_headers()
         self.wfile.write(raw)
 
-    def do_OPTIONS(self):
-        self.send({"ok": True})
+    def from_editor(self):
+        """Запрос пришёл от редактора на этом компьютере, а не со страницы сайта в браузере."""
+        if request_is_local(self.client_address[0], self.headers):
+            return True
+        self.send({"error": "local only"}, 403)
+        return False
 
     def do_GET(self):
+        if not self.from_editor():
+            return
         if self.path == "/api/queue":
             self.send([json.loads(x) for x in [l for l in QUEUE.read_text(encoding="utf-8").splitlines() if l.strip()]] if QUEUE.exists() else [])
         else:
@@ -43,7 +66,10 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         try:
-            body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))).decode() or "{}")
+            raw = self.rfile.read(int(self.headers.get("Content-Length", 0)))
+            if not self.from_editor():
+                return
+            body = json.loads(raw.decode() or "{}")
             task = {
                 "title": body.get("title", "IDE task"),
                 "text": body.get("text", ""),

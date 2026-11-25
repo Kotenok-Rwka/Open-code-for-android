@@ -102,7 +102,7 @@ object PluginSearch {
             "Навыки" -> Regex("\\bskills?\\b").containsMatchIn(text)
             "Агенты" -> Regex("\\bagents?\\b").containsMatchIn(text)
             "MCP" -> Regex("\\bmcp\\b").containsMatchIn(text)
-            "Плагины" -> Regex("\\bplugins?\\b|\\bextensions?\\b").containsMatchIn(text)
+            "Плагины" -> Regex("\\bplugins?\\b|\\bextensions?\\b|\\bskills?\\b|\\bcommands?\\b").containsMatchIn(text)
             else -> true
         }
     }
@@ -116,7 +116,36 @@ object PluginSearch {
         return hits.filter { hit ->
             val text = (hit.fullName + " " + hit.description).lowercase()
             (words.isEmpty() || words.any { text.contains(it) }) && categoryMatches(hit, category)
+        }.sortedByDescending { pluginLikeness(it) }
+    }
+
+    // Слова, по которым видно настоящий набор навыков/команд/плагинов, а не обычная программа.
+    private val PLUGIN_SIGNALS = listOf(
+        "skill", "claude", "agent", "commands", "prompt", "mcp",
+    )
+
+    // Слова обычных программ и библиотек: такой репозиторий плагином не станет.
+    private val PROGRAM_SIGNALS = listOf(
+        "framework", "library", "sdk", "app ", "editor", "game", "client", "api wrapper", "flutter", "react native", "gradle", "compiler", "emulator", "root", "magisk",
+    )
+
+    /**
+     * Насколько репозиторий похож на плагин со навыками/командами: сигнал-слова в названии весят больше,
+     * чем в описании; признаки обычной программы отнимают. Чистая функция — покрывается тестом.
+     */
+    fun pluginLikeness(hit: GitHubRepoHit): Int {
+        val name = hit.fullName.lowercase()
+        val desc = hit.description.lowercase()
+        var score = 0
+        for (s in PLUGIN_SIGNALS) {
+            if (name.contains(s)) score += 3
+            if (desc.contains(s)) score += 1
         }
+        for (s in PROGRAM_SIGNALS) {
+            if (name.contains(s)) score -= 4
+            if (desc.contains(s)) score -= 1
+        }
+        return score
     }
 
     /** Локальный фильтр: навыки/команды/плагины по названию и описанию. */

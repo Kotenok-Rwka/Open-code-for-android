@@ -132,6 +132,14 @@ val LESSONS = listOf(
 
 private val NEW_LESSONS = listOf(
     Lesson(
+        "modes", "🎚 Режимы и советник",
+        "Агент → «Размышления и инструменты»: внизу выбор режима под силу модели. «Слабая модель» ведёт дешёвую модель по шагам: сначала план, потом один файл с проверкой, в конце ревью по чек-листу. «Большой проект» бережёт контекст: узкие поиска вместо чтения файлов. Режим включается и сам — локальным моделям достаётся «Слабая модель». Если задана helper-модель, агент может спросить её как советника на сложной развилке (инструмент consult_advisor). В чате работает «!команда»: напиши «!git status» — выполнится сразу, без агента.",
+        "chat",
+        "Что делает режим «Слабая модель»?",
+        listOf("Ставит слабую модель на телефон", "Ведёт модель по шагам: план, один файл, проверка", "Отключает размышления"), 1,
+        "Модель двигается по жёсткому конвейеру: план до кода, один файл за раз с диагностикой, ревью по чек-листу. Так дешёвые модели пишут заметно аккуратнее.",
+    ),
+    Lesson(
         "howai", "🧠 Как работает нейронка",
         "Новый пункт в меню «⋮». Простыми словами: что модель видит (контекст и правила), как выбирает шаг, зачем вызывает инструменты и почему «думает» несколько секунд. Там же объясняются живые статусы 🧠/⚙️ и размышления.",
         "chat",
@@ -218,8 +226,10 @@ fun LearnScreen(vm: ChatController, onBack: () -> Unit, onGo: (String) -> Unit, 
             shown.forEach { l ->
                 androidx.compose.animation.AnimatedVisibility(
                     visible = true,
-                    enter = androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(Motion.ms(180))) +
-                        androidx.compose.animation.slideInVertically(androidx.compose.animation.core.tween(Motion.ms(220))) { it / 5 },
+                    enter = if (com.pocketcode.ui.LocalMotionConfig.current.listAnimations)
+                        androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(Motion.ms(180))) +
+                            androidx.compose.animation.slideInVertically(androidx.compose.animation.core.tween(Motion.ms(220))) { it / 5 }
+                    else androidx.compose.animation.EnterTransition.None,
                 ) {
                     LessonCard(l, vm.learnDone, open == l.id, { open = if (open == l.id) null else l.id }, onGo) { vm.markLesson(l.id) }
                 }

@@ -8,6 +8,7 @@ import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import com.pocketcode.tools.GitHubCredentials
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -21,7 +22,6 @@ import org.eclipse.jgit.api.MergeResult
 import org.eclipse.jgit.api.ResetCommand
 import org.eclipse.jgit.lib.PersonIdent
 import org.eclipse.jgit.transport.RefSpec
-import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider
 import java.io.File
 import java.util.concurrent.TimeUnit
 
@@ -86,8 +86,15 @@ class SyncManager(private val app: Context, private val projectDir: (String) -> 
             if (skipped(rel, false) || f.length() > maxFile) return@forEach
             if (++count > maxFiles) return@forEach
             val t = File(dst, rel)
-            if (!t.isFile || !sameContent(f, t)) {
+            if (!t.isFile) {
                 t.parentFile?.mkdirs()
+                f.copyTo(t, overwrite = true)
+                t.setLastModified(f.lastModified())
+                changed++
+            } else if (!sameContent(f, t)) {
+                // менялись с обеих сторон — локальную версию сохраняем рядом, берём входящую
+                val localCopy = File(t.parentFile, t.name + ".conflict-local")
+                if (!localCopy.isFile) runCatching { t.copyTo(localCopy, overwrite = true) }
                 f.copyTo(t, overwrite = true)
                 t.setLastModified(f.lastModified())
                 changed++
@@ -105,7 +112,7 @@ class SyncManager(private val app: Context, private val projectDir: (String) -> 
         return changed
     }
 
-    private fun creds(token: String) = UsernamePasswordCredentialsProvider(token, "")
+    private fun creds(token: String) = GitHubCredentials(token)
 
     private fun openGit(repoUrl: String): Git {
         work.mkdirs()

@@ -21,6 +21,9 @@ object AndroidSdkInstall {
     /** Минимум свободного места в КБ: JDK, инструменты, платформа и кэш Gradle. */
     const val MIN_FREE_KB = 1500000
 
+    /** Минимум свободной оперативки в МБ: Gradle без неё уходит в OOM. Меньше — сразу облачная сборка. */
+    const val MIN_RAM_MB = 2000
+
     const val PLATFORM = "platforms;android-34"
     const val BUILD_TOOLS = "build-tools;34.0.0"
 
@@ -35,6 +38,13 @@ if [ -n "§FREE" ] && [ "§FREE" -lt @MINFREE@ ] 2>/dev/null; then
   echo "Мало места: свободно около §((FREE / 1024)) МБ, нужно не меньше §((@MINFREE@ / 1024)) МБ. Освободи память телефона и повтори."
   echo "код установки SDK: 1"
   exit 1
+fi
+AV=§(awk '/MemAvailable/ {print int(§2/1024)}' /proc/meminfo 2>/dev/null)
+if [ -n "§AV" ] && [ "§AV" -gt 0 ] && [ "§AV" -lt @MINRAM@ ] 2>/dev/null; then
+  echo "Свободной оперативки около §AV МБ, для сборки нужно хотя бы @MINRAM@ МБ. На этом телефоне сборка, скорее всего, не пройдёт: Gradle упрётся в память."
+  echo "Лучше собирать в облаке: попроси агента добавить GitHub Actions (android.yml) — он соберёт APK и даст ссылку."
+  echo "код установки SDK: 2"
+  exit 2
 fi
 M=''
 for p in openjdk17 bash unzip curl ca-certificates git; do apk info -e §p >/dev/null 2>&1 || M="§M §p"; done
@@ -113,6 +123,7 @@ echo "код установки SDK: 0"
             .replace("@BUILDTOOLS@", BUILD_TOOLS)
             .replace("@AAPT2DIR@", AAPT2_DIR)
             .replace("@MINFREE@", MIN_FREE_KB.toString())
+            .replace("@MINRAM@", MIN_RAM_MB.toString())
             .replace("@ENV@", ENV_PREFIX.trim())
             .replace('§', '$')
 }

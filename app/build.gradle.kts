@@ -121,6 +121,8 @@ dependencies {
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.1")
+    // org.json не замокан в локальных тестах — даём настоящую реализацию
+    testImplementation("org.json:json:20240303")
     implementation("org.jsoup:jsoup:1.17.2")
     implementation("androidx.work:work-runtime-ktx:2.9.1")
 

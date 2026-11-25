@@ -81,6 +81,7 @@ python3 pocketcode_app.py
 ## Тесты
 
 ```sh
+python3 -m pip install cryptography
 python3 -m unittest discover -s desktop -p 'test_*.py'
 ```
 

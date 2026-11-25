@@ -26,6 +26,7 @@ import kotlinx.serialization.encodeToString
 import com.pocketcode.CatalogItem
 import com.pocketcode.PROJECT_TEMPLATES
 import com.pocketcode.tools.NotesTool
+import com.pocketcode.tools.str
 import com.pocketcode.tools.ApplyPatchTool
 import com.pocketcode.tools.RecallTool
 import com.pocketcode.tools.ProjectSearchTool
@@ -190,14 +191,20 @@ class ChatController(
     var installedPluginNames by mutableStateOf<Set<String>>(emptySet())
         private set
 
+    /** Список установленных плагинов (имя, включён) — состояние Compose, чтобы вкладка «Плагины» перерисовывалась сама. */
+    var pluginList by mutableStateOf<List<Pair<String, Boolean>>>(emptyList())
+        private set
+
     fun refreshExtensions() {
         scope.launch(Dispatchers.IO) {
             val sk = runCatching { extensions.skills(all = true) }.getOrDefault(emptyList())
             val cm = runCatching { extensions.commands() }.getOrDefault(emptyList())
+            val pl = runCatching { installedPlugins() }.getOrDefault(emptyList())
             withContext(Dispatchers.Main) {
                 skillList = sk
                 commandList = cm
-                installedPluginNames = installedPlugins().map { it.first }.toSet()
+                pluginList = pl
+                installedPluginNames = pl.map { it.first }.toSet()
             }
         }
     }
@@ -208,7 +215,7 @@ class ChatController(
         if (!url.contains("://")) url = "https://" + if (url.startsWith("github.com/")) url else "github.com/$url"
         val name = sanitize(url.trimEnd('/').substringAfterLast('/').removeSuffix(".git"))
         val target = File(extensions.pluginsDir, name)
-        if (name.isEmpty() || target.exists()) { pluginMessage = "Плагин «$name» уже установлен или адрес неверен."; return }
+        if (name.isEmpty() || target.exists() || extensions.plugin(name) != null) { pluginMessage = "Плагин «$name» уже установлен или адрес неверен."; return }
         if (url in pluginInstalling) return
         pluginInstalling = pluginInstalling + url
         pluginMessage = "Скачиваю «$name»…"
@@ -221,66 +228,60 @@ class ChatController(
                 pluginMessage = "Не удалось скачать «$name»: ${e.message ?: e}. Проверь адрес и интернет, затем попробуй ещё раз."
                 return@launch
             }
-            File(target, ".git").deleteRecursively()
+            withContext(Dispatchers.IO) {
+                File(target, ".git").deleteRecursively()
+                runCatching { extensions.savePluginSource(target, url) }
+            }
             agent = null
-            val sk = withContext(Dispatchers.IO) { extensions.skills().count { it.source == "плагин $name" } }
-            val cm = withContext(Dispatchers.IO) { extensions.commands().count { it.source == "плагин $name" } }
             refreshExtensions()
             pluginInstalling = pluginInstalling - url
             installedPluginNames = installedPluginNames + name
-            pluginMessage = if (sk + cm == 0)
-                "«$name» скачан, но навыков и команд в нём нет. Плагин — это репозиторий с SKILL.md в skills/<имя>/ или файлами commands/*.md. Обычная программа (например фоторедактор) плагином не станет: удали её в списке плагинов."
-            else "Готово: «$name» — навыков $sk, команд $cm. Они уже в списке во вкладке «Навыки и команды»."
+            pluginMessage = withContext(Dispatchers.IO) { extensions.pluginSummary(target) }.let { summary ->
+                if (summary.startsWith("навыков и команд не найдено"))
+                    "«$name» скачан, но $summary. Плагин — это репозиторий с SKILL.md в skills/<имя>/, файлами commands/*.md или хотя бы AGENTS.md/CLAUDE.md с инструкциями — такое теперь подхватывается само. Обычная программа (например фоторедактор) плагином не станет: удали её в списке плагинов."
+                else "Готово: «$name» — $summary. Они уже в списке во вкладке «Навыки и команды»."
+            }
         }
     }
 
     fun removePlugin(name: String) {
-        File(extensions.pluginsDir, name).deleteRecursively()
+        val removed = runCatching { extensions.removePlugin(name) }.getOrDefault(false)
+        pluginMessage = if (removed) "Плагин «$name» удалён." else "Не удалось удалить «$name»."
         agent = null
         refreshExtensions()
     }
 
-    /** Отключение плагина без удаления: достаточно переименовать папку. */
+    /** Отключение плагина без удаления: папка переименовывается, навыки и команды плагина пропадают из списка. */
     fun disablePlugin(name: String, disabled: Boolean) {
-        val dir = File(extensions.pluginsDir, name)
-        val target = File(extensions.pluginsDir, if (disabled) ".disabled-$name" else name.removePrefix(".disabled-"))
-        if (dir.isDirectory && !target.exists()) runCatching { dir.renameTo(target) }
+        val done = runCatching { extensions.setPluginEnabled(name, !disabled) }.getOrDefault(false)
+        pluginMessage = when {
+            !done -> "Не удалось ${if (disabled) "выключить" else "включить"} «$name»."
+            disabled -> "Плагин «$name» выключен: агент его больше не видит."
+            else -> "Плагин «$name» включён."
+        }
         agent = null
         refreshExtensions()
     }
 
-    fun installedPlugins(): List<Pair<String, Boolean>> =
-        (extensions.pluginsDir.listFiles { f -> f.isDirectory && !f.name.startsWith(".old-") } ?: emptyArray())
-            .map { it.name.removePrefix(".disabled-") to !it.name.startsWith(".disabled-") }
-            .distinctBy { it.first }
-            .sortedBy { it.first }
+    fun installedPlugins(): List<Pair<String, Boolean>> = extensions.plugins().map { it.name to it.enabled }
 
     fun updatePlugin(name: String) {
         if (pluginBusy) return
-        val dir0 = File(extensions.pluginsDir, name.removePrefix(".disabled-"))
-        val url = runCatching {
-            File(dir0, ".git/config").takeIf { it.isFile }?.readText()
-                ?.lineSequence()?.firstOrNull { it.trim().startsWith("url =") }
-                ?.substringAfter("url =")?.trim()
-        }.getOrNull()?.takeIf { it.startsWith("http") }
-        if (url == null) { pluginMessage = "Неизвестен URL плагина — удали и установи заново."; return }
+        val url = runCatching { extensions.pluginSource(name) }.getOrNull()
+        if (url == null) {
+            pluginMessage = "Адрес плагина «$name» не сохранён (он поставлен старой версией приложения). Удали его и установи заново: после этого «Обновить» будет работать."
+            return
+        }
         pluginBusy = true
         pluginMessage = "Обновляю плагин $name…"
         scope.launch(Dispatchers.IO) {
-            val backup = File(extensions.pluginsDir, ".old-${name}-${System.currentTimeMillis()}")
             val r = runCatching {
-                if (dir0.exists()) dir0.renameTo(backup)
-                com.pocketcode.tools.GitOps.clone(url, dir0, settings.githubToken, homeDir)
+                extensions.replacePlugin(name, url) { dir -> GitOps.clone(url, dir, settings.githubToken, homeDir) }
             }
             withContext(Dispatchers.Main) {
                 pluginBusy = false
-                if (r.isFailure) {
-                    if (backup.exists()) backup.renameTo(dir0)
-                    pluginMessage = "Не удалось обновить: ${r.exceptionOrNull()?.message}"
-                } else {
-                    backup.deleteRecursively()
-                    pluginMessage = "Плагин обновлён."
-                }
+                pluginMessage = r.exceptionOrNull()?.let { "Не удалось обновить «$name»: ${it.message ?: it}. Старая версия осталась на месте." }
+                    ?: "Плагин «$name» обновлён."
                 agent = null
                 refreshExtensions()
             }
@@ -1217,6 +1218,23 @@ class ChatController(
     /** Подпись вкладки. */
     val tabTitle: String get() = "Чат ${tabNo + 1}"
     val profileLabel: String get() = profiles.firstOrNull { it.id == activeProfileId }?.label ?: ""
+
+    /**
+     * Эффективный режим агента: явный выбор пользователя (не auto) или авто-подбор по модели —
+     * локальным/офлайн-профилям scaffold, моделям с маленьким контекстом — focused.
+     */
+    fun effectiveAgentMode(): String {
+        if (toolsConfig.agentMode != "auto") return toolsConfig.agentMode
+        val p = profiles.firstOrNull { it.id == activeProfileId }
+        val offline = p != null && (p.id.startsWith("local-") || p.baseUrl.contains("127.0.0.1") || p.baseUrl.contains("localhost"))
+        val smallModel = settings.model.lowercase().let { it.contains("flash") || it.contains("mini") || it.contains("small") }
+        val smallContext = settings.contextTokens in 1..32_000
+        return when {
+            offline || smallModel -> "scaffold"
+            smallContext -> "focused"
+            else -> "auto"
+        }
+    }
 
     /** Реальный предел контекста: в эко-режиме не больше 64 000. */
     val effectiveContext: Int get() = if (settings.ecoMode) minOf(settings.contextTokens, 64_000) else settings.contextTokens
@@ -2228,6 +2246,15 @@ class ChatController(
         override fun planMode() = this@ChatController.planMode
 
         override fun decide(tool: String, input: JsonObject, description: String): com.pocketcode.agent.Decision {
+            // Секретные файлы агент не читает: ключи не должны попадать в историю модели.
+            if (tool in setOf("read_file", "bash", "cat")) {
+                val target = (input.str("path") ?: input.str("command") ?: "").lowercase()
+                val pokesSecrets = listOf(".env", "id_rsa", ".pem", "credentials", ".ssh").any { target.contains(it) }
+                if (pokesSecrets && tool != "bash") {
+                    scope.launch { items += UiItem.Notice("Хук безопасности: чтение секретов ($target) заблокировано.") }
+                    return com.pocketcode.agent.Decision.DENY
+                }
+            }
             if (readOnlyMode && tool !in com.pocketcode.agent.PLAN_ALLOWED) {
                 scope.launch { items += UiItem.Notice("Режим «Только чтение»: $tool отклонён.") }
                 return com.pocketcode.agent.Decision.DENY
@@ -5659,10 +5686,26 @@ class ChatController(
         }
     }
 
+    /** "!команда" — выполнить shell прямо из ввода, вывод в чат, без агента и без изменений в истории модели. */
+    private fun runShellInline(command: String) {
+        if (command.isEmpty()) return
+        scope.launch {
+            items += UiItem.Tool("bash", "! $command", null, false)
+            val out = runCatching { withContext(Dispatchers.IO) { shell.run(command, workspace.root, 120) } }
+                .getOrElse { "Ошибка: ${it.message ?: it}" }
+            items += UiItem.Tool("bash", "! $command", Secrets.mask(out.take(8000)), isError = out.isEmpty())
+        }
+    }
+
     fun send(text: String, auto: Boolean = false) {
         if (!welcomeSeen) hideWelcome()
         val trimmed = text.trim()
         if ((trimmed.isEmpty() && pendingImages.isEmpty()) || running) return
+        // "!команда" — прямой shell мимо агента: вывод в чат, ничего не менять в истории модели.
+        if (trimmed.startsWith("!") && !trimmed.startsWith("! ")) {
+            runShellInline(trimmed.drop(1).trim())
+            return
+        }
         beginStats()
         if (openCodeMode && trimmed.isNotEmpty() && !trimmed.startsWith("/")) { sendViaOpenCode(mentionExpand(extensions.expand(trimmed) ?: trimmed), shown = trimmed); return }
         if (settings.apiKey.isBlank()) {
@@ -6134,10 +6177,12 @@ class ChatController(
                 },
             ).joinToString("\n\n").ifEmpty { null },
             skills = skills,
+            extensions = runCatching { extensions.inventory() }.getOrNull(),
             caveman = settingsStore.rawGet("cavemanOn") == "1",
             reasoning = toolsConfig.reasoning,
             reasoningDepth = toolsConfig.reasoningDepth,
             selfCheck = toolsConfig.selfCheck,
+            agentMode = effectiveAgentMode(),
         ) + (phoneMode.promptSection()?.let { "\n\n" + it } ?: "")
         val workerTools: List<Tool> = baseTools + devTools.filter { it.name != "preview" }
         val workerFactory = { name: String, _: String, isolated: Boolean ->

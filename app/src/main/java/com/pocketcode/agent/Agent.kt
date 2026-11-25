@@ -1,6 +1,9 @@
 package com.pocketcode.agent
 
+import com.pocketcode.Secrets
 import com.pocketcode.llm.Block
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 import com.pocketcode.llm.LlmClient
 import com.pocketcode.llm.Message
 import com.pocketcode.llm.ToolSpec
@@ -93,6 +96,9 @@ class Agent(
     private var llm: LlmClient = llm
     private var usedFallback = false
 
+    /** Сильная модель-советник (helper-модель): агент может спросить её через consult_advisor. */
+    private val advisor: LlmClient? = helperLlm
+
     /** Через сколько секунд повторить после временной ошибки; null — ошибка не временная. */
     private fun retryWaitSec(e: Exception, attempt: Int): Int? {
         if (attempt >= RETRY_DELAYS.size) return null
@@ -114,7 +120,15 @@ class Agent(
 
     private val compactor = Compactor(helperLlm ?: llm, contextLimit)
     private val byName = tools.associateBy { it.name }
-    private val specs = tools.map { ToolSpec(it.name, it.description, it.schema) }
+    private val advisorSpec = ToolSpec(
+        "consult_advisor",
+        "Спросить сильную модель-советника на сложной развилке: выбор архитектуры, неочевидная ошибка, план перед большим изменением. Задай конкретный вопрос с нужным контекстом.",
+        kotlinx.serialization.json.Json.parseToJsonElement(
+            """{"type":"object","properties":{"question":{"type":"string","description":"Вопрос советнику с контекстом"}},"required":["question"]}""",
+        ) as kotlinx.serialization.json.JsonObject,
+    )
+
+    private val specs = tools.map { ToolSpec(it.name, it.description, it.schema) } + listOf(advisorSpec)
 
     /** Если прошлый запуск остановили посреди работы, закрываем висящие вызовы инструментов. */
     private fun repairHistory() {
@@ -256,6 +270,27 @@ class Agent(
                 if (tool == null) {
                     output = "Неизвестный инструмент: ${call.name}"
                     isError = true
+                } else if (call.name == "consult_advisor") {
+                    if (advisor == null) {
+                        output = "Советник не настроен: укажите helper-модель в настройках."
+                        isError = true
+                    } else {
+                        try {
+                            val question = call.input["question"]?.jsonPrimitive?.contentOrNull ?: ""
+                            val answer = advisor.complete(
+                                system = "Ты советник-эксперт. Дай короткий (до 200 слов), конкретный ответ на вопрос главного агента: решение, предупреждение о подводных камнях или выбор варианта. Без вежливости и повторов вопроса.",
+                                messages = listOf(Message("user", listOf(Block.Text(question)))),
+                                tools = emptyList(),
+                                onTextDelta = {},
+                            )
+                            output = answer.blocks.filterIsInstance<Block.Text>().joinToString("\n") { it.text }.ifBlank { "Советник вернул пустой ответ" }
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            output = "Ошибка советника: ${e.message ?: e}"
+                            isError = true
+                        }
+                    }
                 } else if (hooks.planMode() && call.name !in PLAN_ALLOWED) {
                     output = "Режим плана: изменять и запускать пока нельзя. Исследуй (чтение, поиск), затем вызови present_plan и дождись одобрения."
                     isError = true
@@ -269,9 +304,11 @@ class Agent(
                     try {
                         hooks.before(tool, call.input)
                         output = withContext(Dispatchers.IO) { tool.run(call.input) }
+                        // Секреты из вывода команд не должны попадать в историю и на провайдера
+                        output = Secrets.mask(output)
                         hooks.after(tool, call.input, output, false)?.let { output += it }
                         (tool as? com.pocketcode.tools.ImageProducer)?.takeImages()?.let { toolImages += it }
-                        if (call.name in CHANGE_TOOLS) changedFiles = true
+                        if (call.name in CHANGE_TOOLS) { changedFiles = true; verified = false }
                         if (call.name in VERIFY_TOOLS) verified = true
                     } catch (e: CancellationException) {
                         throw e
@@ -309,11 +346,15 @@ fun systemPrompt(
     root: Boolean = false,
     instructions: String? = null,
     skills: List<Skill> = emptyList(),
+    /** Опись плагинов, команд и выключенных навыков из Extensions.inventory(); null — расширений нет. */
+    extensions: String? = null,
     questionCards: Boolean = true,
     caveman: Boolean = false,
     reasoning: Boolean = true,
     reasoningDepth: Int = 1,
     selfCheck: Boolean = true,
+    /** auto | scaffold (слабая модель: жёсткие леса) | focused (слабая на больших проектах: дисциплина контекста). */
+    agentMode: String = "auto",
 ): String {
     val ubuntu = com.pocketcode.linux.LinuxPkgs.isUbuntu(linuxFlavor)
     val linuxDistro = com.pocketcode.linux.LinuxPkgs.distroName(linuxFlavor)
@@ -345,7 +386,7 @@ Tools: read_file, write_file, edit_file, list_dir, grep, bash, python, git.
 - python runs an embedded Python 3.11 (standard library only, no pip, no stdin). ${if (linux) "Because bash is a real Linux here, prefer running `python3` through bash: it has pip and many libraries (install with `$linuxPip`)." else "bash has no python, so use this tool for scripts, tests and calculations."}
 - bash runs in: $shellInfo
 ${if (linux) "- Linux notes: the sandbox is $linuxDistro, so use its package manager only: `$linuxPkg`. Useful package names here: $linuxPkgs. $linuxExtra Before relying on python3/node/git run `which python3 node git` and install what is missing. There is no systemd and no real root outside the proot sandbox. The project is mounted at /work and commands start there. The git tool runs the real git CLI, credentials are already configured." else "- Use the git tool for git (pure-Java implementation), not bash."}
-${if (linux) "- Building Android apps: users do ask for APKs, so never refuse and never say a phone cannot build. Check `ls /opt/android-sdk`. If it is missing, ask the user to tap 'Установить Android SDK' in Project -> Terminal (it installs JDK 17, the SDK and the aapt2 check). With the SDK present run `export ANDROID_HOME=/opt/android-sdk ANDROID_SDK_ROOT=/opt/android-sdk; ./gradlew assembleDebug --no-daemon` in the project. If Gradle fails on aapt2 (an x86_64 binary does not run on an ARM phone), do not retry in circles: build in the cloud. Add .github/workflows/android.yml (setup-java 17, ./gradlew assembleDebug, upload the APK as an artifact and as a GitHub Release), push it with the github tool, watch the run with the github tool, and give the user the Release link." else ""}
+${if (linux) "- Building Android apps: users do ask for APKs, so never refuse and never say a phone cannot build. Check `ls /opt/android-sdk`. If it is missing, ask the user to tap 'Установить Android SDK' in Project -> Terminal (it installs JDK 17, the SDK and the aapt2 check). The install script refuses to run when the phone has under 2 GB of free RAM or too little storage and says so — in that case do not push the user to retry: build in the cloud instead. With the SDK present run `export ANDROID_HOME=/opt/android-sdk ANDROID_SDK_ROOT=/opt/android-sdk; ./gradlew assembleDebug --no-daemon` in the project. If Gradle fails on aapt2 (an x86_64 binary does not run on an ARM phone) or dies on memory/OOM, do not retry in circles: build in the cloud. Add .github/workflows/android.yml (setup-java 17, ./gradlew assembleDebug, upload the APK as an artifact and as a GitHub Release), push it with the github tool, watch the run with the github tool, and give the user the Release link." else ""}
 ${if (adbDevices != null) "- adb controls other Android devices over ADB (Wi-Fi), like on a PC. Saved devices: " + (if (adbDevices.isEmpty()) "none (the user can add some on the Devices screen; you may also pass ip:port)" else adbDevices.joinToString("; ")) + ". Pass device by label or ip:port, never -s. Project files are at /work inside adb push/install paths. Read-only commands run without asking, everything else asks the user." else ""}
 ${if (root) "- root runs a command as root on THIS phone, outside the app sandbox. Every call needs the user's approval. Use it only when really necessary, never touch anything outside the task, and prefer the project folder tools otherwise." else ""}
 - bg starts long-running processes (dev servers, watchers, long tests) in the background and lets you read their output; then use preview to show a local web page to the user. Never run a server with plain bash: it would block until timeout.
@@ -364,7 +405,7 @@ ${if (root) "- root runs a command as root on THIS phone, outside the app sandbo
   do not refactor or rename things that were not asked.
 - After changes, say briefly what you changed. The screen is small: keep answers short, no long preambles.
 
-${if (skills.isNotEmpty()) "Skills (load one with the skill tool when its description fits the task):\n" + skills.joinToString("\n") { "- ${it.name}: ${it.description}" } + "\n" else ""}${if (instructions != null) "Project instructions written by the user (follow them):\n$instructions\n" else ""}
+${if (skills.isNotEmpty()) "Skills (load one with the skill tool when its description fits the task):\n" + skills.joinToString("\n") { "- ${it.name}: ${it.description}" } + "\n" else ""}${if (extensions != null) extensions + "\n" else ""}${if (instructions != null) "Project instructions written by the user (follow them):\n$instructions\n" else ""}
 BUILD IT RIGHT THE FIRST TIME (especially for a whole project or several files):
 1. Agree on the contract before code: list the files you will create/change, the data model, the function/route signatures and the commands that will prove it works. Put that list into todo; for an existing project read the neighbouring files first and copy their conventions (naming, error handling, layout, DI).
 2. Never invent an API, package, version, config key or environment variable. Grep the project or check the docs with web_search before using it.
@@ -392,6 +433,22 @@ QUALITY CONTROL (must follow after any code change):
 - If a check fails, fix the cause and re-run that check; never weaken an assertion, skip a test, or add a suppression just to pass.
 - After edits, re-read the changed snippets and check: names match their declarations, imports/parameters exist, strings are escaped correctly, a trailing lambda goes to the last parameter of a call, i18n placeholders {0} match in all files, every new function/route/string is actually referenced.
 - If a check cannot be run here, answer with an explicit line "НЕ ПРОВЕРЕНО: <what exactly was not verified and why>". Never claim a build or device test you did not perform.
+""" else ""}${if (agentMode == "scaffold") """
+SCAFFOLD MODE (you are a smaller model: follow this pipeline exactly, step by step, never skip a step):
+1. PLAN FIRST. Before any write_file/edit_file, output a numbered plan: every file you will create or change, what exactly changes in it, and the command that will prove it works. Get the file list from list_dir/grep, never from memory.
+2. ONE FILE AT A TIME. Write or edit exactly one file, then immediately run `diagnostics` on it. Fix every reported error before touching the next file. Never batch multiple writes before a check.
+3. COPY, DO NOT INVENT. Before using any function, class, import or config key, find its real declaration with grep/read_file in this project and copy the exact signature. If the project does not have it, say so instead of guessing.
+4. SMALLEST CHANGE. Prefer edit_file with a small fragment over rewriting a whole file. Never reformat or "improve" code you were not asked to touch.
+5. REVIEW CHECKLIST. After your last edit and before the final answer, run code_review and check the diff line by line against this list: secrets or keys in code; SQL/shell/HTML built by string concatenation; empty catch blocks; unused or unresolved imports; TODO or stub bodies; changed behavior in files you did not plan to touch. Fix everything you find, then re-run diagnostics.
+6. NEVER claim a check you did not run. If diagnostics/tests could not run, end with "НЕ ПРОВЕРЕНО: <what>".
+""" else ""}${if (agentMode == "focused") """
+FOCUSED MODE (large project, limited reliable context: spend context like money):
+1. NAVIGATE, DO NOT READ. Never read a whole file to "understand the project". Start from the project map above and grep with narrow patterns; read only the specific line ranges you need (20-60 lines around the match).
+2. ONE TARGET PER SEARCH. Each grep/read must have a question ("where is X called?", "what type does Y have?"). If a read does not answer it, stop reading and search differently.
+3. TRACK WHAT YOU KNOW. Keep a short working note in your head (or todo) of: files confirmed relevant, signatures you will call, names you must not collide with. Never re-read a file you already extracted the answer from.
+4. DELEGATE BREADTH. If you need to explore more than 3 files to plan a change, spawn a subagent (isolated read-only explorer) with a self-contained question and use its short report instead of reading everything yourself.
+5. LOCAL DIFFS ONLY. Change the minimum lines in the minimum files; when the task spans many files, split it into todo steps and complete them one by one, re-checking context with a narrow grep before each edit.
+6. After edits run the usual quality control (diagnostics, code_review, tests) — same as always.
 """ else ""}
 """.trimIndent()
 }

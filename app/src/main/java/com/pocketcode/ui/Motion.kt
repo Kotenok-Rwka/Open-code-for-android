@@ -8,6 +8,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -15,14 +16,23 @@ import androidx.compose.ui.composed
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 
-/** Единые настройки анимаций приложения, уважающие «Уменьшить анимации». */
+val LocalMotionConfig = compositionLocalOf { AnimationConfig() }
+
+/** Единые настройки анимаций приложения: уровень и скорость из «Оформления» плюс «Уменьшить анимации». */
 object Motion {
     @Composable
-    fun ms(base: Int): Int = if (LocalReduceMotion.current) 0 else base
+    fun ms(base: Int): Int {
+        if (LocalReduceMotion.current) return 0
+        return LocalMotionConfig.current.duration(base)
+    }
 
     @Composable
-    fun spring(): androidx.compose.animation.core.FiniteAnimationSpec<Float> =
-        if (LocalReduceMotion.current) tween(0) else androidx.compose.animation.core.spring(dampingRatio = Spring.DampingRatioMediumBouncy)
+    fun spring(): androidx.compose.animation.core.FiniteAnimationSpec<Float> {
+        if (LocalReduceMotion.current) return tween(0)
+        val cfg = LocalMotionConfig.current
+        if (cfg.duration(300) == 0) return tween(0)
+        return androidx.compose.animation.core.spring(dampingRatio = Spring.DampingRatioMediumBouncy)
+    }
 }
 
 /** Плавное нажатие для карточек: лёгкое уменьшение и подсветка. */

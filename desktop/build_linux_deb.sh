@@ -23,7 +23,7 @@ Version: $VER
 Section: utils
 Priority: optional
 Architecture: $ARCH
-Depends: python3 (>= 3.8), python3-tk
+Depends: python3 (>= 3.8), python3-tk, python3-qrcode
 Recommends: python3-cryptography
 Maintainer: PocketCode <noreply@example.com>
 Description: PocketCode Desktop companion

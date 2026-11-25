@@ -54,4 +54,26 @@ object LinuxPkgs {
             "apk add --no-cache $names"
         }
     }
+
+    /**
+     * Наборы для запуска полноценных GUI-приложений внутри proot: X11-сервер рисует
+     * VNC-клиент на Android, приложения рисуются в Xvfb + x11vnc. Работает в Ubuntu и Alpine.
+     */
+    fun guiPackages(flavor: String): String = if (isUbuntu(flavor)) {
+        "xvfb x11vnc fluxbox xterm dbus-x11"
+    } else {
+        "xvfb x11vnc fluxbox xterm dbus"
+    }
+
+    /** Команда запуска GUI-приложения: VNC-сервер на 5900 + WM, затем само приложение. */
+    fun guiRun(flavor: String, appCommand: String): String {
+        val wm = if (isUbuntu(flavor)) "fluxbox" else "fluxbox"
+        return """
+            export DISPLAY=:0
+            (Xvfb :0 -screen 0 1280x800x24 &) && sleep 1
+            ($wm &) 2>/dev/null
+            (x11vnc -display :0 -nopw -listen localhost -forever -quiet &) && sleep 1
+            $appCommand
+        """.trimIndent()
+    }
 }

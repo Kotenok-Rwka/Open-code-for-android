@@ -37,7 +37,7 @@ object AdbHosts {
 
     private fun ownAddress(host: String, interfaces: List<LocalInterface>): InetAddress? {
         val address = parseLiteral(host, interfaces) ?: return null
-        if (address.isLoopbackAddress || address.address.size == 4 && address.address[0] == 127.toByte()) return address
+        if (address.isLoopbackAddress) return address
         return address.takeIf { target ->
             interfaces.any { nic -> nic.addresses.any { local -> sameAddress(target, local) } }
         }

@@ -88,6 +88,7 @@ suspend fun runProcess(pb: ProcessBuilder, timeoutSec: Long): String =
             append(text.trimEnd())
             if (isNotEmpty()) append('\n')
             append(if (code == null) "[таймаут ${timeoutSec} с, процесс остановлен]" else "[код выхода: $code]")
+            if (code == null) append("\nЕсли команда долгая (сервер, сборка, большие тесты) — запусти её инструментом bg вместо bash: она продолжит работать в фоне, а вывод смотри через тот же bg.")
         }
     }
 

@@ -36,7 +36,7 @@ jobs:
           cmake --build "$GITHUB_WORKSPACE/build-llama" -j4 --target llama-server llama-cli
           cp $GITHUB_WORKSPACE/build-llama/bin/llama-server $GITHUB_WORKSPACE/out/arm64-v8a/
           cp $GITHUB_WORKSPACE/build-llama/bin/llama-cli $GITHUB_WORKSPACE/out/arm64-v8a/
-          "$TOOLCHAIN/bin/llvm-strip" $GITHUB_WORKSPACE/out/arm64-v8a/* || true
+          "$TOOLCHAIN/bin/llvm-strip" "$GITHUB_WORKSPACE"/out/arm64-v8a/*
       - name: Commit binaries into APK assets
         run: |
           mkdir -p app/src/main/assets/native/arm64-v8a
@@ -44,8 +44,12 @@ jobs:
           git config user.name "github-actions"
           git config user.email "actions@github.com"
           git add app/src/main/assets/native
-          git commit -m "llama.cpp: встроенный нативный сервер для GGUF" || true
-          git push
+          if git diff --cached --quiet; then
+            echo "::notice::llama.cpp: бинарники не изменились, коммит не нужен"
+          else
+            git commit -m "llama.cpp: встроенный нативный сервер для GGUF"
+            git push
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: llama-android-arm64

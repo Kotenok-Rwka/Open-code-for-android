@@ -15,19 +15,23 @@
 import argparse
 import base64
 import difflib
+import features as fx
 import hashlib
+import io
 import json
 import os
 import platform
 import re
 import secrets
 import shutil
+import socket
 import subprocess
 import sys
 import threading
 import time
 import urllib.error
 import urllib.request
+import zipfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, quote, urlparse
@@ -40,11 +44,27 @@ CHAT = HOME / "chat.jsonl"
 SESSIONS = HOME / "sessions.json"
 QUEUE = HOME / "queue.json"
 SKILLS = HOME / "skills.json"
+SKILLS_DIR = HOME / "skills-md"
+ONBOARD = HOME / "onboarding.json"
+EXPERT = HOME / "expert.json"
+LOWPOWER = HOME / "lowpower.json"
 AGENTS = HOME / "agents.json"
 ROLES = HOME / "roles.json"
 WIDGETS = HOME / "widgets.json"
 SETTINGS = HOME / "settings.json"
 MODELS = HOME / "local_models.json"
+PLUGINS = HOME / "plugins"
+PLUGINS_STATE = HOME / "plugins-state.json"
+RATINGS = HOME / "ratings.json"
+SNIPPETS = HOME / "snippets.json"
+DRAFTS = HOME / "drafts.json"
+CLIP_HIST = HOME / "clipboard-history.json"
+ALIASES = HOME / "aliases.json"
+TIMERS = HOME / "timers.json"
+METRICS = HOME / "api-metrics.json"
+A11Y = HOME / "a11y.json"
+FOCUS = HOME / "focus.json"
+RATE = fx.RateLimiter(per_minute=600)
 PROJECTS_MAP = HOME / "projects_map.json"
 USAGE = HOME / "usage.json"
 ACTIVITY = HOME / "activity.jsonl"
@@ -70,6 +90,72 @@ MAX_EVENTS = 2000
 
 DEFAULTS = {
     "leanCalls": False,
+    "featMemory": True,
+    "featRules": True,
+    "featRouter": True,
+    "featBudget": True,
+    "featAutoplan": True,
+    "featSelfCheck": True,
+    "featNotify": True,
+    "featTerminal": True,
+    "featAudit": True,
+    "featGitCommit": True,
+    "featMacros": True,
+    "featTriggers": True,
+    "featWebhooks": True,
+    "featSql": True,
+    "featDiagrams": True,
+    "featCron": True,
+    "featMerge": True,
+    "featDeadCode": True,
+    "featLogs": True,
+    "featCsv": True,
+    "featImportPrompts": True,
+    "featQuarantine": True,
+    "featPriority": True,
+    "featFullExport": True,
+    "featCrash": True,
+    "featNotes": True,
+    "featGuest": True,
+    "featIntegrity": True,
+    "featPlugins": True,
+    "featMedia": True,
+    "featRatings": True,
+    "featGitCache": True,
+    "featJsonTools": True,
+    "featFullImport": True,
+    "featReadOnly": True,
+    "featTeam": True,
+    "featRepoExport": True,
+    "featHealthReport": True,
+    "featDups": True,
+    "featFileWrite": True,
+    "featSnippets": True,
+    "featTrash": True,
+    "featExports": True,
+    "featBookmarks": True,
+    "featRecent": True,
+    "featOnboarding": True,
+    "featExpert": True,
+    "featSkillLib": True,
+    "featSkillEditor": True,
+    "featGallery": True,
+    "featFeedback": True,
+    "featPcLinks": True,
+    "featLowPower": True,
+    "featSnapshots": True,
+    "featChatSearch": True,
+    "featNotes": True,
+    "featHotkeys": True,
+    "featTelegram": True,
+    "featMcp": True,
+    "featAttachments": True,
+    "featUsage": True,
+    "featReminders": True,
+    "featMdExport": True,
+    "featLinkCheck": True,
+    "featReadingTime": True,
+    "diskMinFreeMB": 500,
     "ecoMode": False,
     "theme": "aurora",
     "accent": "teal",
@@ -719,7 +805,9 @@ def build_system_prompt(project):
         "В конце ответа коротко перечисли изменённые файлы и что проверено. "
         "Отвечай на языке пользователя, кратко и по делу.%s%s%s"
     ) % (project or "desktop", skill_text, agent_text,
-         "" if lean else "\nОкружение: %s, Python %s." % (platform.system(), platform.python_version()))
+         "" if lean else "\nОкружение: %s, Python %s." % (platform.system(), platform.python_version())) + (
+        fx.memory_and_rules_block(project, s.get("featMemory", True), s.get("featRules", True))
+        if (s.get("featMemory", True) or s.get("featRules", True)) else "")
 
 
 # ---------- инструменты агента ----------
@@ -908,11 +996,18 @@ def agent_worker(job_id, session_id, text, mode="agent"):
     max_steps = 4 if s["ecoMode"] else (8 if s["leanCalls"] else 16)
     max_msgs, max_chars = history_budget()
     history = trim_history(messages_for(session_id)[:-1], max_msgs, max_chars)
-    messages = [{"role": "system", "content": build_system_prompt(project)}] + history + [{"role": "user", "content": text}]
+    messages = [{"role": "system", "content": build_system_prompt(project) + route_note}] + history + [{"role": "user", "content": text}]
     seen = {}
     final = ""
     steps = 0
+    fix_attempts = 0
     used_prompt = used_completion = 0
+    route = fx.route_step(text) if s["featRouter"] else "strong"
+    route_note = ""
+    if mode == "agent" and s["featRouter"]:
+        route_note = ("\nСложность задачи оценена как «%s»: %s" % (
+            route, "действуй простыми точечными правками, не разворачивай большой план"
+            if route == "cheap" else "сначала короткий план файлов, затем правки с проверкой"))
     try:
         while steps < max_steps:
             if run["cancel"].is_set():
@@ -946,8 +1041,21 @@ def agent_worker(job_id, session_id, text, mode="agent"):
                 else:
                     run_event(run, "tool_start", name=name, args=_truncate(json.dumps(args, ensure_ascii=False), 700))
                     result = execute_tool(run, name, args)
+                    if name in ("bash", "shell"):
+                        fx.audit_bash(args.get("cmd") or args.get("command") or raw_args,
+                                      args.get("cwd") or "", "Traceback" not in result)
+                        if settings().get("featAudit", True):
+                            fx.remember_command(run.get("session") or job_id, args.get("cmd") or raw_args)
                     seen[key] = result
                     run_event(run, "tool", name=name, text=result[:1200])
+                if name in ("bash", "shell") and ("FAILED" in result or "Traceback" in result or "error:" in result):
+                    fix_attempts += 1
+                    if s["featBudget"]:
+                        left = fx.budget_left(fix_attempts)
+                        if left <= 0:
+                            result += "\nБюджет попыток починки исчерпан (%d). Отмени изменения и честно сообщи, что не получилось." % fx.EDIT_BUDGET
+                        else:
+                            result += "\nОсталось попыток починки: %d из %d." % (left, fx.EDIT_BUDGET)
                 messages.append({"role": "tool", "tool_call_id": tc.get("id", ""), "content": result[:12000]})
             steps += 1
         if not final:
@@ -962,6 +1070,10 @@ def agent_worker(job_id, session_id, text, mode="agent"):
         run["text"] = final
     if run["status"] == "running":
         run["status"] = "cancelled" if run["cancel"].is_set() else ("error" if run.get("error") else "done")
+    if run["status"] == "done" and s.get("featNotify", True):
+        okn, _ = push_to_phone(make_event("notify", {"text": "Задача завершена: " + text[:80]}, project))
+        if okn:
+            fx.sync_log_add("out", "notify", "завершение задачи")
     record_usage(used_prompt or estimate_tokens("\n".join(str(m.get("content", "")) for m in messages)),
                  used_completion or estimate_tokens(final),
                  saved=max(0, 4000 - len(final)) if s["leanCalls"] else 0)
@@ -1479,19 +1591,83 @@ def public_sync_cfg():
     return {k: v for k, v in cfg.items() if k not in ("password", "token")}
 
 
+def local_ip():
+    """IP этого ПК в локальной сети (для ссылки-сопряжения); пусто — нет сети."""
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(("8.8.8.8", 80))
+        return s.getsockname()[0]
+    except OSError:
+        return ""
+    finally:
+        s.close()
+
+
+def sync_link(port=8765, ip=None):
+    """Ссылка для QR-сопряжения: телефон сканирует и подставляет адрес, токен и пароль E2E."""
+    host = ip if ip is not None else (local_ip() or "127.0.0.1")
+    params = ["token=" + quote(access_token())]
+    password = load_json(SYNC_CONFIG, {}).get("password", "")
+    if password:
+        params.append("password=" + quote(password))
+    return "http://%s:%d?%s" % (host, port, "&".join(params))
+
+
+LOOPBACK_HOSTS = ("127.0.0.1", "::1", "localhost")
+
+
+def _loopback_name(value):
+    """Имя хоста из заголовка Host или Origin указывает на этот же компьютер."""
+    try:
+        host = urlparse(value if "://" in value else "//" + value).hostname
+    except ValueError:
+        return False
+    return (host or "").lower() in LOOPBACK_HOSTS
+
+
+def request_is_local(client_ip, headers):
+    """Запрос без токена принимается только с этого компьютера и не со страницы чужого сайта.
+
+    Адрес клиента должен быть локальным, заголовок Host — локальным именем (иначе
+    сайт с подменой DNS попадает на 127.0.0.1), а Origin, если браузер его прислал,
+    — локальным адресом (иначе любая открытая страница шлёт сюда команды).
+    """
+    if client_ip not in ("127.0.0.1", "::1", "::ffff:127.0.0.1"):
+        return False
+    if not _loopback_name(headers.get("Host") or ""):
+        return False
+    origin = headers.get("Origin")
+    return origin is None or _loopback_name(origin)
+
+
 # ---------- HTTP ----------
 
 class Handler(BaseHTTPRequestHandler):
     server_version = "PocketCodeDesktop/4"
     protocol_version = "HTTP/1.1"
+    _t0 = 0.0
 
     def log_message(self, fmt, *args):
         sys.stderr.write("%s - %s\n" % (self.address_string(), mask(fmt % args)))
 
     def send(self, obj, code=200):
+        try:
+            if self._t0:
+                route = urlparse(self.path).path
+                fx.api_metrics_record(METRICS, route, (time.time() - self._t0) * 1000, code)
+        except (OSError, TypeError, ValueError):
+            pass
         raw = json.dumps(obj, ensure_ascii=False).encode("utf-8")
         self.send_response(code)
         self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(raw)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(raw)
+
+    def send_raw(self, raw, ctype, code=200):
+        self.send_response(code)
+        self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(raw)))
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
@@ -1506,8 +1682,15 @@ class Handler(BaseHTTPRequestHandler):
         )
 
     def local_or_token(self):
-        if self.client_address[0] in ("127.0.0.1", "::1") or self.token_ok():
+        if self.token_ok() or request_is_local(self.client_address[0], self.headers):
             return True
+        self.close_connection = True
+        try:
+            n = int(self.headers.get("Content-Length", "0") or 0)
+        except ValueError:
+            n = 0
+        if 0 < n <= 1_000_000:
+            self.rfile.read(n)
         self.send({"error": "token required"}, 401)
         return False
 
@@ -1536,7 +1719,9 @@ class Handler(BaseHTTPRequestHandler):
             return str(q.get(key, [default])[0])
 
         try:
-            if path == "/api/state":
+            if path == "/api/demo":
+                self.send({"name": "demo-landing", "task": fx.DEMO_TASK})
+            elif path == "/api/state":
                 self.send(bootstrap())
             elif path == "/api/messages":
                 self.send(messages_for(one("session") or active_session_id()))
@@ -1553,7 +1738,8 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/api/widgets":
                 self.send(load_json(WIDGETS, []))
             elif path == "/api/settings":
-                safe = settings()
+                safe = {k: ("" if any(sec in k.lower() for sec in ("token", "secret", "password")) else v)
+                        for k, v in settings().items()}
                 safe["githubToken"] = ""
                 self.send(safe)
             elif path == "/api/skills":
@@ -1644,13 +1830,47 @@ class Handler(BaseHTTPRequestHandler):
                         break
                     time.sleep(0.5)
                 self.send(events[-100:])
+            elif path == "/api/templates":
+                self.send({"names": sorted(fx.TEMPLATES)})
+            elif path == "/api/skills/staged":
+                self.send({"names": fx.skills_staged(str(HOME / "skills-imported"))})
+            elif path == "/api/review/pending":
+                self.send({"pending": fx.review_pending()})
+            elif path == "/api/snapshots":
+                self.send({"snapshots": fx.list_snapshots(one("project"))})
+            elif path == "/api/memory":
+                self.send({"text": fx.read_memory(one("project"))})
+            elif path == "/api/rules":
+                self.send({"text": fx.read_rules(one("project"))})
+            elif path == "/api/clipboard":
+                if not request_is_local(self.client_address[0], self.headers) and not self.token_ok():
+                    self.send({"error": "local only"}, 403); return
+                self.send({"text": fx.clipboard_get()})
             elif path == "/api/sync/status":
                 state = load_json(SYNC_STATE, {"seq": 0, "last_seq": 0, "last_ts": 0, "events": 0, "fulls": 0})
-                self.send({**state, "pending": len(read_lines(SYNC_OUTBOX)), "cfg": public_sync_cfg()})
+                self.send({**state, "pending": len(read_lines(SYNC_OUTBOX)), "cfg": public_sync_cfg(),
+                           "devices": fx.devices_status()})
             elif path == "/api/sync/token":
-                if self.client_address[0] not in ("127.0.0.1", "::1") and not self.token_ok():
+                if not request_is_local(self.client_address[0], self.headers) and not self.token_ok():
                     self.send({"error": "local only"}, 403); return
                 self.send({"token": access_token()})
+            elif path == "/api/sync/link":
+                if not request_is_local(self.client_address[0], self.headers) and not self.token_ok():
+                    self.send({"error": "local only"}, 403); return
+                ip = local_ip()
+                self.send({"link": sync_link(ip=ip or None), "ip": ip, "port": 8765,
+                           "lan": bool(ip), "hint": "" if ip else "ПК не в сети — QR покажет локальный адрес"})
+            elif path == "/api/sync/qr.png":
+                if not request_is_local(self.client_address[0], self.headers) and not self.token_ok():
+                    self.send({"error": "local only"}, 403); return
+                try:
+                    import qrcode
+                except ImportError:
+                    self.send({"error": "Нет модуля qrcode: pip install qrcode"}, 500); return
+                img = qrcode.make(sync_link(), border=2)
+                buf = io.BytesIO()
+                img.save(buf, format="PNG")
+                self.send_raw(buf.getvalue(), "image/png")
             elif path == "/api/sync/pull":
                 try:
                     since = int(one("since", "0") or 0)
@@ -1671,11 +1891,26 @@ class Handler(BaseHTTPRequestHandler):
             self.send({"error": mask(e)}, 500)
 
     def do_POST(self):
+        if not self.local_or_token():
+            return
         try:
             b = self.body()
             path = urlparse(self.path).path
             if not isinstance(b, dict):
                 b = {}
+            self._t0 = time.time()
+            if not RATE.allow(self.client_address[0]):
+                self.send({"error": "слишком много запросов, подождите минуту"}, 429)
+                return
+            READONLY_PATHS = {
+                "/api/chat", "/api/queue", "/api/notes/add", "/api/crash/report",
+                "/api/guest/create", "/api/cron/add", "/api/backup/import",
+                "/api/import/full", "/api/repo/export",
+            }
+            if path in READONLY_PATHS and settings().get("featReadOnly", True) \
+                    and fx.disk_low(HOME, settings().get("diskMinFreeMB", 500)):
+                self.send({"error": "мало места на диске — режим только чтение", "status": 507}, 507)
+                return
             if path == "/api/chat":
                 sid = str(b.get("session") or active_session_id())
                 text = str(b.get("text", "")).strip()
@@ -1884,7 +2119,15 @@ class Handler(BaseHTTPRequestHandler):
                 self.send({"ok": good, "detail": detail})
             elif path == "/api/queue":
                 items = load_json(QUEUE, [])
-                items.append({"id": secrets.token_hex(4), "text": str(b.get("text", "")).strip(), "ts": now_ms()})
+                prio = 5
+                if settings().get("featPriority", True) and b.get("prio") is not None:
+                    try:
+                        prio = max(0, min(9, int(b.get("prio"))))
+                    except (TypeError, ValueError):
+                        prio = 5
+                items.append({"id": secrets.token_hex(4), "text": str(b.get("text", "")).strip(),
+                              "prio": prio, "ts": now_ms()})
+                items.sort(key=fx.queue_sort_key)
                 save_json(QUEUE, items)
                 self.send({"ok": True, "size": len(items)})
             elif path == "/api/queue/remove":
@@ -1894,9 +2137,10 @@ class Handler(BaseHTTPRequestHandler):
                 items = load_json(QUEUE, [])
                 if not items:
                     self.send({"error": "Очередь пуста"}, 400); return
-                item = items.pop(0)
+                item = fx.queue_pick(items) if settings().get("featPriority", True) else items[0]
+                items.remove(item)
                 save_json(QUEUE, items)
-                self.send({"ok": True, "text": item.get("text", "")})
+                self.send({"ok": True, "text": item.get("text", ""), "prio": item.get("prio", 5)})
             elif path == "/api/file":
                 root = project_root(str(b.get("project", "")))
                 fp = safe_path(root, str(b.get("path", ""))) if root else None
@@ -2006,6 +2250,25 @@ class Handler(BaseHTTPRequestHandler):
                 except (TypeError, ValueError):
                     self.send({"error": "bad seq"}, 400); return
                 kind = str(payload.get("type", "event"))
+                fx.touch_device(payload.get("device"))
+                fx.sync_log_add("in", kind, "seq=%s dev=%s" % (seq, payload.get("device")))
+                # дистанционный стоп: kind == "stop"
+                if kind == "stop":
+                    target = fx.parse_stop_packet(payload)
+                    stopped = 0
+                    for job in list(RUNS.values()):
+                        try:
+                            if job.get("cancel") and not job["cancel"].is_set() and (target == "*" or job.get("session") == target):
+                                job["cancel"].set()
+                                stopped += 1
+                        except Exception:
+                            pass
+                    self.send({"ok": True, "stopped": stopped})
+                    return
+                # выбор проектов: выключенные проекты не применяются
+                if not fx.sync_project_allowed(cfg, payload.get("project")):
+                    self.send({"ok": True, "skipped": "проект исключён из синхронизации"})
+                    return
                 with LOCK:
                     events = read_jsonl(SYNC_EVENTS)
                     if not any(int(x.get("seq", 0)) == seq and x.get("device") == payload.get("device") for x in events[-500:]):
@@ -2040,11 +2303,628 @@ class Handler(BaseHTTPRequestHandler):
                         except OSError:
                             continue
                 self.send({"ok": True, "seq": seq})
+            elif path == "/api/memory":
+                if b.get("text") is not None:
+                    ok = fx.update_memory(str(b.get("project") or ""), b.get("text"))
+                    self.send({"ok": ok})
+                else:
+                    self.send({"text": fx.read_memory(str(b.get("project") or ""))})
+            elif path == "/api/plan/critique":
+                self.send({"issues": fx.critique_plan(b.get("plan"))})
+            elif path == "/api/tests/key":
+                self.send({"key": fx.key_tests(b.get("tests") or [], int(b.get("max") or 8))})
+            elif path == "/api/pr/create":
+                proj = str(b.get("project") or "")
+                self.send(fx.create_pr(proj, str(b.get("title") or "PocketCode task")))
+            elif path == "/api/snapshot/restore":
+                self.send(fx.restore_snapshot(str(b.get("project") or ""), b.get("n")))
+            elif path == "/api/snapshot":
+                self.send(fx.make_snapshot(str(b.get("project") or "")))
+            elif path == "/api/projects/from_template":
+                ok = fx.create_from_template(Path(PROJECTS) / fx.slug(str(b.get("project") or "demo")),
+                                             str(b.get("template") or ""))
+                self.send({"ok": ok})
+            elif path == "/api/map":
+                self.send({"files": fx.project_map(b.get("edits") or {}, b.get("failing") or [])})
+            elif path == "/api/batch/files":
+                self.send({"files": fx.batch_files(str(b.get("project") or ""), str(b.get("pattern") or "*"))})
+            elif path == "/api/router":
+                self.send({"mode": fx.route_step(b.get("text"))})
+            elif path == "/api/history/trim":
+                kept, dropped = fx.trim_history(b.get("messages") or [], int(b.get("max_chars") or 60000))
+                self.send({"kept": kept, "dropped": dropped})
+            elif path == "/api/mode/suggest":
+                self.send({"mode": fx.suggest_mode(b.get("failures"), str(b.get("current") or "auto"))})
+            elif path == "/api/fallback":
+                self.send({"localModel": fx.fallback_provider(b.get("config") or {}, b.get("error"))})
+            elif path == "/api/review/approve":
+                self.send(fx.review_pop(str(b.get("filename") or ""), True, str(b.get("project") or "") or None))
+            elif path == "/api/review/reject":
+                self.send(fx.review_pop(str(b.get("filename") or ""), False))
+            elif path == "/api/sandbox/run":
+                if not request_is_local(self.client_address[0], self.headers):
+                    self.send({"error": "local only"}, 403); return
+                self.send(fx.run_sandboxed(b.get("cmd"), str(b.get("workdir") or "."), int(b.get("timeout") or 20)))
+            elif path == "/api/scan/secrets":
+                self.send({"findings": fx.scan_secrets(b.get("text"))})
+            elif path == "/api/journal/export":
+                p = fx.export_journal(b.get("messages") or [], str(b.get("name") or "session"), str(HOME))
+                self.send({"path": p})
+            elif path == "/api/sync/resolve":
+                v, merged = fx.resolve_conflict(b.get("base"), b.get("mine"), b.get("theirs"))
+                self.send({"verdict": v, "merged": merged})
+            elif path == "/api/clipboard":
+                if not request_is_local(self.client_address[0], self.headers) and not self.token_ok():
+                    self.send({"error": "local only"}, 403); return
+                if b.get("text") is not None:
+                    fx.clipboard_set(b.get("text"))
+                    self.send({"ok": True})
+                else:
+                    self.send({"text": fx.clipboard_get()})
+            elif path == "/api/skills/import":
+                self.send(fx.skill_import(str(b.get("url") or ""), str(HOME / "skills-imported")))
+            elif path == "/api/skills/install":
+                self.send(fx.skill_install(str(b.get("name") or ""), str(HOME / "skills-imported")))
+            elif path == "/api/sync/settings-packet":
+                if b.get("data") is not None:
+                    self.send(fx.settings_packet_apply(b.get("data"), settings()))
+                else:
+                    self.send(fx.settings_packet(settings()))
+            elif path == "/api/sync/history":
+                self.send({"history": fx.sync_log_recent(int(one("n") or 50))})
+            elif path == "/api/sync/handoff":
+                self.send(fx.make_handoff(platform.node(), str(b.get("project") or ""),
+                                          str(b.get("task") or ""), str(b.get("notes") or "")))
+            elif path == "/api/sync/notify-done":
+                if not settings().get("featNotify", True):
+                    self.send({"error": "уведомления выключены в настройках ПК"}, 400); return
+                packet = {"v": 1, "type": "event", "seq": 0, "device": platform.node(),
+                          "project": str(b.get("project") or ""), "ts": time.time(),
+                          "kind": "notify", "data": str(b.get("text") or "Задача завершена")}
+                ok, err = push_to_phone(packet)
+                self.send({"ok": ok, "error": err})
+            elif path == "/api/sync/tasks":
+                merged, added = fx.merge_tasks(b.get("mine"), b.get("theirs"))
+                self.send({"tasks": merged, "added": added})
+            elif path == "/api/files/list":
+                if not self.token_ok() and not request_is_local(self.client_address[0], self.headers):
+                    self.send({"error": "нужен токен"}, 403); return
+                self.send(fx.list_files_safe(str(b.get("project") or b.get("root") or HOME), str(b.get("path") or "")))
+            elif path == "/api/files/read":
+                if not self.token_ok() and not request_is_local(self.client_address[0], self.headers):
+                    self.send({"error": "нужен токен"}, 403); return
+                self.send(fx.read_file_safe(str(b.get("project") or b.get("root") or HOME), str(b.get("path") or "")))
+            elif path == "/api/term/run":
+                if not settings().get("featTerminal", True):
+                    self.send({"error": "терминал выключен в настройках"}, 403); return
+                if not self.token_ok():
+                    self.send({"error": "нужен токен"}, 403); return
+                self.send(fx.run_sandboxed(b.get("cmd"), str(b.get("workdir") or HOME), int(b.get("timeout") or 30)))
+            elif path == "/api/task/estimate":
+                self.send(fx.estimate_task(b.get("text")))
+            elif path == "/api/task/autoplan":
+                if not settings().get("featAutoplan", True):
+                    self.send({"error": "автоплан выключен в настройках"}, 403); return
+                self.send({"steps": fx.split_task(b.get("text"))})
+            elif path == "/api/task/progress":
+                self.send({"percent": fx.progress_percent(b.get("checklist"))})
+            elif path == "/api/task/selfcheck":
+                if not settings().get("featSelfCheck", True):
+                    self.send({"error": "самопроверка выключена в настройках"}, 403); return
+                self.send({"issues": fx.self_check(b.get("result"), b.get("task"))})
+            elif path == "/api/prompts":
+                self.send({"presets": fx.PROMPT_PRESETS})
+            elif path == "/api/spend/check":
+                ok, why = fx.within_spend_limit(settings().get("spendLimit", 0), b.get("spent"))
+                self.send({"ok": ok, "why": why})
+            elif path == "/api/task/cost":
+                self.send(fx.cost_report(b.get("prompt"), b.get("completion"),
+                                         b.get("priceIn"), b.get("priceOut")))
+            elif path == "/api/audit/bash":
+                if b.get("cmd") is not None:
+                    fx.audit_bash(b.get("cmd"), b.get("cwd"), b.get("ok", True))
+                    self.send({"ok": True})
+                else:
+                    self.send({"audit": fx.audit_export()})
+            elif path == "/api/panic":
+                stopped = 0
+                for job in list(RUNS.values()):
+                    try:
+                        if job.get("cancel") and not job["cancel"].is_set():
+                            job["cancel"].set()
+                            stopped += 1
+                    except Exception:
+                        pass
+                st = load_json(SYNC_CONFIG, {})
+                st["enabled"] = False
+                save_json(SYNC_CONFIG, st)
+                self.send({**fx.panic_state(), "stopped": stopped, "syncDisabled": True})
+            elif path == "/api/scan/todos":
+                self.send({"todos": fx.scan_todos(str(b.get("project") or b.get("root") or HOME))})
+            elif path == "/api/search":
+                self.send({"hits": fx.search_project(str(b.get("project") or b.get("root") or HOME),
+                                                     b.get("q"), b.get("pattern"))})
+            elif path == "/api/run/last":
+                if b.get("cmd") is not None:
+                    fx.remember_command(b.get("session"), b.get("cmd"))
+                    self.send({"ok": True})
+                else:
+                    self.send({"cmd": fx.last_command(b.get("session"))})
+            elif path == "/api/git/status":
+                if settings().get("featGitCache", True):
+                    self.send(fx.git_status_cached(str(b.get("project") or HOME)))
+                else:
+                    self.send(fx.git_status_brief(str(b.get("project") or HOME)))
+            elif path == "/api/git/log":
+                self.send(fx.git_log(str(b.get("project") or HOME), b.get("limit")))
+            elif path == "/api/git/file-history":
+                self.send(fx.git_file_history(str(b.get("project") or HOME), b.get("path")))
+            elif path == "/api/git/commit":
+                if not settings().get("featGitCommit", True):
+                    self.send({"error": "коммиты из чата выключены в настройках"}, 403); return
+                self.send(fx.git_commit_all(str(b.get("project") or HOME), b.get("message")))
+            elif path == "/api/git/branches":
+                self.send(fx.git_branches(str(b.get("project") or HOME)))
+            elif path == "/api/git/switch":
+                if not settings().get("featGitCommit", True):
+                    self.send({"error": "переключение веток выключено в настройках"}, 403); return
+                self.send(fx.git_switch(str(b.get("project") or HOME), b.get("branch")))
+            elif path == "/api/code/risk":
+                self.send({"files": fx.file_risk_metrics(str(b.get("project") or HOME))})
+            elif path == "/api/profile/run":
+                self.send(fx.profile_cmd(b.get("cmd"), str(b.get("workdir") or HOME), int(b.get("timeout") or 30)))
+            elif path == "/api/palette":
+                self.send({"commands": fx.palette_filter(fx.palette_commands(), b.get("q"))})
+            elif path == "/api/health":
+                self.send(fx.health_report(len(fx.SYNC_LOG), bool(fx.devices_status() and any(d["online"] for d in fx.devices_status())), len(fx.list_snapshots(str(b.get("project") or "")) or [])))
             elif path == "/api/tasks/import":
                 incoming = b if isinstance(b, list) else [b]
                 tasks = load_json(TASKS, [])
                 save_json(TASKS, tasks + incoming[:500])
                 self.send({"ok": True})
+            elif path == "/api/macro/record":
+                if not settings().get("featMacros", True):
+                    self.send({"error": "макросы выключены в настройках"}, 403); return
+                self.send(fx.macro_record(str(b.get("project") or HOME), b.get("name"), b.get("cmd")))
+            elif path == "/api/macro/list":
+                self.send({"macros": fx.macro_list(str(b.get("project") or HOME))})
+            elif path == "/api/macro/delete":
+                if not settings().get("featMacros", True):
+                    self.send({"error": "макросы выключены в настройках"}, 403); return
+                self.send(fx.macro_delete(str(b.get("project") or HOME), b.get("name")))
+            elif path == "/api/macro/run":
+                if not settings().get("featMacros", True):
+                    self.send({"error": "макросы выключены в настройках"}, 403); return
+                proj = str(b.get("project") or HOME)
+                steps = fx.macro_steps(proj, b.get("name"))
+                if steps is None:
+                    self.send({"error": "макрос не найден"}, 404); return
+                runs = [fx.profile_cmd(fx.shlex_split_or_err(c), str(b.get("workdir") or proj),
+                                       int(b.get("timeout") or 30)) for c in steps]
+                self.send({"runs": runs})
+            elif path == "/api/trigger/add":
+                if not settings().get("featTriggers", True):
+                    self.send({"error": "триггеры выключены в настройках"}, 403); return
+                self.send(fx.trigger_add(str(b.get("project") or HOME), b.get("glob"), b.get("cmd")))
+            elif path == "/api/trigger/list":
+                self.send({"triggers": fx.trigger_list(str(b.get("project") or HOME))})
+            elif path == "/api/trigger/remove":
+                if not settings().get("featTriggers", True):
+                    self.send({"error": "триггеры выключены в настройках"}, 403); return
+                self.send(fx.trigger_remove(str(b.get("project") or HOME), b.get("id")))
+            elif path == "/api/trigger/check":
+                if not settings().get("featTriggers", True):
+                    self.send({"error": "триггеры выключены в настройках"}, 403); return
+                self.send(fx.trigger_check(str(b.get("project") or HOME),
+                                           str(b.get("root") or b.get("project") or HOME)))
+            elif path == "/api/webhook/add":
+                if not settings().get("featWebhooks", True):
+                    self.send({"error": "вебхуки выключены в настройках"}, 403); return
+                self.send(fx.webhook_add(str(b.get("project") or HOME), b.get("url"), b.get("events")))
+            elif path == "/api/webhook/list":
+                self.send({"webhooks": fx.webhook_list(str(b.get("project") or HOME))})
+            elif path == "/api/webhook/remove":
+                if not settings().get("featWebhooks", True):
+                    self.send({"error": "вебхуки выключены в настройках"}, 403); return
+                self.send(fx.webhook_remove(str(b.get("project") or HOME), b.get("id")))
+            elif path == "/api/webhook/fire":
+                if not settings().get("featWebhooks", True):
+                    self.send({"error": "вебхуки выключены в настройках"}, 403); return
+                self.send(fx.webhook_fire(str(b.get("project") or HOME),
+                                          str(b.get("event") or "task_done"), b.get("payload") or {}))
+            elif path == "/api/sql/query":
+                if not settings().get("featSql", True):
+                    self.send({"error": "SQL-консоль выключена в настройках"}, 403); return
+                self.send(fx.sql_query(str(b.get("project") or HOME), b.get("q")))
+            elif path == "/api/diagram/mermaid":
+                if not settings().get("featDiagrams", True):
+                    self.send({"error": "диаграммы выключены в настройках"}, 403); return
+                self.send(fx.mermaid_tree(str(b.get("project") or HOME)))
+            elif path == "/api/cron/add":
+                if not settings().get("featCron", True):
+                    self.send({"error": "cron выключен в настройках"}, 403); return
+                self.send(fx.cron_add(str(b.get("project") or HOME), b.get("schedule"), b.get("task"), b.get("name")))
+            elif path == "/api/cron/list":
+                self.send({"tasks": fx.cron_list(str(b.get("project") or HOME))})
+            elif path == "/api/cron/remove":
+                if not settings().get("featCron", True):
+                    self.send({"error": "cron выключен в настройках"}, 403); return
+                self.send(fx.cron_remove(str(b.get("project") or HOME), b.get("id")))
+            elif path == "/api/cron/due":
+                if not settings().get("featCron", True):
+                    self.send({"error": "cron выключен в настройках"}, 403); return
+                self.send(fx.cron_due(str(b.get("project") or HOME), b.get("now")))
+            elif path == "/api/git/conflicts":
+                if not settings().get("featMerge", True):
+                    self.send({"error": "помощник конфликтов выключен в настройках"}, 403); return
+                self.send(fx.git_conflicts(str(b.get("root") or b.get("project") or HOME)))
+            elif path == "/api/git/resolve":
+                if not settings().get("featMerge", True):
+                    self.send({"error": "помощник конфликтов выключен в настройках"}, 403); return
+                self.send(fx.conflict_resolve(str(b.get("root") or b.get("project") or HOME),
+                                              b.get("file"), b.get("choice")))
+            elif path == "/api/code/dead":
+                if not settings().get("featDeadCode", True):
+                    self.send({"error": "поиск мёртвого кода выключен в настройках"}, 403); return
+                self.send(fx.find_dead_code(str(b.get("project") or HOME)))
+            elif path == "/api/logs/view":
+                if not settings().get("featLogs", True):
+                    self.send({"error": "просмотр логов выключен в настройках"}, 403); return
+                self.send(fx.log_overview(b.get("path"), b.get("max_bytes"), b.get("tail")))
+            elif path == "/api/table/summary":
+                if not settings().get("featCsv", True):
+                    self.send({"error": "таблицы выключены в настройках"}, 403); return
+                self.send(fx.table_summary(b.get("path")))
+            elif path == "/api/table/diff":
+                if not settings().get("featCsv", True):
+                    self.send({"error": "таблицы выключены в настройках"}, 403); return
+                self.send(fx.csv_diff(b.get("a"), b.get("b"), b.get("key_col")))
+            elif path == "/api/prompts/import":
+                if not settings().get("featImportPrompts", True):
+                    self.send({"error": "импорт промптов выключен в настройках"}, 403); return
+                self.send(fx.import_prompts(b.get("base")))
+            elif path == "/api/sync/quarantine":
+                if not settings().get("featQuarantine", True):
+                    self.send({"error": "карантин выключен в настройках"}, 403); return
+                self.send(fx.quarantine_packet(str(b.get("project") or HOME),
+                                               b.get("packet"), b.get("expected_hash")))
+            elif path == "/api/sync/quarantine/list":
+                self.send(fx.quarantine_list(str(b.get("project") or HOME)))
+            elif path == "/api/crash/report":
+                if not settings().get("featCrash", True):
+                    self.send({"error": "журнал крашей выключен в настройках"}, 403); return
+                self.send(fx.crash_report(str(b.get("project") or HOME),
+                                          b.get("kind"), b.get("text"), b.get("where")))
+            elif path == "/api/crash/list":
+                self.send(fx.crash_list(str(b.get("project") or HOME), b.get("limit")))
+            elif path == "/api/notes/add":
+                if not settings().get("featNotes", True):
+                    self.send({"error": "заметки выключены в настройках"}, 403); return
+                self.send(fx.note_add(str(b.get("project") or HOME), b.get("title"),
+                                      b.get("body"), b.get("tags")))
+            elif path == "/api/notes/list":
+                self.send(fx.note_list(str(b.get("project") or HOME), b.get("query"), b.get("tag")))
+            elif path == "/api/notes/delete":
+                if not settings().get("featNotes", True):
+                    self.send({"error": "заметки выключены в настройках"}, 403); return
+                self.send(fx.note_delete(str(b.get("project") or HOME), b.get("id")))
+            elif path == "/api/guest/create":
+                if not settings().get("featGuest", True):
+                    self.send({"error": "гостевой доступ выключен в настройках"}, 403); return
+                self.send(fx.guest_create(str(b.get("project") or HOME), b.get("ttl_hours")))
+            elif path == "/api/guest/view":
+                if not settings().get("featGuest", True):
+                    self.send({"error": "гостевой доступ выключен в настройках"}, 403); return
+                r = fx.guest_view(str(b.get("project") or HOME), b.get("token"), b.get("max_files"))
+                self.send(r, int(r.get("status") or 200))
+            elif path == "/api/integrity/check":
+                if not settings().get("featIntegrity", True):
+                    self.send({"error": "проверка целостности выключена в настройках"}, 403); return
+                self.send(fx.integrity_check(str(b.get("project") or HOME)))
+            elif path == "/api/export/full":
+                if not settings().get("featFullExport", True):
+                    self.send({"error": "полный экспорт выключен в настройках"}, 403); return
+                self.send(full_export())
+            elif path == "/api/import/full":
+                if not settings().get("featFullImport", True):
+                    self.send({"error": "импорт архива выключен в настройках"}, 403); return
+                if settings().get("featReadOnly", True) and fx.disk_low(HOME, settings().get("diskMinFreeMB", 500)):
+                    self.send({"error": "мало места на диске — режим только чтение"}, 507); return
+                self.send(fx.full_import(b.get("zip"), PROJECTS, HOME, app_version()))
+            elif path == "/api/json/validate":
+                if not settings().get("featJsonTools", True):
+                    self.send({"error": "валидатор JSON выключен в настройках"}, 403); return
+                self.send(fx.json_validate(b.get("text"), b.get("autofix")))
+            elif path == "/api/disk/status":
+                self.send(fx.disk_status(HOME, settings().get("diskMinFreeMB", 500)))
+            elif path == "/api/team/set":
+                if not settings().get("featTeam", True):
+                    self.send({"error": "командные роли выключены в настройках"}, 403); return
+                self.send(fx.team_set(str(b.get("project") or HOME), b.get("name"), b.get("role")))
+            elif path == "/api/team":
+                self.send(fx.team_get(str(b.get("project") or HOME)))
+            elif path == "/api/team/check":
+                if not settings().get("featTeam", True):
+                    self.send({"error": "командные роли выключены в настройках"}, 403); return
+                self.send(fx.team_check(str(b.get("project") or HOME), b.get("name"), b.get("action")))
+            elif path == "/api/repo/export":
+                if not settings().get("featRepoExport", True):
+                    self.send({"error": "экспорт в репозиторий выключен в настройках"}, 403); return
+                self.send(fx.export_project_repo(str(b.get("project") or HOME),
+                                                 b.get("dest"), b.get("run_cmd")))
+            elif path == "/api/health/report":
+                if not settings().get("featHealthReport", True):
+                    self.send({"error": "отчёт здоровья выключен в настройках"}, 403); return
+                self.send(fx.project_health(str(b.get("project") or HOME)))
+            elif path == "/api/cloc":
+                self.send(fx.cloc(str(b.get("project") or HOME)))
+            elif path == "/api/files/biggest":
+                self.send(fx.biggest_files(str(b.get("project") or HOME), b.get("limit")))
+            elif path == "/api/files/stale":
+                self.send(fx.stale_files(str(b.get("project") or HOME), b.get("days"), b.get("limit")))
+            elif path == "/api/files/dups":
+                if not settings().get("featDups", True):
+                    self.send({"error": "поиск дубликатов выключен в настройках"}, 403); return
+                self.send(fx.dup_files(str(b.get("project") or HOME)))
+            elif path == "/api/files/empty-dirs":
+                self.send(fx.empty_dirs(str(b.get("project") or HOME)))
+            elif path == "/api/md/links":
+                self.send(fx.md_broken_links(str(b.get("project") or HOME)))
+            elif path == "/api/md/toc":
+                self.send(fx.md_toc(b.get("text"), b.get("max_depth")))
+            elif path == "/api/gitignore/gen":
+                self.send(fx.gitignore_gen(b.get("lang")))
+            elif path == "/api/license/header":
+                if not settings().get("featFileWrite", True):
+                    self.send({"error": "запись файлов выключена в настройках"}, 403); return
+                self.send(fx.license_header(b.get("file"), b.get("license")))
+            elif path == "/api/changelog":
+                self.send(fx.changelog_from_git(str(b.get("project") or HOME), b.get("limit")))
+            elif path == "/api/snippets/add":
+                if not settings().get("featSnippets", True):
+                    self.send({"error": "сниппеты выключены в настройках"}, 403); return
+                self.send(fx.snippet_add(SNIPPETS, b.get("name"), b.get("code"), b.get("lang")))
+            elif path == "/api/snippets":
+                self.send(fx.snippet_search(SNIPPETS, b.get("query")))
+            elif path == "/api/drafts/save":
+                self.send(fx.drafts_save(DRAFTS, b.get("session"), b.get("text")))
+            elif path == "/api/drafts/load":
+                self.send(fx.drafts_load(DRAFTS, b.get("session")))
+            elif path == "/api/clipboard/push":
+                self.send(fx.clipboard_push(CLIP_HIST, b.get("text")))
+            elif path == "/api/clipboard/history":
+                self.send(fx.clipboard_history(CLIP_HIST, b.get("limit")))
+            elif path == "/api/pins/add":
+                self.send(fx.pin_file(str(b.get("project") or HOME), b.get("file")))
+            elif path == "/api/pins/remove":
+                self.send(fx.unpin_file(str(b.get("project") or HOME), b.get("file")))
+            elif path == "/api/tags/set":
+                self.send(fx.tag_project(str(b.get("project") or HOME), b.get("tags")))
+            elif path == "/api/todo/board":
+                self.send(fx.todo_board(str(b.get("project") or HOME), b.get("max_files")))
+            elif path == "/api/heatmap":
+                self.send(fx.heatmap(str(b.get("project") or HOME), b.get("days")))
+            elif path == "/api/streak":
+                self.send(fx.streak_and_goal(str(b.get("project") or HOME), b.get("goal")))
+            elif path == "/api/digest":
+                self.send(fx.daily_digest(str(b.get("project") or HOME), str(b.get("root") or b.get("project") or HOME)))
+            elif path == "/api/export/chat/md":
+                if not settings().get("featExports", True):
+                    self.send({"error": "экспорт выключен в настройках"}, 403); return
+                self.send(fx.export_chat_md(read_jsonl(CHAT), b.get("path"), b.get("limit")))
+            elif path == "/api/export/metrics/csv":
+                if not settings().get("featExports", True):
+                    self.send({"error": "экспорт выключен в настройках"}, 403); return
+                self.send(fx.metrics_csv(b.get("rows"), b.get("path")))
+            elif path == "/api/doctor":
+                self.send(fx.env_doctor(HOME))
+            elif path == "/api/dep/audit":
+                self.send(fx.dep_audit(str(b.get("project") or HOME)))
+            elif path == "/api/trash/delete":
+                if not settings().get("featTrash", True):
+                    self.send({"error": "корзина выключена в настройках"}, 403); return
+                self.send(fx.trash_delete(str(b.get("project") or HOME), b.get("file")))
+            elif path == "/api/trash/restore":
+                if not settings().get("featTrash", True):
+                    self.send({"error": "корзина выключена в настройках"}, 403); return
+                self.send(fx.trash_restore(str(b.get("project") or HOME), b.get("trash_file")))
+            elif path == "/api/lock/set":
+                self.send(fx.lock_project(str(b.get("project") or HOME), b.get("password")))
+            elif path == "/api/lock/check":
+                self.send(fx.unlock_check(str(b.get("project") or HOME), b.get("password")))
+            elif path == "/api/aliases/set":
+                self.send(fx.alias_set(ALIASES, b.get("short"), b.get("full")))
+            elif path == "/api/aliases/get":
+                self.send(fx.alias_get(ALIASES, b.get("short")))
+            elif path == "/api/timer":
+                self.send(fx.session_timer(TIMERS, b.get("session"), b.get("action")))
+            elif path == "/api/metrics/report":
+                self.send(fx.api_metrics_report(METRICS))
+            elif path == "/api/i18n":
+                self.send(fx.i18n_keys())
+            elif path == "/api/a11y":
+                self.send(fx.a11y_prefs(A11Y, **{k: b.get(k) for k in ("fontScale", "highContrast", "reduceMotion")}))
+            elif path == "/api/focus":
+                self.send(fx.focus_mode(FOCUS, b.get("on")))
+            elif path == "/api/focus/status":
+                self.send(fx.focus_active(FOCUS))
+            elif path == "/api/shortcuts":
+                self.send(fx.shortcuts_help())
+            elif path == "/api/backup/verify":
+                self.send(fx.backup_verify(b.get("path")))
+            elif path == "/api/sync/speedtest":
+                self.send(fx.sync_speed_test(b.get("payload_kb")))
+            elif path == "/api/plugins":
+                self.send(fx.plugin_list(PLUGINS, PLUGINS_STATE))
+            elif path == "/api/plugins/toggle":
+                if not settings().get("featPlugins", True):
+                    self.send({"error": "плагины выключены в настройках"}, 403); return
+                self.send(fx.plugin_toggle(PLUGINS_STATE, b.get("name"), bool(b.get("enabled"))))
+            elif path == "/api/plugins/run":
+                if not settings().get("featPlugins", True):
+                    self.send({"error": "плагины выключены в настройках"}, 403); return
+                r = fx.plugin_run(PLUGINS, PLUGINS_STATE, b.get("name"),
+                                  b.get("args"), b.get("workdir"), b.get("timeout"))
+                self.send(r, int(r.get("status") or 200))
+            elif path == "/api/stats/sessions":
+                self.send(fx.session_stats(load_sessions(), read_jsonl(CHAT)))
+            elif path == "/api/media/list":
+                if not settings().get("featMedia", True):
+                    self.send({"error": "просмотр медиа выключен в настройках"}, 403); return
+                self.send(fx.media_list(str(b.get("project") or HOME), b.get("max_files")))
+            elif path == "/api/ratings/rate":
+                if not settings().get("featRatings", True):
+                    self.send({"error": "рейтинги выключены в настройках"}, 403); return
+                self.send(fx.rate_item(RATINGS, b.get("kind"), b.get("name"), b.get("delta")))
+            elif path == "/api/ratings":
+                self.send(fx.ratings_top(RATINGS, b.get("kind"), b.get("limit")))
+            elif path == "/api/nav/breadcrumbs":
+                self.send(fx.breadcrumbs(str(b.get("root") or b.get("project") or HOME), b.get("rel")))
+            elif path == "/api/bookmark/add":
+                if not settings().get("featBookmarks", True):
+                    self.send({"error": "закладки выключены в настройках"}, 403); return
+                self.send(fx.bookmark_add(str(b.get("project") or HOME), b.get("rel"), b.get("line"), b.get("note")))
+            elif path == "/api/bookmark/list":
+                self.send({"bookmarks": fx.bookmark_list(str(b.get("project") or HOME))})
+            elif path == "/api/bookmark/remove":
+                if not settings().get("featBookmarks", True):
+                    self.send({"error": "закладки выключены в настройках"}, 403); return
+                self.send(fx.bookmark_remove(str(b.get("project") or HOME), b.get("id")))
+            elif path == "/api/recent/touch":
+                if not settings().get("featRecent", True):
+                    self.send({"error": "недавние файлы выключены в настройках"}, 403); return
+                self.send(fx.recent_touch(str(b.get("project") or HOME), b.get("rel")))
+            elif path == "/api/recent/list":
+                self.send(fx.recent_files(str(b.get("project") or HOME), b.get("cap")))
+            elif path == "/api/onboarding":
+                self.send(fx.onboarding_state(ONBOARD))
+            elif path == "/api/onboarding/mark":
+                if not settings().get("featOnboarding", True):
+                    self.send({"error": "чек-лист выключен в настройках"}, 403); return
+                self.send(fx.onboarding_mark(ONBOARD, b.get("step"), bool(b.get("done", True))))
+            elif path == "/api/expert":
+                self.send(fx.expert_active(EXPERT))
+            elif path == "/api/expert/toggle":
+                if not settings().get("featExpert", True):
+                    self.send({"error": "режим эксперта выключен в настройках"}, 403); return
+                self.send(fx.expert_mode(EXPERT, bool(b.get("on"))))
+            elif path == "/api/skills/library":
+                if not settings().get("featSkillLib", True):
+                    self.send({"error": "библиотека навыков выключена в настройках"}, 403); return
+                self.send(fx.builtin_skills())
+            elif path == "/api/skills/libinstall":
+                if not settings().get("featSkillLib", True):
+                    self.send({"error": "библиотека навыков выключена в настройках"}, 403); return
+                self.send(fx.skill_lib_install(b.get("name"), SKILLS_DIR))
+            elif path == "/api/skills/edit":
+                if not settings().get("featSkillEditor", True):
+                    self.send({"error": "редактор навыков выключен в настройках"}, 403); return
+                self.send(fx.skill_edit(SKILLS_DIR, b.get("name"), b.get("body")))
+            elif path == "/api/skills/test":
+                if not settings().get("featSkillEditor", True):
+                    self.send({"error": "редактор навыков выключен в настройках"}, 403); return
+                self.send(fx.skill_test(SKILLS_DIR, b.get("name"), b.get("file"), b.get("workdir")))
+            elif path == "/api/skills/versions":
+                self.send(fx.skill_versions(SKILLS_DIR, b.get("name")))
+            elif path == "/api/skills/rollback":
+                if not settings().get("featSkillEditor", True):
+                    self.send({"error": "редактор навыков выключен в настройках"}, 403); return
+                self.send(fx.skill_rollback(SKILLS_DIR, b.get("name"), b.get("n")))
+            elif path == "/api/gallery/publish":
+                if not settings().get("featGallery", True):
+                    self.send({"error": "галерея выключена в настройках"}, 403); return
+                self.send(fx.template_publish(str(b.get("project") or HOME), b.get("name")))
+            elif path == "/api/gallery/list":
+                self.send(fx.template_gallery_list(str(b.get("base") or PROJECTS.parent)))
+            elif path == "/api/changelog/app":
+                self.send(fx.app_changelog(b.get("path"), b.get("limit")))
+            elif path == "/api/feedback/add":
+                if not settings().get("featFeedback", True):
+                    self.send({"error": "обратная связь выключена в настройках"}, 403); return
+                self.send(fx.feedback_add(HOME, b.get("text"), b.get("kind"), b.get("meta")))
+            elif path == "/api/feedback/list":
+                self.send(fx.feedback_list(HOME, b.get("limit")))
+            elif path == "/api/pclink/make":
+                if not settings().get("featPcLinks", True):
+                    self.send({"error": "pc:// ссылки выключены в настройках"}, 403); return
+                self.send(fx.pc_link_make(str(b.get("kind") or ""), **{k: v for k, v in b.items() if k != "kind"}))
+            elif path == "/api/pclink/parse":
+                if not settings().get("featPcLinks", True):
+                    self.send({"error": "pc:// ссылки выключены в настройках"}, 403); return
+                self.send(fx.pc_link_parse(b.get("url")))
+            elif path == "/api/lowpower":
+                self.send(fx.low_power_active(LOWPOWER))
+            elif path == "/api/lowpower/toggle":
+                if not settings().get("featLowPower", True):
+                    self.send({"error": "эконом-режим выключен в настройках"}, 403); return
+                self.send(fx.low_power_mode(LOWPOWER, bool(b.get("on"))))
+            elif path == "/api/snapshot/save":
+                if not settings().get("featSnapshots", True):
+                    self.send({"error": "снапшоты выключены в настройках"}, 403); return
+                self.send(fx.snapshot_save(str(b.get("project") or HOME), b.get("rel")))
+            elif path == "/api/snapshot/list":
+                self.send(fx.snapshot_list(str(b.get("project") or HOME), b.get("rel")))
+            elif path == "/api/snapshot/restore":
+                if not settings().get("featSnapshots", True):
+                    self.send({"error": "снапшоты выключены в настройках"}, 403); return
+                self.send(fx.snapshot_restore(str(b.get("project") or HOME), b.get("rel"), b.get("name")))
+            elif path == "/api/chat/search":
+                if not settings().get("featChatSearch", True):
+                    self.send({"error": "поиск по чату выключен в настройках"}, 403); return
+                self.send(fx.chat_search(read_jsonl(CHAT), b.get("query"), b.get("limit")))
+            elif path == "/api/note/add":
+                if not settings().get("featNotes", True):
+                    self.send({"error": "заметки на полях выключены в настройках"}, 403); return
+                self.send(fx.line_note_add(str(b.get("project") or HOME), b.get("rel"), b.get("line"), b.get("text")))
+            elif path == "/api/note/list":
+                self.send(fx.line_note_list(str(b.get("project") or HOME), b.get("rel")))
+            elif path == "/api/hotkeys/check":
+                if not settings().get("featHotkeys", True):
+                    self.send({"error": "горячие клавиши выключены в настройках"}, 403); return
+                self.send(fx.hotkey_check(b.get("hotkeys")))
+            elif path == "/api/tg/webhook":
+                if not settings().get("featTelegram", True):
+                    self.send({"error": "telegram-бот выключен в настройках"}, 403); return
+                parsed = fx.tg_parse_update(b.get("update"))
+                self.send({"parsed": parsed, "reply": fx.tg_format_reply(parsed, b.get("project"))})
+            elif path == "/api/mcp":
+                if not settings().get("featMcp", True):
+                    self.send({"error": "MCP выключен в настройках"}, 403); return
+                mcp_tools = {
+                    "status": {"description": "статус приложения", "call": lambda: {"ok": True}},
+                    "recent": {"description": "недавние файлы проекта",
+                               "call": lambda: fx.recent_files(str(b.get("project") or HOME))},
+                }
+                self.send(fx.mcp_handle(mcp_tools, b.get("method"), b.get("params"), b.get("id")))
+            elif path == "/api/attachment/register":
+                if not settings().get("featAttachments", True):
+                    self.send({"error": "вложения выключены в настройках"}, 403); return
+                data = base64.b64decode(b.get("data_b64") or "") if b.get("data_b64") else b.get("data")
+                self.send(fx.attachment_register(str(b.get("project") or HOME), b.get("name"), data))
+            elif path == "/api/attachment/list":
+                self.send(fx.attachment_list(str(b.get("project") or HOME)))
+            elif path == "/api/usage/incr":
+                if not settings().get("featUsage", True):
+                    self.send({"error": "счётчики выключены в настройках"}, 403); return
+                self.send(fx.usage_incr(USAGE, b.get("kind"), b.get("n")))
+            elif path == "/api/usage/top":
+                self.send(fx.usage_top(USAGE, b.get("limit")))
+            elif path == "/api/reminder/add":
+                if not settings().get("featReminders", True):
+                    self.send({"error": "напоминания выключены в настройках"}, 403); return
+                self.send(fx.reminder_add(HOME / "reminders.json", b.get("text"), b.get("due")))
+            elif path == "/api/reminder/due":
+                self.send(fx.reminder_due(HOME / "reminders.json"))
+            elif path == "/api/notes/export_md":
+                if not settings().get("featMdExport", True):
+                    self.send({"error": "экспорт выключен в настройках"}, 403); return
+                self.send(fx.export_notes_md(str(b.get("project") or HOME)))
+            elif path == "/api/linkcheck":
+                if not settings().get("featLinkCheck", True):
+                    self.send({"error": "проверка ссылок выключена в настройках"}, 403); return
+                self.send(fx.readme_link_check(str(b.get("project") or HOME), b.get("max_checks")))
+            elif path == "/api/reading_time":
+                self.send(fx.reading_time(b.get("text"), b.get("wpm")))
             else:
                 self.send({"error": "not found"}, 404)
         except Exception as e:
@@ -2193,7 +3073,50 @@ def backup_export():
         "models": load_json(MODELS, []),
         "sessions": load_sessions(),
         "messages": read_jsonl(CHAT)[-2000:],
+        "teams": {p.name: load_json(p / ".pocketcode" / "team.json", {})
+                  for p in PROJECTS.glob("*") if p.is_dir()
+                  and (p / ".pocketcode" / "team.json").is_file()},
     }
+
+
+FULL_EXPORT_MAX_BYTES = 50_000_000
+
+
+def full_export():
+    """Идея 179: весь ПК одним архивом — настройки, сессии, чат и данные проектов.
+    Архив содержит секреты: предназначен владельцу, не для синхронизации."""
+    out = HOME / ("pocketcode-full-%s.zip" % time.strftime("%Y%m%d-%H%M%S"))
+    seen = set()
+
+    def add_file(zf, p, arcname):
+        try:
+            if p.is_file() and p.stat().st_size <= FULL_EXPORT_MAX_BYTES:
+                if str(p) not in seen:
+                    seen.add(str(p))
+                    zf.write(p, arcname)
+        except OSError:
+            pass
+
+    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zf:
+        for name in ("settings.json", "profiles.json", "skills.json", "agents.json",
+                     "roles.json", "models.json", "queue.json"):
+            add_file(zf, HOME / name, name)
+        add_file(zf, CHAT, "chat.jsonl")
+        try:
+            sessions = load_sessions()
+            zf.writestr("sessions.json", json.dumps(sessions, ensure_ascii=False))
+        except (OSError, TypeError, ValueError):
+            pass
+        for proj_dir in PROJECTS.glob("*") if PROJECTS.is_dir() else []:
+            if not proj_dir.is_dir() or proj_dir.name.startswith("."):
+                continue
+            pc = proj_dir / ".pocketcode"
+            if pc.is_dir():
+                for f in sorted(pc.glob("*.json")):
+                    add_file(zf, f, "%s/.pocketcode/%s" % (proj_dir.name, f.name))
+                for md in ("memory.md", "rules.md"):
+                    add_file(zf, pc / md, "%s/.pocketcode/%s" % (proj_dir.name, md))
+    return {"ok": True, "path": str(out), "size": out.stat().st_size, "files": len(seen) + 1}
 
 
 def backup_import(data):
@@ -2210,6 +3133,21 @@ def backup_import(data):
         save_json(AGENTS, data["agents"]); imported.append("agents")
     if isinstance(data.get("roles"), dict):
         save_json(ROLES, data["roles"]); imported.append("roles")
+    if isinstance(data.get("teams"), dict):
+        # синхронизация ролей командных проектов: {"<проект>": {"owner": ..., "members": {...}}}
+        from pathlib import Path as _P
+        teams = data["teams"]
+        count = 0
+        for name, team in teams.items():
+            if not isinstance(team, dict) or not str(name).strip():
+                continue
+            safe = _P(name).name  # без обхода пути
+            pc = PROJECTS / safe / ".pocketcode"
+            pc.mkdir(parents=True, exist_ok=True)
+            save_json(pc / "team.json", {"owner": team.get("owner", ""),
+                                         "members": team.get("members", {})})
+            count += 1
+        imported.append("teams(%d)" % count)
     if isinstance(data.get("models"), list):
         save_json(MODELS, data["models"]); imported.append("models")
     if isinstance(data.get("messages"), list):
@@ -2253,7 +3191,8 @@ def start_server(host="0.0.0.0", port=8765):
     global thread_sync
     server = ThreadingHTTPServer((host, port), Handler)
     server.daemon_threads = True
-    if load_json(SYNC_CONFIG, {}).get("enabled") and (thread_sync is None or not thread_sync.is_alive()):
+    if load_json(SYNC_CONFIG, {}).get("enabled") and not fx.low_power_active(LOWPOWER).get("lowPower") \
+            and (thread_sync is None or not thread_sync.is_alive()):
         thread_sync = threading.Thread(target=sync_loop, args=(threading.Event(),), daemon=True)
         thread_sync.start()
     return server

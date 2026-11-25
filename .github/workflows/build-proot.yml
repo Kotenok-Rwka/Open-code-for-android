@@ -29,8 +29,12 @@ jobs:
           git config user.name "github-actions"
           git config user.email "actions@github.com"
           git add app/src/main/jniLibs
-          git commit -m "proot: сборка с API 24 (process_vm_readv), чинит запуск Linux на новых телефонах" || true
-          git push
+          if git diff --cached --quiet; then
+            echo "::notice::proot: библиотеки не изменились, коммит не нужен"
+          else
+            git commit -m "proot: сборка с API 24 (process_vm_readv), чинит запуск Linux на новых телефонах"
+            git push
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: proot-api24

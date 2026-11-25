@@ -87,4 +87,17 @@ class PluginSearchTest {
         assertEquals(1, found.size)
         assertTrue(PluginSearch.filterLocal(items, "") { it.name }.size == 2)
     }
+
+    @Test
+    fun realSkillCollectionsRankAboveOrdinaryLibraries() {
+        // Кейс с телефона: по «android» в категории «Плагины» GitHub ставит Java-фреймворк
+        // со словом plugin в описании выше настоящих наборов навыков.
+        val json = """{"items":[
+            {"full_name":"didi/VirtualAPK","description":"A powerful and lightweight plugin framework for Android","stargazers_count":9043,"html_url":"https://github.com/didi/VirtualAPK","language":"Java"},
+            {"full_name":"acme/claude-skills","description":"Agent skills and slash commands for Claude Code on Android","stargazers_count":120,"html_url":"https://github.com/acme/claude-skills"}
+        ]}"""
+        val hits = PluginSearch.relevant(PluginSearch.parse(json), "android", "Плагины")
+        assertEquals("acme/claude-skills", hits.first().fullName)
+        assertTrue(PluginSearch.pluginLikeness(hits.first()) > 0)
+    }
 }

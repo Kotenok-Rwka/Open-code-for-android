@@ -69,9 +69,12 @@ fun AutoSyncScreen(
             OutlinedButton(onClick = { update { it.copy(serverUrl = "http://127.0.0.1:8765") } }) { Text("Этот телефон") }
             val scan = rememberQrScanner { raw ->
                 val uri = runCatching { android.net.Uri.parse(raw) }.getOrNull()
-                val url = uri?.getQueryParameter("url") ?: raw.substringBefore("?token=")
-                val tok = uri?.getQueryParameter("token") ?: raw.substringAfter("?token=").takeIf { raw.contains("?token=") } ?: ""
-                update { it.copy(serverUrl = url, token = tok) }
+                val url = (uri?.getQueryParameter("url") ?: raw.substringBefore("?")).trim().trimEnd('/')
+                val tok = uri?.getQueryParameter("token")
+                    ?: if (raw.contains("token=")) raw.substringAfter("token=").substringBefore("&") else ""
+                val pwd = uri?.getQueryParameter("password")
+                    ?: if (raw.contains("password=")) raw.substringAfter("password=").substringBefore("&") else ""
+                update { it.copy(serverUrl = url, token = tok, password = pwd) }
                 vm.checkSyncServer(url, tok)
             }
             OutlinedButton(onClick = scan) { Text("Сканировать QR") }

@@ -59,6 +59,7 @@ import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -79,7 +80,7 @@ import com.pocketcode.ui.ProjectsScreen
 import com.pocketcode.ui.SessionsScreen
 import com.pocketcode.ui.SettingsScreen
 
-private enum class Screen { CHAT, AUTOSYNC, TOOLS, APPEARANCE, HOWAI, LIVE, RUMBLE, STORAGE, USAGE, CONNECTIONS, LOCALMODELS, AGENTS, WIDGETS, MODELROLES, SETTINGS, SESSIONS, PROJECTS, FILES, DEVICES, PLUGINS, DIAG, COMPARE, CONTEXT, TERMINAL, GIT, OCSESSIONS, REMOTE, DIFF, SEARCH, HUB_PROJECT, HUB_AGENT, HUB_MORE, FIND, ROOT, PHONE, OCSETTINGS, MODELS, LINUX, UPDATE, BACKUP, VIDEO, LANGUAGE, SMART, LEARN, ASSISTANT, HOST, TOON, SUPPORT, REMINDERS, SECURITYCENTER, ACCOUNTS }
+private enum class Screen { CHAT, AUTOSYNC, TOOLS, APPEARANCE, HOWAI, LIVE, RUMBLE, STORAGE, USAGE, CONNECTIONS, LOCALMODELS, AGENTS, WIDGETS, MODELROLES, SETTINGS, SESSIONS, PROJECTS, FILES, DEVICES, PLUGINS, DIAG, COMPARE, CONTEXT, TERMINAL, GIT, OCSESSIONS, REMOTE, DIFF, SEARCH, HUB_PROJECT, HUB_AGENT, HUB_MORE, FIND, ROOT, PHONE, OCSETTINGS, MODELS, LINUX, UPDATE, BACKUP, VIDEO, LANGUAGE, SMART, LEARN, ASSISTANT, HOST, TOON, SUPPORT, REMINDERS, SECURITYCENTER, ACCOUNTS, FEATURES }
 
 class MainActivity : ComponentActivity() {
     private val controller: ChatController
@@ -281,10 +282,12 @@ class MainActivity : ComponentActivity() {
                 androidx.compose.foundation.layout.Box(Modifier.weight(1f)) {
                 if (pv != null) {
                     PreviewScreen(pv, "Превью", onBack = { vm.previewUrl = null })
-                } else androidx.compose.animation.AnimatedContent(
+                } else {
+                    val screensOn = com.pocketcode.ui.LocalMotionConfig.current.screenTransitions
+                    androidx.compose.animation.AnimatedContent(
                     targetState = screen,
                     transitionSpec = {
-                        if (noMotion) {
+                        if (noMotion || !screensOn) {
                             androidx.compose.animation.EnterTransition.None.togetherWith(androidx.compose.animation.ExitTransition.None)
                         } else {
                             (androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(200)) +
@@ -314,12 +317,12 @@ class MainActivity : ComponentActivity() {
                                 com.pocketcode.ui.hubHeader("Запуск"),
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Terminal, "Терминал и запуск", "Команды в Linux, кнопки запуска проекта") { openFrom(Screen.HUB_PROJECT, Screen.TERMINAL) },
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Terminal, "Хостинг проектов", "Боты и серверы на телефоне: фоном или пока открыто, по расписанию") { openFrom(Screen.HUB_PROJECT, Screen.HOST) },
-                                com.pocketcode.ui.hubHeader("Данные и синхронизация"),
-                                com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Archive, "Хранилище", "Размеры папок, поиск файлов, очистка кэша") { openFrom(Screen.HUB_PROJECT, Screen.STORAGE) },
-                                com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Refresh, "Автосинхронизация", "Реальное время или расписание, отправка истории и файлов на ПК") { openFrom(Screen.HUB_PROJECT, Screen.AUTOSYNC) },
-                                com.pocketcode.ui.hubHeader("Видео и ролики"),
+                                com.pocketcode.ui.hubHeader("Медиа"),
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Play, "Видео", "Монтаж: вырезать паузы одной кнопкой, без ПК", if (vm.video.busy) "идёт" else null) { openFrom(Screen.HUB_PROJECT, Screen.VIDEO) },
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Play, "Мультики для TikTok", "Сценарий → герои, озвучка и субтитры → готовый вертикальный ролик", if (vm.toon.busy) "идёт" else null) { openFrom(Screen.HUB_PROJECT, Screen.TOON) },
+                                com.pocketcode.ui.hubHeader("Обслуживание"),
+                                com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Archive, "Хранилище", "Размеры папок, поиск файлов, очистка кэша") { openFrom(Screen.HUB_PROJECT, Screen.STORAGE) },
+                                com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Refresh, "Автосинхронизация", "Реальное время или расписание, отправка истории и файлов на ПК") { openFrom(Screen.HUB_PROJECT, Screen.AUTOSYNC) },
                             ),
                             onSearch = { openFrom(screen, Screen.FIND) },
                         )
@@ -329,23 +332,24 @@ class MainActivity : ComponentActivity() {
                         com.pocketcode.ui.HubScreen(
                             "Агент", vm.profileLabel + (if (vm.openCodeMode) " · режим OpenCode" else ""),
                             listOf(
-                                com.pocketcode.ui.hubHeader("Модели и OpenCode"),
+                                com.pocketcode.ui.hubHeader("Модели"),
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Key, "Модель и ключи", "Провайдеры, ключи API, выбор модели, режим работы") { openFrom(Screen.HUB_AGENT, Screen.MODELS) },
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Bolt, "Роли моделей", "Разное для планирования и выполнения; локальный роутер 9Router") { openFrom(Screen.HUB_AGENT, Screen.MODELROLES) },
-                                com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Chat, "Агенты Chat", "Сохранённые агенты с целями и инструкциями") { openFrom(Screen.HUB_AGENT, Screen.AGENTS) },
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Link, "Подключения и удалённый сервер", "LM Studio, llama.cpp, SSH: локальные и облачные модели") { openFrom(Screen.HUB_AGENT, Screen.CONNECTIONS) },
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Cpu, "Подбор локальной модели", "Рейтинг по качеству, подбор под ОЗУ телефона") { openFrom(Screen.HUB_AGENT, Screen.LOCALMODELS) },
-                                com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Sliders, "Настройки OpenCode", "Аккаунты, ключ, прокси, лимиты, доступ вне проекта, статистика") { openFrom(Screen.HUB_AGENT, Screen.OCSETTINGS) },
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Layers, "Сравнить модели", "Один запрос сразу в нескольких моделях") { openFrom(Screen.HUB_AGENT, Screen.COMPARE) },
-                                com.pocketcode.ui.hubHeader("Контекст, навыки и режимы"),
-                                com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Cpu, "Что в контексте", "Что агент сейчас «помнит» и сколько это весит") { openFrom(Screen.HUB_AGENT, Screen.CONTEXT) },
+                                com.pocketcode.ui.hubHeader("Поведение агента"),
+                                com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Chat, "Агенты Chat", "Сохранённые агенты с целями и инструкциями") { openFrom(Screen.HUB_AGENT, Screen.AGENTS) },
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Wrench, "Навыки, команды, MCP", "Инструкции, плагины, поиск на GitHub") { openFrom(Screen.HUB_AGENT, Screen.PLUGINS) },
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Sliders, "Размышления и инструменты", "Какие инструменты видит модель, глубина размышлений") { openFrom(Screen.HUB_AGENT, Screen.TOOLS) },
+                                com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Cpu, "Что в контексте", "Что агент сейчас «помнит» и сколько это весит") { openFrom(Screen.HUB_AGENT, Screen.CONTEXT) },
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Chat, "Живой режим", "Голосовое планирование на быстрой модели") { openFrom(Screen.HUB_AGENT, Screen.LIVE) },
-                                com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Info, "Как работает нейронка", "Контекст, инструменты, размышления простыми словами") { openFrom(Screen.HUB_AGENT, Screen.HOWAI) },
-                                com.pocketcode.ui.hubHeader("История"),
-                                com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.History, "История чатов", "Прошлые беседы, вернуться к любой") { openFrom(Screen.HUB_AGENT, Screen.SESSIONS) },
+                                com.pocketcode.ui.hubHeader("OpenCode"),
+                                com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Sliders, "Настройки OpenCode", "Аккаунты, ключ, прокси, лимиты, доступ вне проекта, статистика") { openFrom(Screen.HUB_AGENT, Screen.OCSETTINGS) },
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Chat, "Диалоги OpenCode", "Список бесед: открыть, закрепить, переименовать, удалить, начать новую") { openFrom(Screen.HUB_AGENT, Screen.OCSESSIONS) },
+                                com.pocketcode.ui.hubHeader("История и обучение"),
+                                com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.History, "История чатов", "Прошлые беседы, вернуться к любой") { openFrom(Screen.HUB_AGENT, Screen.SESSIONS) },
+                                com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Info, "Как работает нейронка", "Контекст, инструменты, размышления простыми словами") { openFrom(Screen.HUB_AGENT, Screen.HOWAI) },
                             ),
                             onSearch = { openFrom(screen, Screen.FIND) },
                         )
@@ -368,7 +372,7 @@ class MainActivity : ComponentActivity() {
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Bolt, "Тактильные подсказки", "Вибрация на шагах агента и при ответе") { openFrom(Screen.HUB_MORE, Screen.RUMBLE) },
                                 com.pocketcode.ui.hubHeader("Расход и состояние"),
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Activity, "Использование и расход", "Токены, стоимость, изменения кода ИИ") { openFrom(Screen.HUB_MORE, Screen.USAGE) },
-                                com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Activity, "Проверка и расход", "Состояние приложения, токены и место") { openFrom(Screen.HUB_MORE, Screen.DIAG) },
+                                com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Wrench, "Диагностика приложения", "Состояние приложения, компоненты, место") { openFrom(Screen.HUB_MORE, Screen.DIAG) },
                                 com.pocketcode.ui.hubHeader("Телефон и устройства"),
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Phone, "Управление телефоном", "Агент смотрит на экран и нажимает: служба доступности, помощник, фон", if (pocketApp.controller.phoneMode.enabled) "вкл" else null) { openFrom(Screen.HUB_MORE, Screen.PHONE) },
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Sparkles, "Ассистент", "Вызов вместо Google, поиск в интернете, показ ответа и прогресса", if (com.pocketcode.assist.PocketAssistService.isDefault(this@MainActivity)) "вкл" else null) { openFrom(Screen.HUB_MORE, Screen.ASSISTANT) },
@@ -703,6 +707,7 @@ class MainActivity : ComponentActivity() {
                                 val t = when (key) {
                                     "models" -> Screen.MODELS
                                     "smart" -> Screen.SMART
+                                    "features" -> Screen.FEATURES
                                     "root" -> Screen.ROOT
                                     "diff" -> Screen.DIFF
                                     "linux" -> Screen.LINUX
@@ -734,6 +739,10 @@ class MainActivity : ComponentActivity() {
                     Screen.SMART -> {
                         BackHandler { screen = backTo }
                         com.pocketcode.ui.SmartScreen(pocketApp.controller, onBack = { screen = backTo }, onOpenRoot = { openFrom(Screen.SMART, Screen.ROOT) })
+                    }
+                    Screen.FEATURES -> {
+                        BackHandler { screen = backTo }
+                        com.pocketcode.ui.FeaturesScreen(pocketApp.controller)
                     }
                     Screen.VIDEO -> {
                         BackHandler { screen = backTo }
@@ -776,6 +785,7 @@ class MainActivity : ComponentActivity() {
                             onImport = { importBackup.launch(arrayOf("*/*")) },
                         )
                     }
+                }
                 }
                 }
                 }
@@ -892,18 +902,19 @@ private fun AppTheme(content: @Composable () -> Unit) {
     val tint = com.pocketcode.ui.AppearanceCodec.parseColor(appearance.baseTint)
     val tintStrength = appearance.baseTintStrength.coerceIn(0f, 1f)
     val backdropOn = com.pocketcode.ui.hasBackdrop(appearance.background)
+    val themeBase = com.pocketcode.ui.ThemeCatalog.backgroundFor(appearance.themeId, dark)
     val baseScheme = when {
         accent == null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
             val dyn = if (dark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
             when {
-                ios -> com.pocketcode.ui.buildIosScheme(dark, dark && ctl.amoled, com.pocketcode.ui.Accent("system", "Из обоев", dyn.primary, dyn.primary), tint, tintStrength)
-                aurora -> com.pocketcode.ui.buildAuroraScheme(dark, dark && ctl.amoled, com.pocketcode.ui.Accent("system", "Из обоев", dyn.primary, dyn.primary), tint, tintStrength)
+                ios -> com.pocketcode.ui.buildIosScheme(dark, dark && ctl.amoled, com.pocketcode.ui.Accent("system", "Из обоев", dyn.primary, dyn.primary), tint, tintStrength, themeBase)
+                aurora -> com.pocketcode.ui.buildAuroraScheme(dark, dark && ctl.amoled, com.pocketcode.ui.Accent("system", "Из обоев", dyn.primary, dyn.primary), tint, tintStrength, themeBase)
                 else -> if (dark && ctl.amoled) com.pocketcode.ui.amoledize(dyn) else dyn
             }
         }
-        ios -> com.pocketcode.ui.buildIosScheme(dark, dark && ctl.amoled, accent ?: com.pocketcode.ui.ACCENTS.first(), tint, tintStrength)
-        aurora -> com.pocketcode.ui.buildAuroraScheme(dark, dark && ctl.amoled, accent ?: com.pocketcode.ui.ACCENTS.first(), tint, tintStrength)
-        else -> com.pocketcode.ui.buildScheme(dark, dark && ctl.amoled, accent ?: com.pocketcode.ui.ACCENTS.first(), tint, tintStrength)
+        ios -> com.pocketcode.ui.buildIosScheme(dark, dark && ctl.amoled, accent ?: com.pocketcode.ui.ACCENTS.first(), tint, tintStrength, themeBase)
+        aurora -> com.pocketcode.ui.buildAuroraScheme(dark, dark && ctl.amoled, accent ?: com.pocketcode.ui.ACCENTS.first(), tint, tintStrength, themeBase)
+        else -> com.pocketcode.ui.buildScheme(dark, dark && ctl.amoled, accent ?: com.pocketcode.ui.ACCENTS.first(), tint, tintStrength, themeBase)
     }
     val scrim = appearance.backgroundScrim.coerceIn(0f, 0.85f)
     val customBg = com.pocketcode.ui.AppearanceCodec.parseColor(appearance.backgroundCustomColor)
@@ -943,6 +954,7 @@ private fun AppTheme(content: @Composable () -> Unit) {
         androidx.compose.ui.platform.LocalLayoutDirection provides if (com.pocketcode.ui.I18n.isRtl) androidx.compose.ui.unit.LayoutDirection.Rtl else androidx.compose.ui.unit.LayoutDirection.Ltr,
         com.pocketcode.ui.LocalUiStyle provides style,
         com.pocketcode.ui.LocalReduceMotion provides reduceMotion,
+        com.pocketcode.ui.LocalMotionConfig provides appearance.animations,
         com.pocketcode.ui.LocalBackdropActive provides backdropOn,
     ) {
         val bgPreset = com.pocketcode.ui.BackgroundCatalog.byId(appearance.background)
@@ -980,12 +992,26 @@ private fun AppTheme(content: @Composable () -> Unit) {
                 // Фон выбран, но картинка не открылась — не оставляем прозрачную дыру, красим подложкой темы.
                 backdropOn -> androidx.compose.foundation.layout.Box(Modifier.fillMaxSize().background(baseScheme.background))
             }
+            val appFont = com.pocketcode.ui.appearanceTypeface(appearance.fontFamily, context.filesDir)
+                ?.let { androidx.compose.ui.text.font.FontFamily(it) }
+            val monoFont = com.pocketcode.ui.appearanceTypeface(appearance.monoFontFamily, context.filesDir)
+                ?.let { androidx.compose.ui.text.font.FontFamily(it) } ?: androidx.compose.ui.text.font.FontFamily.Monospace
             MaterialTheme(
                 colorScheme = scheme,
-                typography = com.pocketcode.ui.appTypography(style),
-                shapes = com.pocketcode.ui.appShapes(style),
-                content = content,
-            )
+                typography = com.pocketcode.ui.styledTypography(
+                    com.pocketcode.ui.appTypography(style),
+                    appFont,
+                    appearance.chatFontScale,
+                    appearance.readingMode,
+                ),
+                shapes = com.pocketcode.ui.appearanceShapes(appearance.cornerRadius),
+            ) {
+                CompositionLocalProvider(
+                    com.pocketcode.ui.LocalMonoFontFamily provides monoFont,
+                    com.pocketcode.ui.LocalStrokeWidth provides appearance.strokeWidth.toFloat(),
+                    content = content,
+                )
+            }
         }
     }
 }

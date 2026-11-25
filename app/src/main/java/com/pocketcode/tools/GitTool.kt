@@ -4,6 +4,9 @@ import com.pocketcode.Settings
 import kotlinx.serialization.json.JsonObject
 import org.eclipse.jgit.api.Git
 import org.eclipse.jgit.lib.Repository
+import org.eclipse.jgit.transport.CredentialItem
+import org.eclipse.jgit.transport.CredentialsProvider
+import org.eclipse.jgit.transport.URIish
 import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider
 import org.eclipse.jgit.util.FS
 import java.io.ByteArrayOutputStream
@@ -11,7 +14,29 @@ import java.io.File
 
 private val READ_ONLY_ACTIONS = setOf("status", "log", "branch", "diff")
 
+/**
+ * Отдаёт токен GitHub только https-адресам GitHub. Адрес берётся из самого запроса,
+ * поэтому токен не уходит ни на чужой сервер из ссылки или из .git/config, ни по
+ * открытому http.
+ */
+class GitHubCredentials(token: String) : CredentialsProvider() {
+    private val inner = UsernamePasswordCredentialsProvider(token, "")
+
+    override fun isInteractive() = false
+
+    override fun supports(vararg items: CredentialItem) = inner.supports(*items)
+
+    override fun get(uri: URIish?, vararg items: CredentialItem): Boolean {
+        if (uri == null || !GitHubRefs.isGitHubHttps(uri.scheme, uri.host)) return false
+        return inner.get(uri, *items)
+    }
+}
+
 object GitOps {
+    /** Учётные данные для JGit: null, если токен не задан. */
+    fun credentials(token: String): CredentialsProvider? =
+        if (token.isNotBlank()) GitHubCredentials(token) else null
+
     /** Клонирование; общее для инструмента git и экрана проектов. */
     fun clone(url: String, target: File, token: String, homeDir: File) {
         runCatching {
@@ -19,7 +44,7 @@ object GitOps {
             FS.DETECTED.setUserHome(homeDir)
         }
         val cmd = Git.cloneRepository().setURI(url).setDirectory(target)
-        if (token.isNotBlank()) cmd.setCredentialsProvider(UsernamePasswordCredentialsProvider(token, ""))
+        credentials(token)?.let { cmd.setCredentialsProvider(it) }
         cmd.call().close()
     }
 }
@@ -63,7 +88,7 @@ class GitTool(
         }
         val action = input.need("action")
         val s = settings()
-        val creds = if (s.githubToken.isNotBlank()) UsernamePasswordCredentialsProvider(s.githubToken, "") else null
+        val creds = GitOps.credentials(s.githubToken)
 
         if (action == "clone") {
             val url = input.need("url")

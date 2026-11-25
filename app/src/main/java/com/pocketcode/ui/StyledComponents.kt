@@ -51,6 +51,12 @@ val LocalReduceMotion = compositionLocalOf { false }
 /** true: включён фон (градиент, свой цвет или картинка) и подложка экранов полупрозрачная. */
 val LocalBackdropActive = compositionLocalOf { false }
 
+/** Семейство моно-шрифта для кода в чате; по умолчанию системный Monospace. */
+val LocalMonoFontFamily = compositionLocalOf<androidx.compose.ui.text.font.FontFamily> { androidx.compose.ui.text.font.FontFamily.Monospace }
+
+/** Толщина рамок (hairline) в dp из «Оформления». */
+val LocalStrokeWidth = compositionLocalOf { 1f }
+
 /** Скругления по спецификации Material 3 или как у элементов iOS. */
 fun appShapes(style: UiStyle): Shapes = when (style) {
     UiStyle.MD3 -> Shapes(

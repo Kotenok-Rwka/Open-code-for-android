@@ -124,4 +124,18 @@ class AppearanceTest {
         val back = kotlinx.serialization.json.Json.decodeFromString<AppearanceConfig>(json)
         assertEquals(c, back)
     }
+
+    @Test
+    fun themeBackgroundReachesTheScheme() {
+        assertNotNull(ThemeCatalog.byId("rosepine"))
+        for (dark in listOf(true, false)) {
+            val base = ThemeCatalog.backgroundFor("rosepine", dark)!!
+            assertEquals(base, buildScheme(dark, false, ACCENTS.first(), themeBase = base).background)
+            assertEquals(base, buildIosScheme(dark, false, ACCENTS.first(), themeBase = base).background)
+            assertEquals(base, buildAuroraScheme(dark, false, ACCENTS.first(), themeBase = base).background)
+        }
+        val dark = ThemeCatalog.backgroundFor("rosepine", true)
+        assertEquals(Color.Black, buildScheme(true, true, ACCENTS.first(), themeBase = dark).background)
+        assertEquals(null, ThemeCatalog.backgroundFor("no-such-theme", true))
+    }
 }

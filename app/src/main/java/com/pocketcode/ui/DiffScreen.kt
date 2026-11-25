@@ -79,7 +79,19 @@ fun DiffScreen(vm: ChatController, onBack: () -> Unit) {
                             hunks.forEachIndexed { hi, r ->
                                 val from = maxOf(0, r.first - 2)
                                 val to = minOf(ops.size - 1, r.last + 2)
-                                Text("Блок ${hi + 1} из ${hunks.size}", style = MaterialTheme.typography.labelSmall)
+                                Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Text("Блок ${hi + 1} из ${hunks.size}", style = MaterialTheme.typography.labelSmall, modifier = Modifier.weight(1f))
+                                    TextButton(onClick = {
+                                        val lines = ops.subList(from, to + 1).mapNotNull { op ->
+                                            when (op) {
+                                                is DOp.Del -> "- " + op.line
+                                                is DOp.Ins -> "+ " + op.line
+                                                is DOp.Eq -> null
+                                            }
+                                        }
+                                        vm.sendWhileRunning("Замечание к блоку ${hi + 1} файла $cmpPath:\n" + lines.joinToString("\n"))
+                                    }) { Text("Комментировать", style = MaterialTheme.typography.labelSmall) }
+                                }
                                 ops.subList(from, to + 1).forEach { op ->
                                     val (prefix, color, text) = when (op) {
                                         is DOp.Del -> Triple("- ", red, op.line)

@@ -5,7 +5,7 @@
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
 
-python -m pip install --upgrade pyinstaller cryptography
+python -m pip install --upgrade pyinstaller cryptography qrcode
 python -m PyInstaller --noconfirm --onefile --windowed `
   --name PocketCodeDesktop `
   --add-data "pocketcode_desktop.py;." `

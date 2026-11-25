@@ -55,12 +55,12 @@ fun ColorScheme.withCardAlpha(alpha: Float): ColorScheme {
 }
 
 /** Своя палитра: одинакова на всех телефонах. amoled — чистый чёрный фон, tint — «тепло» подложки. */
-fun buildScheme(dark: Boolean, amoled: Boolean, a: Accent, tint: Color? = null, tintStrength: Float = 0.35f): ColorScheme {
+fun buildScheme(dark: Boolean, amoled: Boolean, a: Accent, tint: Color? = null, tintStrength: Float = 0.35f, themeBase: Color? = null): ColorScheme {
     val white = Color.White
     val black = Color.Black
     val cardWhite = tintedColor(white, tint, tintStrength * 0.6f)
     return if (dark) {
-        val base = tintedColor(if (amoled) black else Color(0xFF111318), tint, tintStrength)
+        val base = tintedColor(if (amoled) black else themeBase ?: Color(0xFF111318), tint, tintStrength)
         val c = a.dark
         darkColorScheme(
             primary = c,
@@ -88,7 +88,7 @@ fun buildScheme(dark: Boolean, amoled: Boolean, a: Accent, tint: Color? = null, 
             outlineVariant = lerp(base, white, 0.10f),
         )
     } else {
-        val base = tintedColor(Color(0xFFF4F6F9), tint, tintStrength)
+        val base = tintedColor(themeBase ?: Color(0xFFF4F6F9), tint, tintStrength)
         val c = a.light
         lightColorScheme(
             primary = c,
@@ -120,12 +120,12 @@ fun buildScheme(dark: Boolean, amoled: Boolean, a: Accent, tint: Color? = null, 
  * Палитра в стиле iOS: светлая сгруппированная подложка и белые карточки, в тёмной теме почти чёрный фон
  * и карточки цвета 1C1C1E. Синий акцент заменяется системным синим iOS, остальные акценты берутся как есть.
  */
-fun buildIosScheme(dark: Boolean, amoled: Boolean, a: Accent, tint: Color? = null, tintStrength: Float = 0.35f): ColorScheme {
+fun buildIosScheme(dark: Boolean, amoled: Boolean, a: Accent, tint: Color? = null, tintStrength: Float = 0.35f, themeBase: Color? = null): ColorScheme {
     val white = Color.White
     val black = Color.Black
     val cardWhite = tintedColor(white, tint, tintStrength * 0.6f)
     return if (dark) {
-        val base = tintedColor(if (amoled) black else Color(0xFF0D0D0F), tint, tintStrength)
+        val base = tintedColor(if (amoled) black else themeBase ?: Color(0xFF0D0D0F), tint, tintStrength)
         val c = if (a.id == "blue") Color(0xFF0A84FF) else a.dark
         val onC = if (a.id == "blue") white else Color(0xFF0B0F14)
         darkColorScheme(
@@ -153,7 +153,7 @@ fun buildIosScheme(dark: Boolean, amoled: Boolean, a: Accent, tint: Color? = nul
             outlineVariant = Color(0xFF38383A),
         )
     } else {
-        val base = tintedColor(Color(0xFFF2F2F7), tint, tintStrength)
+        val base = tintedColor(themeBase ?: Color(0xFFF2F2F7), tint, tintStrength)
         val c = if (a.id == "blue") Color(0xFF007AFF) else a.light
         lightColorScheme(
             primary = c,
@@ -186,12 +186,12 @@ fun buildIosScheme(dark: Boolean, amoled: Boolean, a: Accent, tint: Color? = nul
  * Палитра стиля Aurora: глубокий фон, слоистые поверхности с тонкой обводкой и насыщенный акцент.
  * Отличается от Material 3 более контрастными границами и мягкими, но заметными карточками.
  */
-fun buildAuroraScheme(dark: Boolean, amoled: Boolean, a: Accent, tint: Color? = null, tintStrength: Float = 0.35f): ColorScheme {
+fun buildAuroraScheme(dark: Boolean, amoled: Boolean, a: Accent, tint: Color? = null, tintStrength: Float = 0.35f, themeBase: Color? = null): ColorScheme {
     val white = Color.White
     val black = Color.Black
     val cardWhite = tintedColor(white, tint, tintStrength * 0.6f)
     return if (dark) {
-        val base = tintedColor(if (amoled) black else Color(0xFF0B0E14), tint, tintStrength)
+        val base = tintedColor(if (amoled) black else themeBase ?: Color(0xFF0B0E14), tint, tintStrength)
         val c = a.dark
         darkColorScheme(
             primary = c,
@@ -218,7 +218,7 @@ fun buildAuroraScheme(dark: Boolean, amoled: Boolean, a: Accent, tint: Color? = 
             outlineVariant = lerp(base, white, 0.09f),
         )
     } else {
-        val base = tintedColor(Color(0xFFF6F7FB), tint, tintStrength)
+        val base = tintedColor(themeBase ?: Color(0xFFF6F7FB), tint, tintStrength)
         val c = a.light
         lightColorScheme(
             primary = c,

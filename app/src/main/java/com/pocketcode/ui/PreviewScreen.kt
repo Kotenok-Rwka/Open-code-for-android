@@ -1,6 +1,10 @@
 package com.pocketcode.ui
 
 import android.annotation.SuppressLint
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Intent
+import android.net.Uri
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
@@ -19,6 +23,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
 import java.io.File
 
+/** Внешняя ссылка: в превью показываем «Копировать» и «В браузере». */
+fun isHttpUrl(url: String) = url.startsWith("http://") || url.startsWith("https://")
+
 /** Просмотр HTML-страницы проекта прямо в приложении. */
 @OptIn(ExperimentalMaterial3Api::class)
 @SuppressLint("SetJavaScriptEnabled")
@@ -29,6 +36,7 @@ fun PreviewScreen(file: File, onBack: () -> Unit) = PreviewScreen("file://" + fi
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 fun PreviewScreen(url: String, title: String, onBack: () -> Unit) {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
     var web by remember { mutableStateOf<WebView?>(null) }
     BackHandler {
         val w = web
@@ -39,7 +47,19 @@ fun PreviewScreen(url: String, title: String, onBack: () -> Unit) {
             AppTopBar(
                 title = { Text(title, maxLines = 1) },
                 navigationIcon = { androidx.compose.material3.IconButton(onClick = onBack) { androidx.compose.material3.Icon(com.pocketcode.ui.backIcon(), contentDescription = "Назад") } },
-                actions = { TextButton(onClick = { web?.reload() }) { Text("Обновить") } },
+                actions = {
+                    if (isHttpUrl(url)) {
+                        TextButton(onClick = {
+                            val cm = ctx.getSystemService(ClipboardManager::class.java)
+                            cm?.setPrimaryClip(ClipData.newPlainText("Ссылка", url))
+                        }) { Text("Копировать") }
+                        TextButton(onClick = {
+                            val i = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                            ctx.startActivity(Intent.createChooser(i, "Открыть в браузере"))
+                        }) { Text("В браузере") }
+                    }
+                    TextButton(onClick = { web?.reload() }) { Text("Обновить") }
+                },
             )
         },
     ) { padding ->

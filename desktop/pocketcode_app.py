@@ -1611,6 +1611,49 @@ class App:
         self.label(page, "Меньше запросов и токенов при том же результате.", 10, TEXT, "bold").pack(anchor="w")
         for key, title in (("leanCalls", "Меньше вызовов модели (lean): история короче, шагов меньше"),
                            ("ecoMode", "Эко: минимум шагов и короткая история (для дешёвых задач)"),
+                           ("featMemory", "Память проекта: агент помнит решения и структуру"),
+                           ("featRules", "Правила проекта: агент соблюдает твои требования"),
+                           ("featRouter", "Роутер сложности: простые шаги — без большого плана"),
+                           ("featBudget", "Бюджет правок: лимит попыток починки с честным отказом"),
+                           ("featAutoplan", "Автоплан: разбивать задачу на шаги с чек-листом"),
+                           ("featSelfCheck", "Самопроверка: агент проверяет свой результат"),
+                           ("featNotify", "Уведомление на телефон, когда задача завершена"),
+                           ("featTerminal", "Терминал ПК с телефона (требует токен)"),
+                           ("featAudit", "Аудит: журнал всех bash-команд агента"),
+                           ("featGitCommit", "Git-действия из чата: коммиты и ветки"),
+                           ("featMacros", "Макросы: запись и повтор команд"),
+                           ("featTriggers", "Триггеры: команда при изменении файлов"),
+                           ("featWebhooks", "Вебхуки: уведомления на свой URL"),
+                           ("featSql", "SQL-консоль проекта (read-only)"),
+                           ("featDiagrams", "Mermaid-диаграмма структуры проекта"),
+                           ("featCron", "Cron-задачи: повторять задачу по расписанию"),
+                           ("featMerge", "Помощник merge-конфликтов git"),
+                           ("featDeadCode", "Поиск мёртвого кода (неиспользуемые функции)"),
+                           ("featLogs", "Просмотр логов с уровнями и ошибками"),
+                           ("featCsv", "Таблицы CSV/JSON: сводка и диф"),
+                           ("featImportPrompts", "Импорт промптов из Claude Code / OpenCode"),
+                           ("featQuarantine", "Карантин битых sync-пакетов"),
+                           ("featPriority", "Приоритеты в очереди задач"),
+                           ("featFullExport", "Полный экспорт всех данных в ZIP-архив"),
+                           ("featCrash", "Журнал крашей с группировкой"),
+                           ("featNotes", "Заметки проекта (мини-CMS)"),
+                           ("featGuest", "Гостевой доступ без секретов"),
+                           ("featIntegrity", "Проверка целостности данных проекта"),
+                           ("featPlugins", "Плагины: локальные скрипты в песочнице"),
+                           ("featMedia", "Просмотрщик изображений проекта"),
+                           ("featRatings", "Рейтинги навыков и шаблонов"),
+                           ("featGitCache", "Кэш git-статусов (быстрее на 15 с)"),
+                           ("featJsonTools", "Валидатор JSON с автоисправлением"),
+                           ("featFullImport", "Импорт полного архива на новом устройстве"),
+                           ("featReadOnly", "Только чтение при нехватке места на диске"),
+                           ("featTeam", "Командные роли проекта (владелец/редактор/читатель)"),
+                           ("featRepoExport", "Экспорт проекта в готовый репозиторий"),
+                           ("featHealthReport", "Отчёт «здоровье проекта»"),
+                           ("featDups", "Поиск дубликатов файлов"),
+                           ("featFileWrite", "Запись файлов ПК (шапки лицензий и др.)"),
+                           ("featSnippets", "Сниппеты кода с поиском"),
+                           ("featTrash", "Корзина удалённых файлов"),
+                           ("featExports", "Экспорт чата и метрик (MD/CSV)"),
                            ("autoApprove", "Не спрашивать подтверждение опасных команд")):
             var = tk.BooleanVar(value=bool(s.get(key)))
             self.save_vars[key] = var
@@ -1829,6 +1872,8 @@ class App:
         self.btn(actions, "Проверить связь", self.sync_test)
         self.btn(actions, "Отправить всё на телефон", self.sync_push_all)
         self.btn(actions, "Показать токен для телефона", self.sync_show_token)
+        self.btn(actions, "QR-сопряжение", self.sync_show_qr)
+        self.btn(actions, "Сканер секретов", self.show_secret_scanner)
         self.btn(actions, "Обновить статус", self.reload_sync)
 
         self.sync_token_label = self.label(page, "", 9, TEXT)
@@ -1886,6 +1931,55 @@ class App:
 
     def sync_show_token(self):
         self.sync_token_label.configure(text="Токен этого ПК для телефона: " + core.access_token())
+
+    def sync_show_qr(self):
+        link = core.sync_link()
+        win = tk.Toplevel(self.root)
+        win.title("QR-сопряжение")
+        win.configure(bg=BG)
+        self.label(win, "Открой «Синхронизация» на телефоне и нажми «Сканировать QR»",
+                   10, TEXT, "bold").pack(padx=16, pady=(14, 4))
+        self.label(win, link, 9, MUTED, wrap=420).pack(padx=16)
+        try:
+            import qrcode
+        except ImportError:
+            self.label(win, "Нет модуля qrcode: pip install qrcode", 9, MUTED).pack(padx=16, pady=12)
+            return
+        qr = qrcode.QRCode(border=2, box_size=1)
+        qr.add_data(link)
+        qr.make(fit=True)
+        matrix = qr.get_matrix()
+        cell = 6
+        side = len(matrix) * cell
+        cv = tk.Canvas(win, width=side, height=side, bg="white", highlightthickness=0)
+        cv.pack(padx=16, pady=12)
+        for y, row in enumerate(matrix):
+            for x, on in enumerate(row):
+                if on:
+                    cv.create_rectangle(x * cell, y * cell, (x + 1) * cell, (y + 1) * cell,
+                                        fill="black", outline="black")
+
+    def show_secret_scanner(self):
+        win = tk.Toplevel(self.root)
+        win.title("Сканер секретов")
+        win.configure(bg=BG)
+        self.label(win, "Вставь текст или код — найду ключи, токены и опасные места",
+                   10, TEXT, "bold").pack(padx=16, pady=(14, 6))
+        txt = tk.Text(win, width=70, height=14, bg="#141828", fg=TEXT, insertbackground=TEXT,
+                      relief="flat", padx=8, pady=8)
+        txt.pack(padx=16, pady=4)
+        out = self.label(win, "", 9, MUTED, wrap=520)
+        out.pack(padx=16, pady=(6, 0), fill="x")
+
+        def scan():
+            findings = core.fx.scan_secrets(txt.get("1.0", "end"))
+            if not findings:
+                out.configure(text="Чисто: проблем не найдено")
+            else:
+                out.configure(text="\n".join(
+                    "Строка %d · %s · %s" % (f["line"], f["kind"], f["match"]) for f in findings[:20]))
+
+        self.btn(win, "Проверить", scan)
 
     def reload_sync(self):
         state = core.load_json(core.SYNC_STATE, {})

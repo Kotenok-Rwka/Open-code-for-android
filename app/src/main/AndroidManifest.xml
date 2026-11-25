@@ -95,6 +95,15 @@
         </receiver>
 
         <receiver
+            android:name=".widget.PocketWidgetProvider"
+            android:exported="false"
+            android:label="Продолжить задачу">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+        </receiver>
+
+        <receiver
             android:name=".QuickWidget"
             android:exported="false">
             <intent-filter>
