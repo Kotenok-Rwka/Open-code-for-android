@@ -52,6 +52,13 @@ private const val VERIFY_NUDGE =
         "2) исправь найденные ошибки и предупреждения безопасности, 3) запусти run_tests, если в проекте есть тесты. " +
         "Если проверка действительно невозможна в этом окружении — ответь и явно напиши строку «НЕ ПРОВЕРЕНО: <что именно и почему>». " +
         "Не выдумывай результаты проверок."
+
+private val UI_WIRING_NUDGE =
+    "[ПРОВЕРКА ПОДКЛЮЧЕНИЯ] Ты добавил новые классы/функции, но они могут нигде не вызываться — «мёртвый код», " +
+        "который пользователь не увидит. Перед финальным ответом: 1) для каждого нового публичного объекта/экрана/функции " +
+        "найди вызов вне его собственного файла (grep по имени); 2) если вызова нет — подключи к интерфейсу (пункт меню, " +
+        "кнопка, роут) или явно скажи, что это библиотека для будущих шагов; 3) перечисли в ответе, на каком экране " +
+        "пользователь увидит каждую новую фичу. Не считай «готовым» фичу, до которой нельзя дотянуться из UI."
 private val RETRY_DELAYS = intArrayOf(3, 8, 20, 45)
 
 /**
@@ -63,6 +70,55 @@ internal fun isPermanentRequestError(message: String?): Boolean {
     val m = (message ?: return false).lowercase()
     return listOf("thought_signature", "invalid_argument", "invalid argument").any { m.contains(it) }
 }
+
+/**
+ * Эвристика «мёртвого кода»: в файлах проекта есть объявления object/class/fun,
+ * для которых не нашлось ни одного вызова вне их собственного файла.
+ * Агент запускает её перед финальным ответом, чтобы новые фичи всегда имели точку входа в UI.
+ */
+internal fun newDeclarationsUnwired(
+    root: String = "/vercel/sandbox/repo/app/src/main/java",
+    maxFiles: Int = 400,
+): Boolean {
+    val declRx = Regex("""^(?:internal\s+|private\s+)?(?:object|class)\s+([A-Za-z0-9_]+)|^(?:internal\s+)?fun\s+([a-zA-Z0-9_]+)\(""")
+    val fileOf = mutableMapOf<String, MutableSet<String>>() // имя -> файлы объявления
+    val usages = mutableMapOf<String, Int>()                 // имя -> упоминаний вне файлов объявления
+    var seen = 0
+    val queue = ArrayDeque(listOf(java.io.File(root)))
+    while (queue.isNotEmpty() && seen < maxFiles) {
+        val dir = queue.removeFirst()
+        dir.listFiles()?.forEach { f ->
+            if (seen >= maxFiles) return@forEach
+            if (f.isDirectory) { queue.addLast(f); return@forEach }
+            if (!f.name.endsWith(".kt") || f.name.endsWith("Test.kt")) return@forEach
+            seen++
+            val text = try { f.readText() } catch (_: java.io.IOException) { return@forEach }
+            val names = declRx.findAll(text).mapNotNull { it.groupValues[1].ifEmpty { it.groupValues[2] }.takeIf { n -> n.isNotEmpty() } }.toList()
+            if (names.isNotEmpty()) fileOf[f.name] = names.toMutableSet()
+        }
+    }
+    if (fileOf.isEmpty()) return false
+    val byFile = fileOf.entries.toList()
+    for ((fname, _) in byFile) {
+        val f = java.io.File(root).walk().firstOrNull { it.name == fname } ?: continue
+        val text = try { f.readText() } catch (_: java.io.IOException) { continue }
+        // вызовы в этом файле не считаем — ищем снаружи
+        for ((other, _) in byFile) {
+            if (other == fname) continue
+            val otherFile = java.io.File(root).walk().firstOrNull { it.name == other } ?: continue
+            val otherText = try { otherFile.readText() } catch (_: java.io.IOException) { continue }
+            for (n in fileOf[fname].orEmpty()) {
+                if (otherText.contains(Regex("\\b$n\\b"))) usages.increment(n)
+            }
+        }
+        if (text.split("\n").size > 0 && fileOf[fname].orEmpty().any { usages.getOrDefault(it, 0) > 0 }) {
+            fileOf[fname]?.removeAll { usages.getOrDefault(it, 0) > 0 }
+        }
+    }
+    return fileOf.values.any { it.isNotEmpty() }
+}
+
+private fun MutableMap<String, Int>.increment(k: String) { this[k] = (this[k] ?: 0) + 1 }
 
 class Agent(
     llm: LlmClient,
@@ -248,6 +304,16 @@ class Agent(
                         nudges++
                         send(AgentEvent.Notice("Контроль качества: проверяю правки перед ответом (попытка $nudges из 2)."))
                         history += Message("user", listOf(Block.Text(VERIFY_NUDGE)))
+                        continue
+                    }
+                    // Проверка подключения: новые публичные сущности должны быть вызваны вне своего файла,
+                    // иначе пользователь не увидит фичу. Как у агентов DeepSeek/FreeBuff: фича без точки входа — не фича.
+                    val unwired = nudges < 2 && changedFiles && newDeclarationsUnwired() &&
+                        !answer.contains("НЕ ПРОВЕРЕНО", ignoreCase = true)
+                    if (unwired) {
+                        nudges++
+                        send(AgentEvent.Notice("Проверка подключения: ищу точку входа в UI для новых фич (попытка $nudges из 2)."))
+                        history += Message("user", listOf(Block.Text(UI_WIRING_NUDGE)))
                         continue
                     }
                     break
