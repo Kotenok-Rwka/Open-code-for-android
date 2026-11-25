@@ -80,7 +80,7 @@ import com.pocketcode.ui.ProjectsScreen
 import com.pocketcode.ui.SessionsScreen
 import com.pocketcode.ui.SettingsScreen
 
-private enum class Screen { CHAT, AUTOSYNC, TOOLS, APPEARANCE, HOWAI, LIVE, RUMBLE, STORAGE, USAGE, CONNECTIONS, LOCALMODELS, AGENTS, WIDGETS, MODELROLES, SETTINGS, SESSIONS, PROJECTS, FILES, DEVICES, PLUGINS, DIAG, COMPARE, CONTEXT, TERMINAL, GIT, OCSESSIONS, REMOTE, DIFF, SEARCH, HUB_PROJECT, HUB_AGENT, HUB_MORE, FIND, ROOT, PHONE, OCSETTINGS, MODELS, LINUX, UPDATE, BACKUP, VIDEO, LANGUAGE, SMART, LEARN, ASSISTANT, HOST, TOON, SUPPORT, REMINDERS, SECURITYCENTER, ACCOUNTS, FEATURES }
+private enum class Screen { CHAT, AUTOSYNC, TOOLS, APPEARANCE, HOWAI, LIVE, RUMBLE, STORAGE, USAGE, CONNECTIONS, LOCALMODELS, AGENTS, WIDGETS, MODELROLES, SETTINGS, SESSIONS, PROJECTS, FILES, DEVICES, PLUGINS, DIAG, COMPARE, CONTEXT, TERMINAL, GIT, OCSESSIONS, REMOTE, DIFF, SEARCH, HUB_PROJECT, HUB_AGENT, HUB_MORE, FIND, ROOT, PHONE, OCSETTINGS, MODELS, LINUX, UPDATE, BACKUP, VIDEO, LANGUAGE, SMART, LEARN, ASSISTANT, HOST, TOON, SUPPORT, REMINDERS, SECURITYCENTER, ACCOUNTS, FEATURES, PROJTOOLS }
 
 class MainActivity : ComponentActivity() {
     private val controller: ChatController
@@ -322,6 +322,7 @@ class MainActivity : ComponentActivity() {
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Play, "Мультики для TikTok", "Сценарий → герои, озвучка и субтитры → готовый вертикальный ролик", if (vm.toon.busy) "идёт" else null) { openFrom(Screen.HUB_PROJECT, Screen.TOON) },
                                 com.pocketcode.ui.hubHeader("Обслуживание"),
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Archive, "Хранилище", "Размеры папок, поиск файлов, очистка кэша") { openFrom(Screen.HUB_PROJECT, Screen.STORAGE) },
+                                com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Sliders, "Инструменты проекта", "Поиск по коду, сниппеты, дедуп задач, версии, прогресс") { openFrom(Screen.HUB_PROJECT, Screen.PROJTOOLS) },
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Refresh, "Автосинхронизация", "Реальное время или расписание, отправка истории и файлов на ПК") { openFrom(Screen.HUB_PROJECT, Screen.AUTOSYNC) },
                             ),
                             onSearch = { openFrom(screen, Screen.FIND) },
@@ -660,6 +661,10 @@ class MainActivity : ComponentActivity() {
                     Screen.STORAGE -> {
                         BackHandler { screen = backTo }
                         com.pocketcode.ui.StorageScreen(onBack = { screen = backTo })
+                    }
+                    Screen.PROJTOOLS -> {
+                        BackHandler { screen = backTo }
+                        com.pocketcode.ui.ProjectToolsScreen(onBack = { screen = backTo })
                     }
                     Screen.USAGE -> {
                         BackHandler { screen = backTo }

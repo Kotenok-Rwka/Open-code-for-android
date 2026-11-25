@@ -2704,6 +2704,22 @@ class Handler(BaseHTTPRequestHandler):
                 self.send(fx.todo_board(str(b.get("project") or HOME), b.get("max_files")))
             elif path == "/api/heatmap":
                 self.send(fx.heatmap(str(b.get("project") or HOME), b.get("days")))
+            elif path == "/api/tools/churn":
+                self.send(fx.churn_hotspots(str(b.get("project") or HOME), b.get("top") or 10))
+            elif path == "/api/tools/deps":
+                self.send(fx.deps_check(str(b.get("project") or HOME)))
+            elif path == "/api/tools/gitignore":
+                self.send(fx.gitignore_check(str(b.get("project") or HOME)))
+            elif path == "/api/tools/secrets":
+                self.send(fx.secret_scan_project(str(b.get("project") or HOME), b.get("max_files") or 200))
+            elif path == "/api/tools/longfiles":
+                self.send(fx.long_file_check(str(b.get("project") or HOME), b.get("max_lines") or 400, b.get("top") or 20))
+            elif path == "/api/tools/issue":
+                self.send(fx.issue_from_crash(str(b.get("title") or "Краш"), str(b.get("log") or ""), b.get("env"), b.get("max_log_lines") or 50))
+            elif path == "/api/tools/standup":
+                self.send(fx.standup_report(str(b.get("project") or HOME), b.get("days") or 1))
+            elif path == "/api/tools/dups":
+                self.send(fx.dup_detect(str(b.get("project") or HOME), b.get("top") or 10))
             elif path == "/api/streak":
                 self.send(fx.streak_and_goal(str(b.get("project") or HOME), b.get("goal")))
             elif path == "/api/digest":

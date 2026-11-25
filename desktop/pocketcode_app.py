@@ -1874,6 +1874,7 @@ class App:
         self.btn(actions, "Показать токен для телефона", self.sync_show_token)
         self.btn(actions, "QR-сопряжение", self.sync_show_qr)
         self.btn(actions, "Сканер секретов", self.show_secret_scanner)
+        self.btn(actions, "Инструменты проекта", self.show_project_tools)
         self.btn(actions, "Обновить статус", self.reload_sync)
 
         self.sync_token_label = self.label(page, "", 9, TEXT)
@@ -1958,6 +1959,37 @@ class App:
                 if on:
                     cv.create_rectangle(x * cell, y * cell, (x + 1) * cell, (y + 1) * cell,
                                         fill="black", outline="black")
+
+    def show_project_tools(self):
+        win = tk.Toplevel(self.root)
+        win.title("Инструменты проекта")
+        win.configure(bg=BG)
+        project = self.project or str(core.HOME)
+        self.label(win, "Анализ и проверки: " + project, 10, TEXT, "bold").pack(padx=16, pady=(14, 6))
+        out = self.label(win, "", 9, MUTED, wrap=680)
+        out.pack(padx=16, pady=(4, 8), fill="x")
+
+        def call(name, **kw):
+            try:
+                fn = getattr(core.fx, name)
+                r = fn(**kw)
+            except Exception as e:
+                r = {"error": str(e)}
+            if isinstance(r, dict) and r.get("error"):
+                out.configure(text="Ошибка: " + r["error"]); return
+            out.configure(text=core.fx.json.dumps(r, ensure_ascii=False, indent=1)[:3500])
+
+        row1 = tk.Frame(win, bg=BG); row1.pack(fill="x", padx=16)
+        self.btn(row1, "Hotspots (часто меняют)", lambda: call("churn_hotspots", project=project))
+        self.btn(row1, "Зависимости", lambda: call("deps_check", project=project))
+        self.btn(row1, ".gitignore", lambda: call("gitignore_check", project=project))
+        row2 = tk.Frame(win, bg=BG); row2.pack(fill="x", padx=16, pady=(4, 0))
+        self.btn(row2, "Секреты в файлах", lambda: call("secret_scan_project", project=project))
+        self.btn(row2, "Длинные файлы", lambda: call("long_file_check", project=project))
+        self.btn(row2, "Дубликаты", lambda: call("dup_detect", project=project))
+        row3 = tk.Frame(win, bg=BG); row3.pack(fill="x", padx=16, pady=(4, 0))
+        self.btn(row3, "Стендап за день", lambda: call("standup_report", project=project, days=1))
+        self.btn(row3, "Стендап за неделю", lambda: call("standup_report", project=project, days=7))
 
     def show_secret_scanner(self):
         win = tk.Toplevel(self.root)
