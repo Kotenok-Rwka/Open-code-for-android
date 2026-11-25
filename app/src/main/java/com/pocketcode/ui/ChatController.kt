@@ -6211,6 +6211,7 @@ class ChatController(
                 maxSteps = if (s.maxSteps == 0) 0 else s.maxSteps * 2,
                 approve = { t, d -> requestApproval(t, d) },
                 askEvenIfAuto = { rootAuto },
+                wiringRoot = { workspace.root },
             ) to finish
         }
         val created = Agent(
@@ -6233,6 +6234,7 @@ class ChatController(
             askEvenIfAuto = { rootAuto },
             keepTail = { smart.smartTrim },
             verifyChanges = { toolsConfig.selfCheck },
+            wiringRoot = { workspace.root },
             approve = ::requestApproval,
             history = history,
             pollNotes = { generateSequence { notes.poll() }.toList() },

@@ -72,53 +72,40 @@ internal fun isPermanentRequestError(message: String?): Boolean {
 }
 
 /**
- * Эвристика «мёртвого кода»: в файлах проекта есть объявления object/class/fun,
- * для которых не нашлось ни одного вызова вне их собственного файла.
+ * Эвристика «мёртвого кода» для файлов, которые агент менял в этом запуске: у изменённого файла есть
+ * публичное объявление object/class/fun, имя которого нигде не встречается вне его собственного файла.
  * Агент запускает её перед финальным ответом, чтобы новые фичи всегда имели точку входа в UI.
+ * `editedPaths` — относительные пути изменённых файлов; поиск использований — по всему корню воркспейса.
  */
-internal fun newDeclarationsUnwired(
-    root: String = "/vercel/sandbox/repo/app/src/main/java",
-    maxFiles: Int = 400,
-): Boolean {
-    val declRx = Regex("""^(?:internal\s+|private\s+)?(?:object|class)\s+([A-Za-z0-9_]+)|^(?:internal\s+)?fun\s+([a-zA-Z0-9_]+)\(""")
-    val fileOf = mutableMapOf<String, MutableSet<String>>() // имя -> файлы объявления
-    val usages = mutableMapOf<String, Int>()                 // имя -> упоминаний вне файлов объявления
-    var seen = 0
-    val queue = ArrayDeque(listOf(java.io.File(root)))
-    while (queue.isNotEmpty() && seen < maxFiles) {
-        val dir = queue.removeFirst()
-        dir.listFiles()?.forEach { f ->
-            if (seen >= maxFiles) return@forEach
-            if (f.isDirectory) { queue.addLast(f); return@forEach }
-            if (!f.name.endsWith(".kt") || f.name.endsWith("Test.kt")) return@forEach
-            seen++
-            val text = try { f.readText() } catch (_: java.io.IOException) { return@forEach }
-            val names = declRx.findAll(text).mapNotNull { it.groupValues[1].ifEmpty { it.groupValues[2] }.takeIf { n -> n.isNotEmpty() } }.toList()
-            if (names.isNotEmpty()) fileOf[f.name] = names.toMutableSet()
+internal fun newDeclarationsUnwired(root: java.io.File, editedPaths: Collection<String>): Boolean {
+    if (editedPaths.isEmpty()) return false
+    val declRx = Regex("""(?m)^\s*(?:internal\s+)?(?:object|class)\s+([A-Za-z0-9_]+)|(?m)^\s*(?:internal\s+)?fun\s+([a-zA-Z0-9_]+)\(""")
+    val usageRxCache = mutableMapOf<String, Regex>()
+    val edited = editedPaths.mapNotNull { rel ->
+        val f = java.io.File(root, rel)
+        if (!f.isFile) null else rel to (try { f.readText() } catch (_: java.io.IOException) { return@mapNotNull null })
+    }.toMap()
+    if (edited.isEmpty()) return false
+    val declarations = mutableMapOf<String, MutableSet<String>>() // имя -> файл-объявление
+    for ((rel, text) in edited) {
+        declRx.findAll(text).mapNotNull { m ->
+            (m.groupValues[1].ifEmpty { m.groupValues[2] }).takeIf { n -> n.isNotEmpty() && !n[0].isLowerCase() }
+        }.forEach { declarations.getOrPut(it) { mutableSetOf() }.add(rel) }
+    }
+    if (declarations.isEmpty()) return false
+    // Использования ищем по всем .kt-файлам корня: имя, встреченное вне файла(ов) объявления, значит фича дотягивается.
+    val usageHits = mutableMapOf<String, Int>() // имя -> упоминаний вне файла(ов) объявления
+    root.walkTopDown().filter { it.isFile && it.name.endsWith(".kt") }.forEach { f ->
+        val text = try { f.readText() } catch (_: java.io.IOException) { return@forEach }
+        val rel = f.relativeTo(root).path
+        for ((name, declFiles) in declarations) {
+            if (rel in declFiles) continue
+            val rx = usageRxCache.getOrPut(name) { Regex("""\b${Regex.escape(name)}\b""") }
+            if (rx.containsMatchIn(text)) usageHits.merge(name, 1, Int::plus)
         }
     }
-    if (fileOf.isEmpty()) return false
-    val byFile = fileOf.entries.toList()
-    for ((fname, _) in byFile) {
-        val f = java.io.File(root).walk().firstOrNull { it.name == fname } ?: continue
-        val text = try { f.readText() } catch (_: java.io.IOException) { continue }
-        // вызовы в этом файле не считаем — ищем снаружи
-        for ((other, _) in byFile) {
-            if (other == fname) continue
-            val otherFile = java.io.File(root).walk().firstOrNull { it.name == other } ?: continue
-            val otherText = try { otherFile.readText() } catch (_: java.io.IOException) { continue }
-            for (n in fileOf[fname].orEmpty()) {
-                if (otherText.contains(Regex("\\b$n\\b"))) usages.increment(n)
-            }
-        }
-        if (text.split("\n").size > 0 && fileOf[fname].orEmpty().any { usages.getOrDefault(it, 0) > 0 }) {
-            fileOf[fname]?.removeAll { usages.getOrDefault(it, 0) > 0 }
-        }
-    }
-    return fileOf.values.any { it.isNotEmpty() }
+    return declarations.keys.any { usageHits.getOrDefault(it, 0) == 0 }
 }
-
-private fun MutableMap<String, Int>.increment(k: String) { this[k] = (this[k] ?: 0) + 1 }
 
 class Agent(
     llm: LlmClient,
@@ -148,6 +135,8 @@ class Agent(
     private val keepTail: () -> Boolean = { true },
     /** true — после правок нельзя закончить без diagnostics/code_review/run_tests (контроль качества). */
     private val verifyChanges: () -> Boolean = { false },
+    /** Корень проекта для проверки подключения фич (как у freebuff/DeepSeek): фича без вызова вне своего файла — мёртвый код. */
+    private val wiringRoot: () -> java.io.File? = { null },
 ) {
     private var llm: LlmClient = llm
     private var usedFallback = false
@@ -221,6 +210,7 @@ class Agent(
         var changedFiles = false
         var verified = false
         var nudges = 0
+        val editedPaths = mutableListOf<String>()
 
         suspend fun callLlm(): com.pocketcode.llm.LlmResponse {
             var attempt = 0
@@ -308,7 +298,8 @@ class Agent(
                     }
                     // Проверка подключения: новые публичные сущности должны быть вызваны вне своего файла,
                     // иначе пользователь не увидит фичу. Как у агентов DeepSeek/FreeBuff: фича без точки входа — не фича.
-                    val unwired = nudges < 2 && changedFiles && newDeclarationsUnwired() &&
+                    val root = wiringRoot()
+                    val unwired = root != null && nudges < 2 && changedFiles && newDeclarationsUnwired(root, editedPaths) &&
                         !answer.contains("НЕ ПРОВЕРЕНО", ignoreCase = true)
                     if (unwired) {
                         nudges++
@@ -374,7 +365,10 @@ class Agent(
                         output = Secrets.mask(output)
                         hooks.after(tool, call.input, output, false)?.let { output += it }
                         (tool as? com.pocketcode.tools.ImageProducer)?.takeImages()?.let { toolImages += it }
-                        if (call.name in CHANGE_TOOLS) { changedFiles = true; verified = false }
+                        if (call.name in CHANGE_TOOLS) {
+                            changedFiles = true; verified = false
+                            call.input["path"]?.jsonPrimitive?.contentOrNull?.let { editedPaths += it }
+                        }
                         if (call.name in VERIFY_TOOLS) verified = true
                     } catch (e: CancellationException) {
                         throw e

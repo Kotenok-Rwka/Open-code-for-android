@@ -323,7 +323,6 @@ class MainActivity : ComponentActivity() {
                                 com.pocketcode.ui.hubHeader("Обслуживание"),
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Archive, "Хранилище", "Размеры папок, поиск файлов, очистка кэша") { openFrom(Screen.HUB_PROJECT, Screen.STORAGE) },
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Sliders, "Инструменты проекта", "Поиск по коду, сниппеты, дедуп задач, версии, прогресс") { openFrom(Screen.HUB_PROJECT, Screen.PROJTOOLS) },
-                                com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Refresh, "Автосинхронизация", "Реальное время или расписание, отправка истории и файлов на ПК") { openFrom(Screen.HUB_PROJECT, Screen.AUTOSYNC) },
                             ),
                             onSearch = { openFrom(screen, Screen.FIND) },
                         )
@@ -380,7 +379,7 @@ class MainActivity : ComponentActivity() {
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Shield, "Root и Android", "Как дать агенту данные с телефона: четыре способа", if (pocketApp.controller.rootAuto) "авто-режим вкл" else if (pocketApp.controller.hostMode == "ask") "мост вкл" else null) { openFrom(Screen.HUB_MORE, Screen.ROOT) },
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Phone, "Устройства и ADB", "ADB, root, подключённые устройства") { openFrom(Screen.HUB_MORE, Screen.DEVICES) },
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Refresh, "Синхронизация устройств", "Файлы и задачи между телефонами") { openFrom(Screen.HUB_MORE, Screen.REMOTE) },
-                                com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Desktop, "Автосинхронизация с ПК", "Проекты и история между телефоном и компьютером") { openFrom(Screen.HUB_PROJECT, Screen.AUTOSYNC) },
+                                com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Desktop, "Автосинхронизация с ПК", "Проекты и история между телефоном и компьютером") { openFrom(Screen.HUB_MORE, Screen.AUTOSYNC) },
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Grid, "Локальные панели", "Веб-панели Desktop, LM Studio, Ollama") { openFrom(Screen.HUB_MORE, Screen.WIDGETS) },
                                 com.pocketcode.ui.hubHeader("Приложение"),
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Package, "Обновления", "Версия ${pocketApp.controller.currentVersion}", if (pocketApp.controller.updateInfo != null) "новая" else null) { openFrom(Screen.HUB_MORE, Screen.UPDATE) },
