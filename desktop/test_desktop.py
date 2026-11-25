@@ -1699,9 +1699,9 @@ class TestBatch14(unittest.TestCase):
         fx = self.fx
         with tempfile.TemporaryDirectory() as d:
             p = Path(d)
-            (p / "a.txt").write_text("одно и то же\n", encoding="utf-8")
-            (p / "b.txt").write_text("одно и то же\n", encoding="utf-8")
-            (p / "c.txt").write_text("другое\n", encoding="utf-8")
+            (p / "a.txt").write_text("одно и то же\n", encoding="utf-8", newline="")
+            (p / "b.txt").write_text("одно и то же\n", encoding="utf-8", newline="")
+            (p / "c.txt").write_text("другое\n", encoding="utf-8", newline="")
             r = fx.dup_detect(p)
             self.assertEqual(r["groups"], 1)
             self.assertEqual(sorted(r["duplicates"][0]["files"]), ["a.txt", "b.txt"])

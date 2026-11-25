@@ -303,11 +303,15 @@ def run_sandboxed(cmd, workdir, timeout=20):
         resource.setrlimit(resource.RLIMIT_AS, (1 << 30, 1 << 30) if False else (1536 << 20, 1536 << 20))
         resource.setrlimit(resource.RLIMIT_FSIZE, (50 << 20, 50 << 20))
 
-    env = {k: os.environ[k] for k in ("PATH", "HOME", "LANG", "LC_ALL", "TMPDIR") if k in os.environ}
+    env = {k: os.environ[k] for k in ("PATH", "HOME", "LANG", "LC_ALL", "TMPDIR",
+                                      "SYSTEMROOT", "TEMP", "TMP", "USERPROFILE",
+                                      "APPDATA", "COMSPEC") if k in os.environ}
+    env["PYTHONUTF8"] = "1"
+    env["PYTHONIOENCODING"] = "utf-8"
     try:
         p = subprocess.run([str(c) for c in cmd], cwd=str(wd), env=env, timeout=timeout,
-                           capture_output=True, text=True, errors="replace",
-                           preexec_fn=limits if resource is not None else None)
+                           capture_output=True, text=True, encoding="utf-8",
+                           errors="replace", preexec_fn=limits if resource is not None else None)
         return {"rc": p.returncode, "stdout": p.stdout[-8000:], "stderr": p.stderr[-8000:]}
     except subprocess.TimeoutExpired:
         return {"rc": -1, "stdout": "", "stderr": "превышен таймаут %ss" % timeout}
@@ -455,7 +459,8 @@ def create_pr(project, title):
         return {"error": "Папка не является git-репозиторием"}
     branch = "pocketcode/" + slug(title or "task")[:40]
     def run(args):
-        return subprocess.run(args, cwd=str(root), capture_output=True, text=True, timeout=60)
+        return subprocess.run(args, cwd=str(root), capture_output=True, text=True,
+                              encoding="utf-8", errors="replace", timeout=60)
     try:
         run(["git", "checkout", "-B", branch])
         run(["git", "add", "-A"])
@@ -882,7 +887,8 @@ def last_command(session):
 
 # ---------- 69/81/79. git-UI: статус, история файла, ветки ----------
 def _git(root, *args):
-    p = subprocess.run(["git", *args], cwd=str(root), capture_output=True, text=True, timeout=30)
+    p = subprocess.run(["git", *args], cwd=str(root), capture_output=True, text=True,
+                       encoding="utf-8", errors="replace", timeout=30)
     return p.returncode, (p.stdout or ""), (p.stderr or "")
 
 
@@ -1389,7 +1395,8 @@ def cron_due(project, now=None):
 # ---------- 79. помощник merge-конфликтов git ----------
 def git_conflicts(root):
     p = subprocess.run(["git", "diff", "--name-only", "--diff-filter=U"], cwd=str(root),
-                       capture_output=True, text=True, timeout=30)
+                       capture_output=True, text=True, encoding="utf-8",
+                       errors="replace", timeout=30)
     return {"files": [l.strip() for l in p.stdout.splitlines() if l.strip()]}
 
 
@@ -1443,7 +1450,7 @@ def find_dead_code(root, max_files=300):
         if any(part in _SKIP_DIRS or part.startswith(".") for part in p.parts):
             continue
         try:
-            texts[p] = p.read_text(errors="replace")
+            texts[p] = p.read_text(encoding="utf-8", errors="replace")
         except OSError:
             pass
     dead = []
@@ -1467,7 +1474,7 @@ def log_overview(path, max_bytes=500000, tail=200):
     max_bytes = 500000 if max_bytes is None else max(1000, min(int(max_bytes), 5_000_000))
     tail = 200 if tail is None else max(1, min(int(tail), 1000))
     try:
-        text = p.read_text(errors="replace")[-int(max_bytes):]
+        text = p.read_text(encoding="utf-8", errors="replace")[-int(max_bytes):]
     except OSError as e:
         return {"error": str(e)}
     lines = text.splitlines()
@@ -1488,7 +1495,7 @@ def table_summary(path):
     p = Path(path)
     if not p.is_file():
         return {"error": "файл не найден"}
-    text = p.read_text(errors="replace")[:MAX_TABLE_BYTES]
+    text = p.read_text(encoding="utf-8", errors="replace")[:MAX_TABLE_BYTES]
     rows = []
     if p.suffix.lower() == ".json":
         try:
@@ -1538,7 +1545,7 @@ def csv_diff(path_a, path_b, key_col=0):
             return {"error": "файл не найден: %s" % p.name}
     key = 0 if key_col is None else int(key_col)
     def load(p):
-        text = p.read_text(errors="replace")[:MAX_TABLE_BYTES]
+        text = p.read_text(encoding="utf-8", errors="replace")[:MAX_TABLE_BYTES]
         parsed = list(csv.reader(text.splitlines()))
         return parsed[0] if parsed else [], parsed[1:MAX_TABLE_ROWS]
     head_a, rows_a = load(pa)
@@ -1567,7 +1574,7 @@ def import_prompts(base=None, max_prompts=200):
             continue
         for f in sorted(d.rglob("*.md"))[:max_prompts]:
             try:
-                text = f.read_text(errors="replace")[:20000]
+                text = f.read_text(encoding="utf-8", errors="replace")[:20000]
             except OSError:
                 continue
             found.append({"name": f.stem, "source": sub, "text": text})
@@ -1747,7 +1754,7 @@ def guest_view(project, token, max_files=200):
     mem_file = Path(project) / ".pocketcode" / "memory.md"
     if mem_file.is_file():
         try:
-            memory = mem_file.read_text(errors="replace")[:10000]
+            memory = mem_file.read_text(encoding="utf-8", errors="replace")[:10000]
         except OSError:
             pass
     blocked = sum(1 for line in memory.splitlines() for _k, rx in REDACT_PATTERNS if rx.search(line))
@@ -1823,7 +1830,8 @@ def plugin_run(plugins_dir, state_path, name, args=(), workdir=None, timeout=20)
     if not f.is_file():
         return {"error": "плагин не найден", "status": 404}
     timeout = 20 if timeout is None else max(1, min(int(timeout), 120))
-    argv = ["python3", str(f)] + [str(a) for a in (args or [])][:20]
+    interpreter = shutil.which("python3") or shutil.which("python") or sys.executable
+    argv = [interpreter, str(f)] + [str(a) for a in (args or [])][:20]
     return run_sandboxed(argv, workdir or str(f.parent), timeout=timeout)
 
 
@@ -2191,7 +2199,7 @@ def cloc(root, max_files=400):
         if any(part in _SKIP_DIRS or part.startswith(".") for part in p.parts):
             continue
         try:
-            lines = p.read_text(errors="replace").splitlines()
+            lines = p.read_text(encoding="utf-8", errors="replace").splitlines()
         except OSError:
             continue
         code = sum(1 for l in lines if l.strip() and not l.strip().startswith(("#", "//")))
@@ -2288,7 +2296,7 @@ def md_broken_links(root, max_files=100):
         if any(part in _SKIP_DIRS or part.startswith(".") for part in p.parts):
             continue
         try:
-            text = p.read_text(errors="replace")
+            text = p.read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
         for m in re.finditer(r"\[[^\]]*\]\(([^)#?][^)]*)\)", text):
@@ -2353,7 +2361,8 @@ def license_header(file, license="mit"):
 
 def changelog_from_git(root, limit=20):
     p = subprocess.run(["git", "log", "--pretty=%h %ad %s", "--date=short", "-n", str(int(limit or 20))],
-                       cwd=str(root), capture_output=True, text=True, timeout=30)
+                       cwd=str(root), capture_output=True, text=True, encoding="utf-8",
+                       errors="replace", timeout=30)
     if p.returncode != 0:
         return {"error": "не git-репозиторий"}
     lines = ["- " + l for l in p.stdout.strip().splitlines() if l]
@@ -2519,7 +2528,8 @@ def env_doctor(home):
     checks = []
     checks.append({"name": "python", "ok": sys.version_info >= (3, 10),
                    "info": platform_module.python_version()})
-    g = subprocess.run(["git", "--version"], capture_output=True, text=True, timeout=10)
+    g = subprocess.run(["git", "--version"], capture_output=True, text=True,
+                       encoding="utf-8", errors="replace", timeout=10)
     checks.append({"name": "git", "ok": g.returncode == 0, "info": g.stdout.strip()[:40]})
     disk = disk_status(home)
     checks.append({"name": "disk", "ok": not disk["readonly"], "info": "%d MB свободно" % disk["free_mb"]})
@@ -2542,7 +2552,7 @@ def dep_audit(root):
     req = root / "requirements.txt"
     if req.is_file():
         try:
-            for line in req.read_text(errors="replace").splitlines():
+            for line in req.read_text(encoding="utf-8", errors="replace").splitlines():
                 line = line.strip().lower()
                 for pat, why in DEP_RULES:
                     if pat.split("<")[0] in line and "<" in line:
@@ -2551,7 +2561,7 @@ def dep_audit(root):
             pass
     pkg = root / "package.json"
     if pkg.is_file():
-        text = pkg.read_text(errors="replace").lower()
+        text = pkg.read_text(encoding="utf-8", errors="replace").lower()
         for pat, why in DEP_RULES:
             name = pat.split("<")[0]
             if '"%s"' % name in text:
@@ -3058,7 +3068,7 @@ def snapshot_save(project, rel):
         return {"error": "файл не найден"}
     d = _pc_json(project, "snapshots")
     d.mkdir(parents=True, exist_ok=True)
-    base = str(safe).replace("/", "_")
+    base = str(safe).replace("/", "_").replace("\\", "_")
     stamp = int(time.time() * 1000)
     dst = d / ("%s.%d.bak" % (base, stamp))
     shutil.copy2(str(src), str(dst))
@@ -3072,7 +3082,7 @@ def snapshot_list(project, rel):
     safe = _safe_join(project, rel)
     if safe is None:
         return {"error": "путь вне проекта"}
-    base = str(safe).replace("/", "_")
+    base = str(safe).replace("/", "_").replace("\\", "_")
     d = _pc_json(project, "snapshots")
     if not d.exists():
         return {"snapshots": []}
@@ -3328,16 +3338,24 @@ def reminder_due(path, now=None):
 
 def export_notes_md(project):
     """Экспорт закладок и заметок в Markdown-файл рядом с проектом."""
+    def display(rel):
+        p = Path(rel)
+        try:
+            return p.relative_to(Path(project).resolve()).as_posix()
+        except ValueError:
+            return p.as_posix()
+
     marks = _pc_load(_pc_json(project, "bookmarks.json"), [])
     notes = _pc_load(_pc_json(project, "line_notes.json"), {})
     lines = ["# Заметки проекта %s" % Path(project).name, "", "## Закладки", ""]
     for m in marks:
-        lines.append("- `%s%s` — %s" % (m.get("rel"), (":" + str(m["line"])) if m.get("line") else "",
+        lines.append("- `%s%s` — %s" % (display(m.get("rel")),
+                                        (":" + str(m["line"])) if m.get("line") else "",
                                         m.get("note") or ""))
     lines += ["", "## Заметки на полях", ""]
     for rel, items in sorted(notes.items()):
         for it in items:
-            lines.append("- `%s:%s` — %s" % (rel, it["line"], it["text"]))
+            lines.append("- `%s:%s` — %s" % (display(rel), it["line"], it["text"]))
     out = Path(project) / "notes-export.md"
     out.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return {"ok": True, "file": str(out), "bookmarks": len(marks),
