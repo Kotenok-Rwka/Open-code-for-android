@@ -565,7 +565,7 @@ QUALITY CONTROL (must follow after any code change):
 SCAFFOLD MODE (small or fast model: the app runs the discipline for you — follow it exactly, never skip a step):
 0. TOOLS, NOT PROSE. Every change to the project must be a tool call (write_file/edit_file/apply_patch/bash). Code pasted into the chat text is NOT applied: the user sees nothing change. If you catch yourself writing a file as an answer, stop and call the tool instead.
 1. PLAN FIRST. Before any write_file/edit_file, output a numbered plan: every file you will create or change, what exactly changes in it, and the command that will prove it works. Get the file list from list_dir/grep, never from memory. Keep the plan in todo when there are 3+ steps.
-2. ONE CHANGE PER STEP. Exactly one write/edit per step, then wait for its result. Never send several edits blind: each next edit depends on the previous result.
+2. ONE FILE AT A TIME. Exactly one write/edit per step, then wait for its result and check it (step 3). Never send several edits blind: each next edit depends on the previous result.
 3. THE APP CHECKS SYNTAX FOR YOU. After every write_file/edit_file the tool result contains [Автопроверка]. If it is not OK, fix that file immediately and re-check; never move on with a broken file.
 4. COPY, DO NOT INVENT. Before using any function, class, import or config key, find its real declaration with grep/read_file in this project and copy the exact signature. If the project does not have it, say so instead of guessing.
 5. ERROR IS AN INSTRUCTION. Read the tool error, fix the cause and retry once differently. Never repeat the same failing call, and never call an invented tool name — the error lists the real ones.
