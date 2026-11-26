@@ -306,8 +306,12 @@ fun ChatScreen(
                         itemsIndexed(vm.items, key = { i, _ -> i }, contentType = { _, item -> item::class }) { i, item ->
                             Column {
                                 if (item is UiItem.Error && vm.isErrorDismissed(i)) { /* скрыто пользователем */ }
-                                else if (item is UiItem.Questions) QuestionCardView(item, onAnswer = { vm.answerQuestionCards(i, it) })
-                                else ItemView(item, live = vm.running && i == lastItemIndex, projectRoot = java.io.File(vm.workspacePath))
+                                else ItemView(
+                                    item,
+                                    onAnswer = { answers -> vm.answerQuestionCards(i, answers) },
+                                    live = vm.running && i == lastItemIndex,
+                                    projectRoot = java.io.File(vm.workspacePath),
+                                )
                                 if (item is UiItem.Assistant && !item.text.startsWith("⏳") && !(vm.running && i == lastItemIndex)) {
                                     Row(Modifier.fillMaxWidth().padding(start = 4.dp, top = 2.dp)) {
                                         val star = vm.isStarred(item.text)
@@ -1264,9 +1268,15 @@ private fun QuestionPopupHost(vm: ChatController) {
 }
 
 @Composable
-private fun ItemView(item: UiItem, live: Boolean = false, projectRoot: java.io.File? = null) {
+private fun ItemView(
+    item: UiItem,
+    onAnswer: (List<Pair<String, String>>) -> Unit,
+    live: Boolean = false,
+    projectRoot: java.io.File? = null,
+) {
     when (item) {
-        is UiItem.Questions -> QuestionCardView(item, onAnswer = { answers -> /* ответ обрабатывается в списке чата */ })
+        // Карточка вопросов рисуется здесь же: отдельный вызов в ленте делал эту ветку недостижимой.
+        is UiItem.Questions -> QuestionCardView(item, onAnswer = onAnswer)
         is UiItem.User -> Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.End) {
             val ios = LocalUiStyle.current == UiStyle.IOS
             val cs = MaterialTheme.colorScheme
