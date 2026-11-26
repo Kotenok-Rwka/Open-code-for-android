@@ -200,7 +200,11 @@ class HelperHub private constructor(context: Context) : HelperManager {
                 if (_shell.value != null && _shell.value !== before) StartOutcome.Started(HelperMode.WIRELESS_DEBUGGING)
                 else StartOutcome.Failed(handoffFailure())
             is AdbResult.Failed -> when (result.kind) {
-                AdbFailure.WIRELESS_OFF, AdbFailure.PORT_NOT_FOUND -> StartOutcome.WirelessDebuggingOff
+                AdbFailure.WIRELESS_OFF -> StartOutcome.WirelessDebuggingOff
+                AdbFailure.PORT_NOT_FOUND -> StartOutcome.Failed(
+                    "Не найден порт отладки по Wi-Fi: телефон должен быть подключён к Wi-Fi. " +
+                        "Выключи и снова включи «Беспроводную отладку» в параметрах разработчика и нажми запуск ещё раз.",
+                )
                 AdbFailure.NOT_PAIRED -> StartOutcome.NeedsPairing
                 else -> StartOutcome.Failed(result.reason)
             }

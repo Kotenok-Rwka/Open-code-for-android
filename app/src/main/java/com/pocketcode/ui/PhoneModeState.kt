@@ -149,7 +149,14 @@ class PhoneModeState(
     fun startWireless() = run("Запускаю помощника через беспроводную отладку…") {
         // если приложению выдано право менять системные настройки, отладку включаем сами
         if (DeveloperSettings.wirelessDebugging(app.contentResolver) == false) DeveloperSettings.turnOnWirelessDebugging(app.contentResolver)
-        remember(hub.startViaWirelessDebugging(), BootRestore.MODE_WIRELESS)
+        val o = hub.startViaWirelessDebugging()
+        // сопряжение делается один раз: не тупиково просим нажать другую кнопку, а сразу открываем ввод кода
+        if (o is StartOutcome.NeedsPairing) {
+            pairing.begin { r -> status = PhoneText.pairing(r) }
+            return@run "Помощнику нужно одноразовое сопряжение: открой в параметрах разработчика «Беспроводная отладка» → " +
+                "«Подключить устройство с помощью кода сопряжения» и введи код в уведомлении приложения."
+        }
+        remember(o, BootRestore.MODE_WIRELESS)
     }
 
     /** Запоминает способ удачного запуска: так помощника запустят заново после перезагрузки. */

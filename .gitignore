@@ -10,3 +10,4 @@ captures/
 *.aab
 app/src/main/assets/linux/
 __pycache__/
+.kotlin/
