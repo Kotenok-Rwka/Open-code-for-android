@@ -65,7 +65,7 @@ NAV = [
                ("skills", "Навыки"), ("github", "Плагины с GitHub"),
                ("compare", "Сравнение моделей"), ("queue", "Очередь")]),
     ("Ещё", [("save", "Экономия"), ("usage", "Расход"), ("look", "Оформление"),
-             ("sync", "Синхронизация"), ("backup", "Резервная копия"),
+             ("tools", "Инструменты"), ("sync", "Синхронизация"), ("backup", "Резервная копия"),
              ("diag", "Диагностика"), ("about", "О программе")]),
 ]
 
@@ -2216,6 +2216,316 @@ class App:
         self.head_meta.configure(text="проект %s · %s" % (self.project or "desktop", note))
         if self.section == "local":
             self.tick_local()
+
+    # ---------- инструменты: заметки, напоминания, todo, макросы, cron, поиск, дашборд ----------
+
+    def build_tools(self, page):
+        style = ttk.Style()
+        style.configure("Tools.TNotebook", background=BG, borderwidth=0)
+        style.configure("Tools.TNotebook.Tab", background=SIDEBAR, foreground=TEXT,
+                        padding=(12, 6), font=(FONT, 10))
+        style.map("Tools.TNotebook.Tab",
+                  background=[("selected", self.accent)],
+                  foreground=[("selected", DARK_TEXT)])
+        nb = ttk.Notebook(page, style="Tools.TNotebook")
+        nb.pack(fill="both", expand=True)
+        for name, builder in (("Заметки", self.build_tools_notes),
+                              ("Напоминания", self.build_tools_reminders),
+                              ("TODO-доска", self.build_tools_todo),
+                              ("Макросы", self.build_tools_macros),
+                              ("Cron", self.build_tools_cron),
+                              ("Поиск", self.build_tools_search),
+                              ("Дашборд", self.build_tools_dashboard),
+                              ("Экспорт чата", self.build_tools_export)):
+            frame = tk.Frame(nb, bg=BG)
+            builder(frame)
+            nb.add(frame, text=name)
+
+    def build_tools_notes(self, page):
+        top = tk.Frame(page, bg=BG)
+        top.pack(fill="x")
+        self.tools_note_title = self.field(top, "", 24)
+        self.tools_note_tags = self.field(top, "теги через запятую", 18)
+        self.btn(top, "Добавить", self.tools_note_add)
+        wrap, self.tools_note_body = self.tbox(page, height=5, readonly=False)
+        wrap.pack(fill="x", pady=(6, 0))
+        self.tools_note_body.insert("1.0", "Текст заметки")
+        row = tk.Frame(page, bg=BG)
+        row.pack(fill="x", pady=(6, 0))
+        self.tools_note_query = self.field(row, "", 24)
+        self.btn(row, "Найти", lambda: self.reload_tools_notes())
+        self.btn(row, "Удалить выбранную", self.tools_note_del)
+        self.btn(row, "Экспорт в Markdown", self.tools_notes_export)
+        twrap, self.tools_notes_lb = self.listbox(page, height=12)
+        twrap.pack(fill="both", expand=True, pady=(6, 0))
+        self.reloads["tools"] = self.reload_tools_current
+
+    def tools_note_add(self):
+        title = self.tools_note_title.get().strip()
+        tags = self.tools_note_tags.get().strip()
+        self.tools_note_tags.delete(0, "end")
+        self.tools_note_tags.insert(0, "теги через запятую")
+        body = self.tools_note_body.get("1.0", "end").strip()
+        if not title and not body:
+            self.set_status("Заметка пустая")
+            return
+        res = core.fx.note_add(self.project, title, body, tags)
+        self.set_status("Заметка сохранена" if res.get("ok") else "Ошибка: " + str(res.get("error")))
+        if res.get("ok"):
+            self.tools_note_title.delete(0, "end")
+            self.tools_note_body.delete("1.0", "end")
+            self.reload_tools_notes()
+
+    def reload_tools_notes(self):
+        q = self.tools_note_query.get().strip() if hasattr(self, "tools_note_query") else ""
+        res = core.fx.note_list(self.project, query=q)
+        self.tools_note_items = res.get("items", [])
+        lb = self.tools_notes_lb
+        lb.delete(0, "end")
+        for n in self.tools_note_items:
+            tags = (" [" + ", ".join(n.get("tags", [])) + "]") if n.get("tags") else ""
+            lb.insert("end", "  %s%s · %s" % (n.get("title", "(без названия)"),
+                                              tags, (n.get("body", "")[:80])))
+
+    def tools_note_del(self):
+        sel = self.tools_notes_lb.curselection()
+        if not sel:
+            return
+        item = self.tools_note_items[sel[0]]
+        res = core.fx.note_delete(self.project, item.get("id"))
+        self.set_status("Удалена" if res.get("ok") else "Ошибка: " + str(res.get("error")))
+        self.reload_tools_notes()
+
+    def tools_notes_export(self):
+        path = filedialog.asksaveasfilename(defaultextension=".md",
+                                            filetypes=[("Markdown", "*.md")])
+        if not path:
+            return
+        from pathlib import Path
+        Path(path).write_text(core.fx.export_notes_md(self.project), encoding="utf-8")
+        self.set_status("Заметки сохранены в " + path)
+
+    def build_tools_reminders(self, page):
+        top = tk.Frame(page, bg=BG)
+        top.pack(fill="x")
+        self.tools_rem_text = self.field(top, "", 40)
+        self.tools_rem_min = self.field(top, "30", 5)
+        self.label(top, "мин", 9, MUTED)
+        self.btn(top, "Поставить", self.tools_rem_add, primary=True)
+        wrap, self.tools_rem_lb = self.listbox(page, height=14)
+        wrap.pack(fill="both", expand=True, pady=(8, 0))
+        self.tools_rem_items = []
+
+    def tools_rem_add(self):
+        text = self.tools_rem_text.get().strip()
+        try:
+            minutes = float(self.tools_rem_min.get().strip() or "30")
+        except ValueError:
+            self.set_status("Минуты — число")
+            return
+        if not text:
+            self.set_status("Пустой текст напоминания")
+            return
+        res = core.fx.reminder_add(core.fx._pc_json(self.project, "reminders_ui.json"),
+                              text, time.time() + minutes * 60)
+        self.set_status("Напоминание поставлено" if res.get("ok")
+                        else "Ошибка: " + str(res.get("error")))
+        if res.get("ok"):
+            self.tools_rem_text.delete(0, "end")
+            self.tools_rem_items = list(core.fx.reminder_due(
+                core.fx._pc_json(self.project, "reminders_ui.json")).get("left", []))
+            self._tools_rem_render()
+
+    def _tools_rem_render(self):
+        lb = self.tools_rem_lb
+        lb.delete(0, "end")
+        for r in self.tools_rem_items:
+            left = max(0, int(float(r.get("due", 0)) - time.time()))
+            lb.insert("end", "  через %d мин · %s" % (left // 60, r.get("text", "")))
+
+    def build_tools_todo(self, page):
+        top = tk.Frame(page, bg=BG)
+        top.pack(fill="x")
+        self.btn(top, "Сканировать проект", self.tools_todo_scan, primary=True)
+        self.label(top, "TODO / FIXME / HACK по коду проекта", 9, MUTED)
+        twrap, tv = self.table(page, [("Тип", 70), ("Файл", 380), ("Строка", 60), ("Текст", 520)], height=16)
+        twrap.pack(fill="both", expand=True, pady=(8, 0))
+        self.tools_todo_tv = tv
+
+    def tools_todo_scan(self):
+        res = core.fx.todo_scan(self.project)
+        if res.get("error"):
+            self.set_status("Ошибка: " + res["error"])
+            return
+        tv = self.tools_todo_tv
+        tv.delete(*tv.get_children())
+        for it in res.get("items", []):
+            tv.insert("", "end", values=(it.get("kind", ""), it.get("file", ""),
+                                         it.get("line", ""), it.get("text", "")))
+        kinds = ", ".join("%s:%d" % kv for kv in sorted(res.get("kinds", {}).items()))
+        self.set_status("Найдено %d (%s)" % (res.get("total", 0), kinds or "чисто"))
+
+    def build_tools_macros(self, page):
+        top = tk.Frame(page, bg=BG)
+        top.pack(fill="x")
+        self.tools_macro_name = self.field(top, "", 18)
+        self.tools_macro_cmd = self.field(top, "команда терминала", 34)
+        self.btn(top, "Записать шаг", self.tools_macro_step)
+        self.btn(top, "Создать из команды", self.tools_macro_new, primary=True)
+        self.btn(top, "Удалить", self.tools_macro_del)
+        wrap, self.tools_macro_lb = self.listbox(page, height=14)
+        wrap.pack(fill="both", expand=True, pady=(8, 0))
+        self.reloads.setdefault("tools", self.reload_tools_current)
+
+    def tools_macro_new(self):
+        name = self.tools_macro_name.get().strip()
+        cmd = self.tools_macro_cmd.get().strip()
+        if not name or not cmd:
+            self.set_status("Нужны имя макроса и команда")
+            return
+        res = core.fx.macro_record(self.project, name, cmd)
+        self.set_status("Макрос создан" if res.get("ok") else "Ошибка: " + str(res.get("error")))
+        self._tools_macros_reload()
+
+    def tools_macro_step(self):
+        name = self.tools_macro_name.get().strip()
+        cmd = self.tools_macro_cmd.get().strip()
+        if not name or not cmd:
+            self.set_status("Нужны имя макроса и команда")
+            return
+        res = core.fx.macro_record(self.project, name, cmd)
+        self.set_status("Шаг добавлен (всего %s)" % res.get("steps") if res.get("ok")
+                        else "Ошибка: " + str(res.get("error")))
+        self._tools_macros_reload()
+
+    def tools_macro_del(self):
+        name = self.tools_macro_name.get().strip()
+        if not name:
+            return
+        res = core.fx.macro_delete(self.project, name)
+        self.set_status("Удалён" if res.get("ok") else "Ошибка: " + str(res.get("error")))
+        self._tools_macros_reload()
+
+    def _tools_macros_reload(self):
+        lb = self.tools_macro_lb
+        lb.delete(0, "end")
+        for m in core.fx.macro_list(self.project):
+            lb.insert("end", "  %s · шагов: %d" % (m.get("name", ""), m.get("steps", 0)))
+
+    def build_tools_cron(self, page):
+        top = tk.Frame(page, bg=BG)
+        top.pack(fill="x")
+        self.tools_cron_name = self.field(top, "", 16)
+        self.tools_cron_sched = self.field(top, "every 30m", 12)
+        self.tools_cron_task = self.field(top, "задача для агента", 34)
+        self.btn(top, "Добавить", self.tools_cron_add, primary=True)
+        self.btn(top, "Удалить выбранную", self.tools_cron_del)
+        wrap, self.tools_cron_lb = self.listbox(page, height=14)
+        wrap.pack(fill="both", expand=True, pady=(8, 0))
+
+    def tools_cron_add(self):
+        name = self.tools_cron_name.get().strip()
+        sched = self.tools_cron_sched.get().strip()
+        task = self.tools_cron_task.get().strip()
+        res = core.fx.cron_add(self.project, sched, task, name)
+        self.set_status("Cron-задача добавлена" if res.get("ok")
+                        else "Ошибка: " + str(res.get("error")))
+        if res.get("ok"):
+            self.tools_cron_task.delete(0, "end")
+            self._tools_cron_reload()
+
+    def tools_cron_del(self):
+        sel = self.tools_cron_lb.curselection()
+        if not sel:
+            return
+        item = self.tools_cron_items[sel[0]]
+        res = core.fx.cron_remove(self.project, item.get("id"))
+        self.set_status("Удалена" if res.get("ok") else "Ошибка: " + str(res.get("error")))
+        self._tools_cron_reload()
+
+    def _tools_cron_reload(self):
+        self.tools_cron_items = core.fx.cron_list(self.project)
+        lb = self.tools_cron_lb
+        lb.delete(0, "end")
+        for e in self.tools_cron_items:
+            lb.insert("end", "  [%s] %s · %s" % (e.get("schedule", ""),
+                                                 e.get("name", ""), e.get("task", "")))
+
+    def build_tools_search(self, page):
+        top = tk.Frame(page, bg=BG)
+        top.pack(fill="x")
+        self.tools_search_q = self.field(top, "", 44)
+        self.btn(top, "Искать", self.tools_search_go, primary=True)
+        twrap, tv = self.table(page, [("Где", 200), ("Строка", 60), ("Текст", 620)], height=16)
+        twrap.pack(fill="both", expand=True, pady=(8, 0))
+        self.tools_search_tv = tv
+
+    def tools_search_go(self):
+        q = self.tools_search_q.get().strip()
+        if not q:
+            return
+        res = core.fx.global_search(self.project, q)
+        if res.get("error"):
+            self.set_status("Ошибка: " + res["error"])
+            return
+        tv = self.tools_search_tv
+        tv.delete(*tv.get_children())
+        for f in res.get("name_hits", []):
+            tv.insert("", "end", values=("файл: " + f, "", ""))
+        for h in res.get("content_hits", []):
+            tv.insert("", "end", values=(h.get("file", ""), h.get("line", ""), h.get("text", "")))
+        self.set_status("Файлов по имени: %d, в содержимом: %d" % (
+            len(res.get("name_hits", [])), len(res.get("content_hits", []))))
+
+    def build_tools_dashboard(self, page):
+        top = tk.Frame(page, bg=BG)
+        top.pack(fill="x")
+        self.btn(top, "Обновить", self.tools_dashboard_go, primary=True)
+        wrap, self.tools_dash_t = self.tbox(page, height=18)
+        wrap.pack(fill="both", expand=True, pady=(8, 0))
+
+    def tools_dashboard_go(self):
+        res = core.fx.dashboard(self.project)
+        if res.get("error"):
+            self.set_status("Ошибка: " + res["error"])
+            return
+        lines = ["Файлов: %s · строк: %s" % (res.get("files"), res.get("lines"))]
+        ext = ", ".join("%s (%d)" % kv for kv in res.get("top_ext", []))
+        lines.append("По расширениям: %s" % (ext or "—"))
+        lines.append("Коммитов за %d дн.: %s" % (res.get("commits_days", 7), res.get("commits", 0)))
+        lines.append("")
+        for c in res.get("recent", []):
+            lines.append("  %s %s · %s" % (c.get("hash", ""), c.get("author", ""), c.get("subject", "")))
+        t = self.tools_dash_t
+        t.configure(state="normal")
+        t.delete("1.0", "end")
+        t.insert("1.0", "\n".join(lines))
+        t.configure(state="disabled")
+
+    def build_tools_export(self, page):
+        top = tk.Frame(page, bg=BG)
+        top.pack(fill="x")
+        self.btn(top, "Экспортировать чат в Markdown", self.tools_export_go, primary=True)
+        self.label(top, "Текущий чат сохраняется в .md файл", 9, MUTED)
+
+    def tools_export_go(self):
+        path = filedialog.asksaveasfilename(defaultextension=".md",
+                                            filetypes=[("Markdown", "*.md")])
+        if not path:
+            return
+        from pathlib import Path
+        Path(path).write_text(
+            core.fx.chat_export_md(core.read_jsonl(core.CHAT)[-2000:], "PocketCode чат"),
+            encoding="utf-8")
+        self.set_status("Чат сохранён в " + path)
+
+    def reload_tools_current(self):
+        if hasattr(self, "tools_notes_lb"):
+            self.reload_tools_notes()
+        if hasattr(self, "tools_macro_lb"):
+            self._tools_macros_reload()
+        if hasattr(self, "tools_cron_lb"):
+            self._tools_cron_reload()
 
     def on_close(self):
         try:
