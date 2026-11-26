@@ -38,6 +38,8 @@ sealed class UiItem {
         val answers: List<QuestionAnswer> = emptyList(),
         val index: Int = 0,
         val done: Boolean = false,
+        /** Метка создания карточки: по ней всплывающее окно отличает отклонённую карточку от новой. */
+        val id: Long = 0L,
     ) : UiItem()
 
     /** Служебная строка: сжатие контекста и т.п. */

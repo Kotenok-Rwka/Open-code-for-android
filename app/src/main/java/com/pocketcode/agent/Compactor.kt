@@ -26,19 +26,41 @@ class Compactor(private val llm: LlmClient, private val limitTokens: Int) {
      */
     fun maskOld(history: MutableList<Message>, keepRecent: Int = 12, over: Int = 2500, keep: Int = 500) {
         val until = history.size - keepRecent
+        // Аргументы write_file/edit_file с полным содержимым файла тоже стоят токенов: старше N сообщений они не нужны, файл на диске.
+        val bigInput = over * 4
         for (i in 0 until until) {
             val m = history[i]
             // картинки в сообщении с результатами инструментов (скриншоты телефона) старые не нужны; картинки пользователя не трогаем
             val toolImages = m.blocks.any { it is Block.ToolResult } && m.blocks.any { it is Block.Image }
-            if (!toolImages && m.blocks.none { it is Block.ToolResult && it.content.length > over }) continue
+            val longResult = m.blocks.any { it is Block.ToolResult && it.content.length > over }
+            val longInput = m.blocks.any { it is Block.ToolUse && hasLongString(it.input, bigInput) }
+            if (!toolImages && !longResult && !longInput) continue
             history[i] = m.copy(blocks = m.blocks.map { b ->
                 if (b is Block.ToolResult && b.content.length > over) {
                     b.copy(content = b.content.take(keep) + "\n...[старый вывод сокращён, вызови инструмент снова, если нужен целиком]")
+                } else if (b is Block.ToolUse && hasLongString(b.input, bigInput)) {
+                    b.copy(input = shrinkStrings(b.input, bigInput, keep, b.name))
                 } else if (toolImages && b is Block.Image) {
                     Block.Text("[старый скриншот удалён]")
                 } else b
             })
         }
+    }
+
+    private fun hasLongString(input: JsonObject, limit: Int): Boolean = input.values.any { v ->
+        ((v as? JsonPrimitive)?.takeIf { it.isString }?.content?.length ?: 0) > limit
+    }
+
+    private fun shrinkStrings(input: JsonObject, limit: Int, keep: Int, tool: String): JsonObject {
+        val note = if (tool == "write_file" || tool == "edit_file" || tool == "apply_patch") {
+            "\n...[остальное в файле: прочитай его заново, если нужно]"
+        } else {
+            "\n...[сокращено]"
+        }
+        return JsonObject(input.mapValues { (_, v) ->
+            val t = (v as? JsonPrimitive)?.takeIf { it.isString }?.content
+            if (t != null && t.length > limit) JsonPrimitive(t.take(keep) + note) else v
+        })
     }
 
     /**

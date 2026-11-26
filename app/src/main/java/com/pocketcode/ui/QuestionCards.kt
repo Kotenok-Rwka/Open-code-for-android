@@ -71,9 +71,10 @@ fun parseQuestionCards(raw: String): ParsedQuestions? {
     return ParsedQuestions(questions, clean)
 }
 
-/** Инструкция модели: как оформить уточняющие вопросы. */
+/** Инструкция модели: когда и как задавать уточняющие вопросы. */
 const val QUESTION_CARDS_INSTRUCTION = """
-If you need to ask the user a clarifying question, use this exact block instead of plain text:
+ASK WHEN IT HELPS. If the request is genuinely unclear — you cannot tell what to build, two very different results are possible, or one missing detail would waste the whole run — ask before working instead of guessing. Do not ask when an obvious default is fine, do not ask "should I continue?", and never ask just to chat. At most 3 questions, 2-4 ready-made options each, written in the user's language.
+Use this exact block (the last lines of your reply, no code fence around it, nothing after it):
 QUESTIONS
 TAG: short topic
 Q: your question
@@ -82,11 +83,18 @@ Q: your question
 - Second option
 - Other
 /QUESTIONS
-Include 2-4 options and no text after the block. The app will show buttons and a free-text answer field; the chosen answer is sent as the user's next message. The block must be the last lines of your reply, with no code fence around it.
+A short intro line before the block is fine. The app immediately opens a popup: the user taps an option or types their own answer, and that answer comes back as the user's next message. Asking once here is cheaper than doing the wrong thing and redoing it.
 """
 
+/** Ответ «без ответа»: помечает пропущенный вопрос, чтобы он не ушёл модели как выбор варианта. */
+const val SKIP_ANSWER = "⏭ без ответа"
+
 /** Текст ответа пользователя, который уходит модели после выбора в карточке. */
-fun questionAnswerText(answers: List<Pair<String, String>>): String = buildString {
-    append("Выбор в карточке вопроса:")
-    for ((q, a) in answers) append("\n").append(q).append(" → ").append(a)
+fun questionAnswerText(answers: List<Pair<String, String>>): String {
+    val chosen = answers.filterNot { it.second == SKIP_ANSWER }
+    if (chosen.isEmpty()) return "Вопросы из карточки пропущены — действуй по своему усмотрению."
+    return buildString {
+        append("Выбор в карточке вопроса:")
+        for ((q, a) in chosen) append("\n").append(q).append(" → ").append(a)
+    }
 }

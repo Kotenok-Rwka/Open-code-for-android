@@ -4,6 +4,8 @@ import com.pocketcode.Secrets
 import com.pocketcode.llm.Block
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import com.pocketcode.llm.LlmClient
 import com.pocketcode.llm.Message
 import com.pocketcode.llm.ToolSpec
@@ -40,6 +42,9 @@ sealed class AgentEvent {
 
 private const val MAX_TOOL_OUTPUT = 30_000
 
+/** Для моделей с небольшим контекстом такой же вывод съел бы половину окна: держим запас под историю и ответ. */
+private const val SMALL_CONTEXT_TOOL_OUTPUT = 10_000
+
 /** Инструменты, которые меняют код: после них нужна проверка. */
 private val CHANGE_TOOLS = setOf("write_file", "edit_file", "apply_patch")
 
@@ -59,6 +64,11 @@ private val UI_WIRING_NUDGE =
         "найди вызов вне его собственного файла (grep по имени); 2) если вызова нет — подключи к интерфейсу (пункт меню, " +
         "кнопка, роут) или явно скажи, что это библиотека для будущих шагов; 3) перечисли в ответе, на каком экране " +
         "пользователь увидит каждую новую фичу. Не считай «готовым» фичу, до которой нельзя дотянуться из UI."
+private const val CODE_IN_CHAT_NUDGE =
+    "[ИНСТРУМЕНТЫ] Ты ответил кодом в чате, но не изменил ни одного файла. Пользователь видит только текст, проект не изменился. " +
+        "Сделай работу инструментами: 1) найди нужный файл (read_file/grep), 2) примени изменение через write_file/edit_file, " +
+        "3) проверь diagnostics и исправь ошибки. В ответе не дублируй весь код — напиши только что изменено и как проверить."
+
 private val RETRY_DELAYS = intArrayOf(3, 8, 20, 45)
 
 /**
@@ -137,6 +147,8 @@ class Agent(
     private val verifyChanges: () -> Boolean = { false },
     /** Корень проекта для проверки подключения фич (как у freebuff/DeepSeek): фича без вызова вне своего файла — мёртвый код. */
     private val wiringRoot: () -> java.io.File? = { null },
+    /** true — режим строительных лесов для слабой модели: авто-проверка синтаксиса и защита от «кода в чате». */
+    private val scaffold: () -> Boolean = { false },
 ) {
     private var llm: LlmClient = llm
     private var usedFallback = false
@@ -211,6 +223,11 @@ class Agent(
         var verified = false
         var nudges = 0
         val editedPaths = mutableListOf<String>()
+        // Сколько раз один и тот же вызов (инструмент + аргументы) падал в этом запуске.
+        val failedCalls = HashMap<String, Int>()
+        // Тот же вызов с теми же аргументами почти всегда даёт тот же вывод — не платим за него дважды.
+        val lastOutputs = HashMap<String, String>()
+        val toolOutputLimit = if (contextLimit in 1..80_000) SMALL_CONTEXT_TOOL_OUTPUT else MAX_TOOL_OUTPUT
 
         suspend fun callLlm(): com.pocketcode.llm.LlmResponse {
             var attempt = 0
@@ -288,6 +305,13 @@ class Agent(
                 if (late.isEmpty()) {
                     // Контроль качества: правки без проверки не принимаем как готовый ответ.
                     val answer = response.blocks.filterIsInstance<Block.Text>().joinToString("\n") { it.text }
+                    // Слабая модель «сделала» задачу кодом в чате: файлы не менялись — просим применить инструментами.
+                    if (scaffold() && nudges < 2 && !changedFiles && WeakModelGuard.codeInChat(text, answer)) {
+                        nudges++
+                        send(AgentEvent.Notice("Код остался в ответе, а файлы не изменены: прошу применить правку инструментами."))
+                        history += Message("user", listOf(Block.Text(CODE_IN_CHAT_NUDGE)))
+                        continue
+                    }
                     val unchecked = changedFiles && !verified && nudges < 2 && verifyChanges() &&
                         !answer.contains("НЕ ПРОВЕРЕНО", ignoreCase = true)
                     if (unchecked) {
@@ -325,7 +349,10 @@ class Agent(
                 var output = ""
                 var isError = false
                 if (tool == null) {
-                    output = "Неизвестный инструмент: ${call.name}"
+                    // Слабая модель часто выдумывает имя инструмента: сразу показываем реальный список.
+                    output = "Неизвестный инструмент: ${call.name}. Доступные: " +
+                        tools.joinToString(", ") { it.name } +
+                        ". Повтори действие одним из них, аргументы — по схеме инструмента."
                     isError = true
                 } else if (call.name == "consult_advisor") {
                     if (advisor == null) {
@@ -367,7 +394,30 @@ class Agent(
                         (tool as? com.pocketcode.tools.ImageProducer)?.takeImages()?.let { toolImages += it }
                         if (call.name in CHANGE_TOOLS) {
                             changedFiles = true; verified = false
-                            call.input["path"]?.jsonPrimitive?.contentOrNull?.let { editedPaths += it }
+                            val path = call.input["path"]?.jsonPrimitive?.contentOrNull
+                            if (path != null) {
+                                editedPaths += path
+                                // Слабая модель часто не проверяет себя: проверяем синтаксис сами и возвращаем отчёт в том же результате.
+                                if (scaffold()) {
+                                    val diag = byName["diagnostics"]
+                                    val report = diag?.let { d ->
+                                        try {
+                                            d.run(buildJsonObject { put("path", path) })
+                                        } catch (e: CancellationException) {
+                                            throw e
+                                        } catch (e: Exception) {
+                                            null
+                                        }
+                                    }
+                                    if (!report.isNullOrBlank()) {
+                                        output += "\n[Автопроверка] " + report.take(600)
+                                        if (!WeakModelGuard.diagnosticsOk(report)) {
+                                            isError = true
+                                            output += "\nИсправь это в том же файле и проверь снова через diagnostics."
+                                        }
+                                    }
+                                }
+                            }
                         }
                         if (call.name in VERIFY_TOOLS) verified = true
                     } catch (e: CancellationException) {
@@ -377,14 +427,31 @@ class Agent(
                         isError = true
                     }
                 }
-                if (output.length > MAX_TOOL_OUTPUT) {
+                // Слабая модель любит повторять один и тот же неудачный вызов: говорим прямо, что так нельзя.
+                val callKey = call.name + "|" + call.input
+                if (isError) {
+                    val n = (failedCalls[callKey] ?: 0) + 1
+                    failedCalls[callKey] = n
+                    if (n >= 2) {
+                        output += "\n[ПОВТОР] Этот вызов с теми же аргументами уже не прошёл ($n раз). Не повторяй его: измени аргументы или выбери другой путь (другой инструмент, другой файл, другой запрос)."
+                    }
+                } else {
+                    failedCalls.remove(callKey)
+                }
+                val prevOutput = lastOutputs[callKey]
+                if (prevOutput != null && prevOutput == output) {
+                    output = "[Без изменений: тот же результат, что в прошлом таком же вызове — см. выше]\n" + output.take(300)
+                } else {
+                    lastOutputs[callKey] = output
+                }
+                if (output.length > toolOutputLimit) {
                     // Начало и конец важнее середины: в конце логов сборки и тестов обычно сама ошибка
                     if (keepTail()) {
-                        val head = MAX_TOOL_OUTPUT * 6 / 10
-                        val tail = MAX_TOOL_OUTPUT - head
-                        output = output.take(head) + "\n... (вывод обрезан: пропущено ${output.length - MAX_TOOL_OUTPUT} символов из середины) ...\n" + output.takeLast(tail)
+                        val head = toolOutputLimit * 6 / 10
+                        val tail = toolOutputLimit - head
+                        output = output.take(head) + "\n... (вывод обрезан: пропущено ${output.length - toolOutputLimit} символов из середины) ...\n" + output.takeLast(tail)
                     } else {
-                        output = output.take(MAX_TOOL_OUTPUT) + "\n... (вывод обрезан)"
+                        output = output.take(toolOutputLimit) + "\n... (вывод обрезан)"
                     }
                 }
                 send(AgentEvent.ToolResult(call.name, output, isError))
@@ -494,13 +561,17 @@ QUALITY CONTROL (must follow after any code change):
 - After edits, re-read the changed snippets and check: names match their declarations, imports/parameters exist, strings are escaped correctly, a trailing lambda goes to the last parameter of a call, i18n placeholders {0} match in all files, every new function/route/string is actually referenced.
 - If a check cannot be run here, answer with an explicit line "НЕ ПРОВЕРЕНО: <what exactly was not verified and why>". Never claim a build or device test you did not perform.
 """ else ""}${if (agentMode == "scaffold") """
-SCAFFOLD MODE (you are a smaller model: follow this pipeline exactly, step by step, never skip a step):
-1. PLAN FIRST. Before any write_file/edit_file, output a numbered plan: every file you will create or change, what exactly changes in it, and the command that will prove it works. Get the file list from list_dir/grep, never from memory.
-2. ONE FILE AT A TIME. Write or edit exactly one file, then immediately run `diagnostics` on it. Fix every reported error before touching the next file. Never batch multiple writes before a check.
-3. COPY, DO NOT INVENT. Before using any function, class, import or config key, find its real declaration with grep/read_file in this project and copy the exact signature. If the project does not have it, say so instead of guessing.
-4. SMALLEST CHANGE. Prefer edit_file with a small fragment over rewriting a whole file. Never reformat or "improve" code you were not asked to touch.
-5. REVIEW CHECKLIST. After your last edit and before the final answer, run code_review and check the diff line by line against this list: secrets or keys in code; SQL/shell/HTML built by string concatenation; empty catch blocks; unused or unresolved imports; TODO or stub bodies; changed behavior in files you did not plan to touch. Fix everything you find, then re-run diagnostics.
-6. NEVER claim a check you did not run. If diagnostics/tests could not run, end with "НЕ ПРОВЕРЕНО: <what>".
+SCAFFOLD MODE (small or fast model: the app runs the discipline for you — follow it exactly, never skip a step):
+0. TOOLS, NOT PROSE. Every change to the project must be a tool call (write_file/edit_file/apply_patch/bash). Code pasted into the chat text is NOT applied: the user sees nothing change. If you catch yourself writing a file as an answer, stop and call the tool instead.
+1. PLAN FIRST. Before any write_file/edit_file, output a numbered plan: every file you will create or change, what exactly changes in it, and the command that will prove it works. Get the file list from list_dir/grep, never from memory. Keep the plan in todo when there are 3+ steps.
+2. ONE CHANGE PER STEP. Exactly one write/edit per step, then wait for its result. Never send several edits blind: each next edit depends on the previous result.
+3. THE APP CHECKS SYNTAX FOR YOU. After every write_file/edit_file the tool result contains [Автопроверка]. If it is not OK, fix that file immediately and re-check; never move on with a broken file.
+4. COPY, DO NOT INVENT. Before using any function, class, import or config key, find its real declaration with grep/read_file in this project and copy the exact signature. If the project does not have it, say so instead of guessing.
+5. ERROR IS AN INSTRUCTION. Read the tool error, fix the cause and retry once differently. Never repeat the same failing call, and never call an invented tool name — the error lists the real ones.
+6. SMALLEST CHANGE. Prefer edit_file with a small fragment over rewriting a whole file. Never reformat or "improve" code you were not asked to touch.
+7. WIRE IT UP. A new class, screen, setting or route must be called from somewhere the user can reach: find the call site with grep and connect it.
+8. REVIEW CHECKLIST. After your last edit and before the final answer, run code_review and check the diff line by line against this list: secrets or keys in code; SQL/shell/HTML built by string concatenation; empty catch blocks; unused or unresolved imports; TODO or stub bodies; changed behavior in files you did not plan to touch. Fix everything you find, then re-run diagnostics.
+9. NEVER claim a check you did not run. If diagnostics/tests could not run, end with "НЕ ПРОВЕРЕНО: <what>".
 """ else ""}${if (agentMode == "focused") """
 FOCUSED MODE (large project, limited reliable context: spend context like money):
 1. NAVIGATE, DO NOT READ. Never read a whole file to "understand the project". Start from the project map above and grep with narrow patterns; read only the specific line ranges you need (20-60 lines around the match).

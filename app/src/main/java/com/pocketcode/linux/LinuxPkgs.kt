@@ -49,15 +49,37 @@ object LinuxPkgs {
     fun packageFor(flavor: String, name: String): String =
         if (isUbuntu(flavor)) UBUNTU_NAMES[name] ?: name else ALPINE_NAMES[name] ?: name
 
-    /** Полная команда установки пакетов для выбранного образа. */
-    fun install(flavor: String, vararg packages: String): String {
-        val names = packages.map { packageFor(flavor, it) }.distinct().joinToString(" ")
+    /**
+     * Ключи apt, без которых установка в proot идёт в разы дольше или зависает:
+     * Use-Pty=0 не даёт dpkg ждать псевдотерминал, ForceIPv4 убирает зависание на IPv6.
+     */
+    private const val APT_OPTS =
+        "-o Acquire::Retries=3 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 " +
+            "-o Acquire::ForceIPv4=true -o Dpkg::Use-Pty=0"
+
+    /** Имена пакетов в терминах выбранного образа, без повторов. */
+    fun packageList(flavor: String, vararg packages: String): List<String> =
+        packages.map { packageFor(flavor, it) }.distinct()
+
+    /** Обновление списка пакетов отдельным шагом: установку показываем по шагам. */
+    fun update(flavor: String): String =
+        if (isUbuntu(flavor)) "apt-get $APT_OPTS update" else "apk update"
+
+    /** Только установка, без обновления индекса (его делает [update]). */
+    fun installOnly(flavor: String, vararg packages: String): String {
+        val names = packageList(flavor, *packages).joinToString(" ")
         return if (isUbuntu(flavor)) {
-            "apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq $names"
+            // --no-install-recommends: без него apt тянет tilix, GTK и dbus, на которых dpkg в proot падает.
+            "DEBIAN_FRONTEND=noninteractive apt-get $APT_OPTS install -y --no-install-recommends $names"
         } else {
             "apk add --no-cache $names"
         }
     }
+
+    /** Полная команда установки пакетов для выбранного образа. */
+    fun install(flavor: String, vararg packages: String): String =
+        if (isUbuntu(flavor)) update(flavor) + " && " + installOnly(flavor, *packages)
+        else installOnly(flavor, *packages)
 
     /**
      * Наборы для запуска полноценных GUI-приложений внутри proot: X11-сервер рисует

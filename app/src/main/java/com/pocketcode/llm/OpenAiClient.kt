@@ -195,14 +195,21 @@ class OpenAiClient(
         if (text.isNotBlank()) blocks += Block.Text(text.toString())
         for ((index, c) in calls) {
             if (c.name.isEmpty()) continue
-            val input = try {
-                Json.parseToJsonElement(c.args.toString().ifBlank { "{}" }) as? JsonObject
-                    ?: JsonObject(emptyMap())
-            } catch (e: Exception) {
-                JsonObject(emptyMap())
-            }
+            val input = parseToolArgs(c.args.toString())
             blocks += Block.ToolUse(c.id.ifEmpty { "call_$index" }, c.name, input, c.extra, c.functionExtra)
         }
         return LlmResponse(blocks, finishReason, inTok, outTok, cacheTok, served)
+    }
+
+    /**
+     * Аргументы вызова инструмента. Слабые модели присылают текст вокруг JSON, висячие запятые и обрывы —
+     * сначала пробуем разобрать как есть, потом починить, и только в последнем случае отдаём пустой объект.
+     */
+    internal fun parseToolArgs(raw: String): JsonObject {
+        val text = raw.ifBlank { "{}" }
+        fun attempt(s: String): JsonObject? = runCatching {
+            Json.parseToJsonElement(s) as? JsonObject
+        }.getOrNull()
+        return attempt(text) ?: attempt(JsonRepair.sanitize(text)) ?: JsonObject(emptyMap())
     }
 }

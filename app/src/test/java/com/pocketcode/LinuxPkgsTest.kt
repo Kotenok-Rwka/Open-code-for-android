@@ -2,6 +2,7 @@ package com.pocketcode
 
 import com.pocketcode.linux.LinuxPkgs
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LinuxPkgsTest {
@@ -16,9 +17,20 @@ class LinuxPkgsTest {
 
     @Test
     fun pipIsMappedToPython3PipInUbuntu() {
+        // Обновление индекса и установка — отдельные шаги, чтобы показывать прогресс;
+        // recommends отключены: иначе apt тянет GTK/dbus и dpkg падает в proot.
+        val cmd = LinuxPkgs.install("UBUNTU", "pip")
+        assertTrue(cmd.startsWith("apt-get "))
+        assertTrue(cmd.contains(" update && "))
+        assertTrue(cmd.endsWith("install -y --no-install-recommends python3-pip"))
+        assertTrue(cmd.contains("-o Dpkg::Use-Pty=0"))
+    }
+
+    @Test
+    fun installOnlyDoesNotUpdateIndex() {
         assertEquals(
-            "apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq python3-pip",
-            LinuxPkgs.install("UBUNTU", "pip"),
+            "DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 -o Acquire::ForceIPv4=true -o Dpkg::Use-Pty=0 install -y --no-install-recommends python3-pip",
+            LinuxPkgs.installOnly("UBUNTU", "pip"),
         )
     }
 

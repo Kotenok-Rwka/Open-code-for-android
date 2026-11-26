@@ -164,7 +164,8 @@ private fun Modifier.androidx_swallowTouches(): Modifier =
 fun BackgroundBanner(vm: ChatController) {
     val busy = vm.linuxBusy || vm.updateBusy
     val text: String? = when {
-        vm.linuxBusy -> "Linux: " + (vm.linuxStatus ?: "устанавливаю…")
+        // В полосе — только первая строка статуса: подробности и так видны на экране «Среда Linux».
+        vm.linuxBusy -> "Linux: " + (vm.linuxStatus?.lineSequence()?.firstOrNull() ?: "устанавливаю…")
         vm.updateBusy -> "Обновление: " + (vm.updateStatus ?: "работаю…")
         vm.updateReady != null -> "Обновление скачано"
         vm.doneNote != null -> vm.doneNote
@@ -183,7 +184,12 @@ fun BackgroundBanner(vm: ChatController) {
                 else if (!busy && vm.doneNote != null) TextButton(onClick = { vm.clearDoneNote() }) { Text("Ок") }
             }
             if (busy) {
-                LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 6.dp).clip(RoundedCornerShape(2.dp)))
+                val lp = if (vm.linuxBusy) vm.linuxProgress else null
+                if (lp != null) {
+                    LinearProgressIndicator(progress = { lp.coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth().padding(top = 6.dp).clip(RoundedCornerShape(2.dp)))
+                } else {
+                    LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 6.dp).clip(RoundedCornerShape(2.dp)))
+                }
                 Text("Можно пользоваться приложением. С VPN обычно быстрее.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }

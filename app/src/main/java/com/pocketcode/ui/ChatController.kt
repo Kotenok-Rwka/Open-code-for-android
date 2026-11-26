@@ -385,6 +385,10 @@ class ChatController(
     var linuxStatus by mutableStateOf<String?>(null)
         private set
 
+    /** Ход установки пакетов: 0..1; null — точного прогресса нет (бегущая полоска). */
+    var linuxProgress by mutableStateOf<Float?>(null)
+        private set
+
     /** Итог фоновой операции (установка Linux): показывается баннером на любом экране, пока не закроют. */
     var doneNote by mutableStateOf<String?>(null)
         private set
@@ -693,6 +697,7 @@ class ChatController(
     fun installLinux() {
         if (running || linuxBusy) return
         linuxBusy = true
+        linuxProgress = null
         linuxStatus = "Начинаю установку…"
         linuxEnv.flavor = rootFsChoice
         scope.launch {
@@ -722,6 +727,7 @@ class ChatController(
     fun installLinuxExtras() {
         if (running || linuxBusy || !linuxInstalled) { linuxStatus = "Сначала установи Linux-окружение"; return }
         linuxBusy = true
+        linuxProgress = null
         linuxStatus = "Готовлю инструменты в Linux…"
         scope.launch(Dispatchers.IO) {
             try {
@@ -741,18 +747,126 @@ class ChatController(
 
     fun installLinuxTools() {
         if (running || linuxBusy || !linuxInstalled) return
+        val flavor = rootFsChoice
+        val raw = arrayOf("bash", "git", "python3", "pip", "nodejs", "npm", "curl")
+        val pkgs = com.pocketcode.linux.LinuxPkgs.packageList(flavor, *raw)
         linuxBusy = true
-        linuxStatus = "Устанавливаю python, git, nodejs… Это может занять несколько минут."
-        scope.launch(Dispatchers.IO) {
-            try {
-                val pkg = com.pocketcode.linux.LinuxPkgs.install(rootFsChoice, "bash", "git", "python3", "pip", "nodejs", "npm", "curl")
-                val out = linuxShell.run("$pkg 2>&1 | tail -n 15", linuxEnv.rootfs, 900)
-                withContext(Dispatchers.Main) { linuxStatus = "Результат:\n$out" }
-            } catch (e: Exception) {
-                withContext(Dispatchers.Main) { linuxStatus = "Ошибка: ${e.message}" }
-            } finally {
-                withContext(Dispatchers.Main) { linuxBusy = false }
+        linuxProgress = 0.02f
+        linuxStatus = "Устанавливаю python, git, nodejs: обновляю список пакетов…"
+
+        // Запускаем из главного потока: установка читает вывод apt построчно и показывает его в статусе,
+        // иначе экран выглядит зависшим, пока apt молча качает сотни мегабайт.
+        scope.launch {
+            val startedAt = System.currentTimeMillis()
+            var lastLine = ""
+            var lastUi = 0L
+            var setup = 0
+            var total = 0
+            var outTail = ""
+
+            fun elapsed(): String {
+                val s = (System.currentTimeMillis() - startedAt) / 1000
+                return if (s < 60) "$s с" else "${s / 60} мин ${s % 60} с"
             }
+
+            fun show(p: Float?, force: Boolean = false) {
+                val now = System.currentTimeMillis()
+                if (!force && now - lastUi < 350) return
+                lastUi = now
+                val head = if (p != null) "Устанавливаю python, git, nodejs · ${(p * 100).toInt()}% · ${elapsed()}"
+                    else "Устанавливаю python, git, nodejs · ${elapsed()}"
+                linuxProgress = p
+                linuxStatus = if (lastLine.isBlank()) head else head + "\n" + lastLine
+            }
+
+            fun onLine(line: String) {
+                val l = line.substringAfterLast('\r').trim()
+                if (l.isEmpty()) return
+                if (l.startsWith("Setting up ") || l.startsWith("Настраивается ")) setup++
+                lastLine = l.take(150)
+                // 10–95%: сколько пакетов apt уже настроил. Без общего числа — бегущая полоска.
+                show(if (total > 0) (0.10f + 0.85f * setup.toFloat() / total).coerceIn(0.10f, 0.95f) else null)
+            }
+
+            try {
+                val upd = runLinuxStreaming(com.pocketcode.linux.LinuxPkgs.update(flavor), 900) { line ->
+                    val l = line.substringAfterLast('\r').trim().take(150)
+                    if (l.isNotEmpty()) lastLine = l
+                    // Индекс качается без счётчика: ведём полосу по времени, но не дальше 10%.
+                    show((0.02f + 0.08f * ((System.currentTimeMillis() - startedAt) / 45_000f)).coerceAtMost(0.10f))
+                }
+                outTail = upd.second
+                if (upd.first != 0) {
+                    // Один недоступный репозиторий (частый случай с VPN) не должен останавливать установку:
+                    // у ubuntu-base индекс уже лежит в образе, и apt поставит пакеты по нему.
+                    lastLine = "индекс обновился не полностью — ставлю по уже скачанному"
+                    show(0.10f, force = true)
+                }
+
+                if (com.pocketcode.linux.LinuxPkgs.isUbuntu(flavor)) {
+                    // Сколько пакетов apt собирается поставить: из этого считается честный процент.
+                    val sim = "DEBIAN_FRONTEND=noninteractive apt-get -s -y --no-install-recommends " +
+                        pkgs.joinToString(" ") + " 2>/dev/null | grep -c '^Inst '"
+                    runLinuxStreaming(sim, 120) { line -> line.trim().toIntOrNull()?.let { total = it } }
+                }
+                lastLine = "ставлю: " + pkgs.joinToString(", ")
+                show(0.10f, force = true)
+
+                val inst = runLinuxStreaming(com.pocketcode.linux.LinuxPkgs.installOnly(flavor, *raw), 1800) { onLine(it) }
+                outTail = inst.second
+                if (inst.first != 0) {
+                    val dpkg = outTail.lines().firstOrNull { it.startsWith("E: ") || it.startsWith("dpkg: error") }
+                    error(dpkg ?: "apt завершился с кодом ${inst.first}")
+                }
+
+                linuxProgress = 1f
+                lastLine = ""
+                linuxStatus = "Готово за ${elapsed()}: проверяю python, git, node…"
+                val check = runLinuxStreaming("python3 -V 2>&1; node -v 2>&1; git --version 2>&1; pip --version 2>&1", 60) {}
+                linuxProgress = 1f
+                linuxStatus = "Готово за ${elapsed()}.\n" +
+                    check.second.lines().filter { it.isNotBlank() }.take(4).joinToString("\n")
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                linuxProgress = null
+                val tail = outTail.lines().filter { it.isNotBlank() }.takeLast(6).joinToString("\n")
+                val hint = if (tail.contains("dpkg returned an error code") || tail.contains("dpkg: error")) {
+                    "\nПовтори установку: apt внутри proot иногда срывается на одном пакете, со второго раза проходит."
+                } else ""
+                linuxStatus = "Ошибка установки: ${e.message}" + (if (tail.isBlank()) "" else "\n" + tail) + hint
+            } finally {
+                linuxBusy = false
+            }
+        }
+    }
+
+    /**
+     * Запускает команду в Linux и отдаёт её вывод построчно: так видно, что установка идёт,
+     * а не зависла. Возвращает код выхода и хвост вывода (последние ~12 КБ).
+     */
+    private suspend fun runLinuxStreaming(
+        command: String,
+        timeoutSec: Long,
+        onLine: (String) -> Unit,
+    ): Pair<Int, String> = withContext(Dispatchers.IO) {
+        val p = linuxShell.builder(command, linuxEnv.rootfs).start()
+        p.outputStream.close()
+        val tail = StringBuilder()
+        try {
+            kotlinx.coroutines.withTimeout(timeoutSec * 1000L) {
+                val reader = p.inputStream.bufferedReader()
+                while (true) {
+                    val line = runInterruptible { reader.readLine() } ?: break
+                    if (tail.length < 12_000) tail.append(line).append('\n')
+                    onLine(line)
+                }
+            }
+            p.waitFor() to tail.toString()
+        } catch (x: kotlinx.coroutines.TimeoutCancellationException) {
+            error("команда не уложилась в $timeoutSec с и остановлена")
+        } finally {
+            if (p.isAlive) p.destroyForcibly()
         }
     }
 
@@ -1148,6 +1262,7 @@ class ChatController(
     fun removeLinux() {
         if (running || linuxBusy) return
         linuxBusy = true
+        linuxProgress = null
         linuxStatus = "Удаляю Linux…"
         scope.launch(Dispatchers.IO) {
             try {
@@ -1227,13 +1342,8 @@ class ChatController(
         if (toolsConfig.agentMode != "auto") return toolsConfig.agentMode
         val p = profiles.firstOrNull { it.id == activeProfileId }
         val offline = p != null && (p.id.startsWith("local-") || p.baseUrl.contains("127.0.0.1") || p.baseUrl.contains("localhost"))
-        val smallModel = settings.model.lowercase().let { it.contains("flash") || it.contains("mini") || it.contains("small") }
-        val smallContext = settings.contextTokens in 1..32_000
-        return when {
-            offline || smallModel -> "scaffold"
-            smallContext -> "focused"
-            else -> "auto"
-        }
+        // «flash», «mini», «8b», «:free» и локальные модели получают строительные леса: у них хуже дисциплина инструментов.
+        return com.pocketcode.agent.ModelTier.mode(settings.model, settings.contextTokens, offline)
     }
 
     /** Реальный предел контекста: в эко-режиме не больше 64 000. */
@@ -5946,6 +6056,10 @@ class ChatController(
         job = null
         stopService()
         persist()
+        queuedAnswer?.let { queued ->
+            queuedAnswer = null
+            send(queued, auto = true)
+        }
     }
 
     private fun cancelRun() {
@@ -5954,6 +6068,8 @@ class ChatController(
         job?.cancel()
         job = null
         running = false
+        // Остановлено пользователем: заготовленный ответ на карточку не отправляем задним числом.
+        queuedAnswer = null
         offerPendingUpdate()
         streamingIndex = null
         approval?.result?.complete(false)
@@ -6046,13 +6162,41 @@ class ChatController(
         if (idx < 0) return
         val m = items[idx] as UiItem.Assistant
         val parsed = parseQuestionCards(m.text) ?: return
-        items[idx] = UiItem.Questions(
-            parsed.questions.map { q ->
+        val card = UiItem.Questions(
+            questions = parsed.questions.map { q ->
                 com.pocketcode.session.QuestionData(q.question, q.tag, q.options.map { com.pocketcode.session.QuestionOptionData(it.label, it.description) })
             },
+            id = System.currentTimeMillis(),
         )
-        if (parsed.cleanText.isNotBlank()) items[idx] = m.copy(text = parsed.cleanText)
+        // Вступление модели остаётся обычным сообщением, карточка встаёт сразу под ним.
+        if (parsed.cleanText.isNotBlank()) {
+            items[idx] = m.copy(text = parsed.cleanText)
+            items.add(idx + 1, card)
+        } else {
+            items[idx] = card
+        }
+        questionPopupDismissed = null
         persist()
+    }
+
+    /** Карточки, для которых пользователь уже закрыл всплывающее окно: в ленте они остаются. */
+    private var questionPopupDismissed by mutableStateOf<Long?>(null)
+
+    /** Ответ на карточку, набранный пока агент ещё работает: уйдёт сразу после завершения хода. */
+    private var queuedAnswer: String? = null
+
+    /** Закрыть всплывающее окно вопросов по индексу карточки в ленте. */
+    fun closeQuestionPopup(index: Int) {
+        questionPopupDismissed = (items.getOrNull(index) as? UiItem.Questions)?.id
+    }
+
+    /** Неотвеченная карточка вопросов для всплывающего окна: индекс в ленте и сама карточка. */
+    fun pendingQuestionCard(): Pair<Int, UiItem.Questions>? {
+        val idx = items.indexOfLast { it is UiItem.Questions }
+        val card = (items.getOrNull(idx) as? UiItem.Questions) ?: return null
+        if (card.done || card.index >= card.questions.size) return null
+        if (card.id != 0L && card.id == questionPopupDismissed) return null
+        return idx to card
     }
 
     /** Ответ в карточке: сохраняем выбор и отправляем его модели как сообщение пользователя. */
@@ -6067,7 +6211,8 @@ class ChatController(
         persist()
         if (!updated.done) return
         val text = questionAnswerText(updated.answers.map { it.question to it.answer })
-        send(text, auto = true)
+        // Агент ещё работает — ответ не теряется, а уходит сразу после завершения хода.
+        if (running) queuedAnswer = text else send(text, auto = true)
     }
 
     private val approvalMutex = kotlinx.coroutines.sync.Mutex()
@@ -6319,6 +6464,7 @@ class ChatController(
                 approve = { t, d -> requestApproval(t, d) },
                 askEvenIfAuto = { rootAuto },
                 wiringRoot = { workspace.root },
+                scaffold = { effectiveAgentMode() == "scaffold" },
             ) to finish
         }
         val created = Agent(
@@ -6342,6 +6488,7 @@ class ChatController(
             keepTail = { smart.smartTrim },
             verifyChanges = { toolsConfig.selfCheck },
             wiringRoot = { workspace.root },
+            scaffold = { effectiveAgentMode() == "scaffold" },
             approve = ::requestApproval,
             history = history,
             pollNotes = { generateSequence { notes.poll() }.toList() },

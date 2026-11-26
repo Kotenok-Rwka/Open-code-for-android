@@ -409,6 +409,7 @@ fun ChatScreen(
                     }
                 }
             }
+            QuestionPopupHost(vm)
             if (showChanges) {
                 androidx.compose.material3.AlertDialog(
                     onDismissRequest = { showChanges = false },
@@ -1249,6 +1250,17 @@ private fun EmptyHint(workspacePath: String, welcome: (@Composable () -> Unit)?,
             modifier = Modifier.padding(top = 24.dp),
         )
     }
+}
+
+/** Всплывающее окно уточняющих вопросов: открывается само, как только модель прислала блок QUESTIONS. */
+@Composable
+private fun QuestionPopupHost(vm: ChatController) {
+    val pending = vm.pendingQuestionCard() ?: return
+    QuestionDialog(
+        item = pending.second,
+        onAnswer = { answers -> vm.answerQuestionCards(pending.first, answers) },
+        onDismiss = { vm.closeQuestionPopup(pending.first) },
+    )
 }
 
 @Composable

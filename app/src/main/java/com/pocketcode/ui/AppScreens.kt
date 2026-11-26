@@ -78,7 +78,12 @@ fun LinuxScreen(vm: ChatController, onBack: () -> Unit) = Page("Среда Linux
         Text("Внимание: сейчас установлен другой образ. Чтобы переключиться, удалите текущий Linux и установите заново.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
     }
     if (vm.linuxBusy) {
-        LinearProgressIndicator(Modifier.fillMaxWidth())
+        val lp = vm.linuxProgress
+        if (lp != null) {
+            LinearProgressIndicator(progress = { lp.coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth())
+        } else {
+            LinearProgressIndicator(Modifier.fillMaxWidth())
+        }
         Text("Можно выйти с этого экрана и пользоваться приложением: установка продолжится, прогресс виден сверху на любом экране.", style = MaterialTheme.typography.bodySmall)
     }
     if (!vm.linuxInstalled || vm.rootFsChoice != vm.installedRootFs) {

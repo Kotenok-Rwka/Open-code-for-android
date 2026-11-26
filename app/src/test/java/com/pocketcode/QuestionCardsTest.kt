@@ -1,8 +1,10 @@
 package com.pocketcode
 
+import com.pocketcode.ui.SKIP_ANSWER
 import com.pocketcode.ui.parseQuestionCards
 import com.pocketcode.ui.questionAnswerText
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -65,5 +67,16 @@ class QuestionCardsTest {
     @Test
     fun ignoresPlainText() {
         assertNull(parseQuestionCards("Какой стек выбрать?"))
+    }
+
+    @Test
+    fun skippedQuestionIsNotSentAsChoice() {
+        val text = questionAnswerText(listOf("Стек?" to SKIP_ANSWER, "Среда?" to "Android"))
+        assertFalse(text.contains(SKIP_ANSWER))
+        assertTrue(text.contains("Среда? → Android"))
+        assertEquals(
+            "Вопросы из карточки пропущены — действуй по своему усмотрению.",
+            questionAnswerText(listOf("Стек?" to SKIP_ANSWER)),
+        )
     }
 }
