@@ -205,6 +205,19 @@ fun ToonScreen(
                     "Выключите, если пишете текст для озвучки сами «как слышится». Субтитры при этом остаются обычными.",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                    Text("Детализированный фон: обои, шторы, тени, свет", Modifier.weight(1f))
+                    Switch(checked = v.detailRender, onCheckedChange = { v.detailRender = it }, enabled = !v.busy)
+                }
+                Text(
+                    "Красивый кодовый рендер без внешних картинок. Ниже можно настроить цвета сцен (по строке: СЦЕНА|цвета, как в экспорте).",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                OutlinedTextField(
+                    value = v.backdrops, onValueChange = { v.backdrops = it }, enabled = !v.busy,
+                    label = { Text("Свои палитры фонов (пусто — базовые)") },
+                    modifier = Modifier.fillMaxWidth(), minLines = 2, maxLines = 6,
+                )
                 OutlinedTextField(
                     value = v.dict, onValueChange = { v.dict = it }, enabled = !v.busy,
                     label = { Text("Словарь: слово=как говорить (по строке)") },

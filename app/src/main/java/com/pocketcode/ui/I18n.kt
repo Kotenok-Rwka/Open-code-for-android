@@ -7,6 +7,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import org.json.JSONArray
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.AnnotatedString
@@ -31,6 +32,7 @@ object I18n {
         Lang("ru", "Русский"), Lang("en", "English"), Lang("ar", "العربية", rtl = true),
         Lang("es", "Español"), Lang("de", "Deutsch"), Lang("zh", "中文"), Lang("tr", "Türkçe"),
         Lang("fr", "Français"), Lang("it", "Italiano"), Lang("pt", "Português"),
+        Lang("hi", "हिन्दी"), Lang("id", "Bahasa Indonesia"), Lang("bn", "বাংলা"),
     )
 
     var code by mutableStateOf("ru")
@@ -47,6 +49,169 @@ object I18n {
     private var byPrefix: Map<String, List<Template>> = emptyMap()
     private var generic: List<Template> = emptyList()
     private val cache = HashMap<String, String>()
+
+    /** Онлайн-перевод для языков без встроенного файла: включается пользователем, кэш хранится на устройстве. */
+    var online by mutableStateOf(false)
+        private set
+    private var onlineCache: HashMap<String, String> = HashMap()
+    private var onlineCacheFile: java.io.File? = null
+    private val onlinePending = HashSet<String>()
+    private val onlineExec = java.util.concurrent.Executors.newSingleThreadExecutor()
+
+    private fun onlineFile(ctx: Context): java.io.File =
+        java.io.File(ctx.filesDir, "i18n_online_$code.json")
+
+    private fun loadOnlineCache() {
+        val ctx = app ?: return
+        val f = onlineFile(ctx)
+        onlineCacheFile = f
+        onlineCache = HashMap()
+        runCatching {
+            if (f.exists()) {
+                val o = JSONObject(f.readText())
+                for (k in o.keys()) onlineCache[k] = o.getString(k)
+            }
+        }
+    }
+
+    private fun saveOnlineCache() {
+        val f = onlineCacheFile ?: return
+        runCatching {
+            f.writeText(JSONObject(onlineCache as Map<*, *>).toString())
+        }
+    }
+
+    fun setOnlineEnabled(v: Boolean) {
+        online = v
+        prefs?.edit()?.putBoolean("online_$code", v)?.apply()
+        if (v) loadOnlineCache()
+    }
+
+    /** Очередь онлайн-перевода: строка переводится фоном и запоминается в кэш на устройстве. */
+    private fun requestOnline(s: String) {
+        if (!online || s in onlinePending || s in onlineCache) return
+        if (s.length > 500) return
+        val target = all.firstOrNull { it.code == code }?.code ?: return
+        onlinePending += s
+        onlineExec.execute {
+            val tr = translateOnce(s, target)
+            synchronized(onlineCache) {
+                onlinePending -= s
+                if (tr != null && tr.isNotBlank()) {
+                    onlineCache[s] = tr
+                    if (onlineCache.size > 8000) {
+                        val it = onlineCache.entries.iterator()
+                        repeat(2000) { if (it.hasNext()) { it.next(); it.remove() } }
+                    }
+                    saveOnlineCache()
+                    android.os.Handler(android.os.Looper.getMainLooper()).post { cache.clear() }
+                }
+            }
+        }
+    }
+
+    fun onlineStatus(): Boolean = online
+
+    /** Движки онлайн-перевода. */
+    val engines = listOf("google", "deepl", "libre")
+
+    fun engine(): String = prefs?.getString("engine_$code", "google") ?: "google"
+
+    fun setEngine(e: String) {
+        prefs?.edit()?.putString("engine_$code", e)?.apply()
+    }
+
+    fun apiKey(): String = prefs?.getString("apikey_$code", "") ?: ""
+
+    fun setApiKey(k: String) {
+        prefs?.edit()?.putString("apikey_$code", k)?.apply()
+    }
+
+    fun serverUrl(): String = prefs?.getString("server_$code", "https://translate.disroot.org") ?: "https://translate.disroot.org"
+
+    fun setServerUrl(u: String) {
+        prefs?.edit()?.putString("server_$code", u.trim().removeSuffix("/"))?.apply()
+    }
+
+    private fun deeplTarget(lang: String): String = when (lang) {
+        "en" -> "EN-US"; "pt" -> "PT-BR"
+        else -> lang.uppercase()
+    }
+
+    /** Ручное исправление перевода: сохраняется в кэш онлайн-перевода и имеет приоритет над файлом. */
+    fun overrideTranslation(ru: String, translated: String) {
+        if (translated.isBlank()) return
+        if (onlineCacheFile == null) loadOnlineCache()
+        onlineCache[ru] = translated
+        saveOnlineCache()
+        cache.clear()
+    }
+
+    /** Экспорт кэша онлайн-перевода текущего языка в JSON-строку. */
+    fun exportOnlineCache(): String {
+        if (onlineCacheFile == null) loadOnlineCache()
+        return JSONObject(onlineCache as Map<*, *>).toString(1)
+    }
+
+    /** Импорт кэша онлайн-перевода из JSON-строки (добавляется к существующему). Возвращает число строк. */
+    fun importOnlineCache(json: String): Int {
+        if (onlineCacheFile == null) loadOnlineCache()
+        var n = 0
+        runCatching {
+            val o = JSONObject(json)
+            for (k in o.keys()) { onlineCache[k] = o.getString(k); n++ }
+        }
+        if (n > 0) { saveOnlineCache(); cache.clear() }
+        return n
+    }
+
+    private fun translateOnce(s: String, target: String): String? {
+        val key = apiKey()
+        return when (engine()) {
+            "deepl" -> runCatching {
+                val host = if (key.endsWith(":fx")) "api-free.deepl.com" else "api.deepl.com"
+                val body = "auth_key=" + java.net.URLEncoder.encode(key, "UTF-8") +
+                    "&text=" + java.net.URLEncoder.encode(s, "UTF-8") +
+                    "&target_lang=" + deeplTarget(target)
+                val req = java.net.URL("https://$host/v2/translate").openConnection() as java.net.HttpURLConnection
+                req.requestMethod = "POST"
+                req.doOutput = true
+                req.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
+                req.connectTimeout = 8000
+                req.readTimeout = 8000
+                req.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
+                val resp = JSONObject(req.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() })
+                resp.getJSONArray("translations").getJSONObject(0).getString("text")
+            }.getOrNull()
+            "libre" -> runCatching {
+                val body = JSONObject(mapOf("q" to s, "source" to "ru", "target" to target, "format" to "text"))
+                if (key.isNotBlank()) body.put("api_key", key)
+                val req = java.net.URL(serverUrl() + "/translate").openConnection() as java.net.HttpURLConnection
+                req.requestMethod = "POST"
+                req.doOutput = true
+                req.setRequestProperty("Content-Type", "application/json")
+                req.connectTimeout = 8000
+                req.readTimeout = 8000
+                req.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
+                val resp = JSONObject(req.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() })
+                resp.getString("translatedText")
+            }.getOrNull()
+            else -> runCatching {
+                val q = java.net.URLEncoder.encode(s, "UTF-8")
+                val req = java.net.URL(
+                    "https://translate.googleapis.com/translate_a/single?client=gtx&sl=ru&tl=$target&dt=t&q=$q"
+                ).openConnection() as java.net.HttpURLConnection
+                req.setRequestProperty("User-Agent", "Mozilla/5.0")
+                req.connectTimeout = 8000
+                req.readTimeout = 8000
+                val text = req.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+                val arr = JSONArray(text)
+                val sb = StringBuilder()
+                for (i in 0 until arr.getJSONArray(0).length()) sb.append(arr.getJSONArray(0).getJSONArray(i).getString(0))
+                sb.toString()
+            }.getOrNull()
+        }
+    }
 
     private class Template(val rx: Regex, val out: String, val prefix: String)
 
@@ -77,6 +242,8 @@ object I18n {
             chosen = true
             apply(saved)
         }
+        online = p.getBoolean("online_$code", false)
+        if (online) loadOnlineCache()
     }
 
     fun choose(lang: String) {
@@ -128,6 +295,11 @@ object I18n {
         if (code == "ru" || s.isEmpty()) return s
         exact[s]?.let { return it }
         cache[s]?.let { return it }
+        if (online) {
+            synchronized(onlineCache) { onlineCache[s] }?.let { return it }
+            if (!s.contains("${'$'}{")) requestOnline(s)
+            return s
+        }
         var res = s
         val cands = (byPrefix[s.take(5)] ?: emptyList()) + generic
         for (t in cands) {

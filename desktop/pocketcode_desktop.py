@@ -2720,6 +2720,28 @@ class Handler(BaseHTTPRequestHandler):
                 self.send(fx.standup_report(str(b.get("project") or HOME), b.get("days") or 1))
             elif path == "/api/tools/dups":
                 self.send(fx.dup_detect(str(b.get("project") or HOME), b.get("top") or 10))
+            elif path == "/api/tools/dashboard":
+                self.send(fx.dashboard(str(b.get("project") or HOME), b.get("days") or 7))
+            elif path == "/api/tools/todos":
+                self.send(fx.todo_scan(str(b.get("project") or HOME)))
+            elif path == "/api/tools/complexity":
+                self.send(fx.complexity_py(str(b.get("project") or HOME)))
+            elif path == "/api/tools/deadcode":
+                self.send(fx.dead_code_py(str(b.get("project") or HOME)))
+            elif path == "/api/tools/coverage":
+                self.send(fx.coverage_gaps(str(b.get("project") or HOME)))
+            elif path == "/api/tools/changelog":
+                self.send(fx.changelog(str(b.get("project") or HOME)))
+            elif path == "/api/tools/versionbump":
+                self.send(fx.project_version_bump(str(b.get("project") or HOME), b.get("part") or "patch"))
+            elif path == "/api/tools/export":
+                self.send(fx.project_export(str(b.get("project") or HOME)))
+            elif path == "/api/tools/outline":
+                self.send(fx.outline_py(str(b.get("text") or "")))
+            elif path == "/api/flags/get":
+                self.send(fx.flags_get(str(b.get("project") or HOME)))
+            elif path == "/api/flags/set":
+                self.send(fx.flags_set(str(b.get("project") or HOME), str(b.get("id") or ""), bool(b.get("enabled"))))
             elif path == "/api/streak":
                 self.send(fx.streak_and_goal(str(b.get("project") or HOME), b.get("goal")))
             elif path == "/api/digest":

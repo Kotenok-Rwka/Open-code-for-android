@@ -16,10 +16,17 @@ import com.pocketcode.TaskDedup
 import com.pocketcode.VersionCompare
 import com.pocketcode.Progress
 import com.pocketcode.RuDate
+import com.pocketcode.Settings
+import com.pocketcode.TechDebt
+import com.pocketcode.Complexity
+import com.pocketcode.VersionBump
+import com.pocketcode.Changelog
+import com.pocketcode.CoverageGaps
+import com.pocketcode.Outline
 
-/** Экран «Инструменты проекта»: рабочие утилиты из Batch15–17. */
+/** Экран «Инструменты проекта»: рабочие утилиты из Batch15–18. */
 @Composable
-fun ProjectToolsScreen(onBack: () -> Unit) {
+fun ProjectToolsScreen(onBack: () -> Unit, settings: Settings = Settings()) {
     var result by remember { mutableStateOf("") }
 
     fun run(label: String, value: String) { result = "$label\n\n$value" }
@@ -120,6 +127,61 @@ fun ProjectToolsScreen(onBack: () -> Unit) {
                 val expanded = EditorStats.expandTabs(result.ifEmpty { "вставь текст в результат выше" })
                 run("Табы → пробелы", expanded)
             }) { Text("Табы → пробелы в результате") }
+
+            // Batch 18: техдолг (переключается в настройках)
+            if (settings.todoScan) {
+                var code by remember { mutableStateOf("") }
+                OutlinedTextField(code, { code = it }, label = { Text("Вставь код для поиска TODO/FIXME") }, modifier = Modifier.fillMaxWidth())
+                TextButton(onClick = {
+                    val items = TechDebt.scan(code)
+                    run("Техдолг", if (items.isEmpty()) "меток не найдено"
+                        else items.joinToString("\n") { "${it.line}: [${it.kind}] ${it.text}" })
+                }) { Text("Найти TODO/FIXME") }
+            }
+
+            // Batch 18: сложность (переключается в настройках)
+            if (settings.secretGate || settings.todoScan) {
+                TextButton(onClick = {
+                    val cc = Complexity.ofBody(result.ifEmpty { "if (a) b else c" })
+                    run("Сложность", "cc=$cc — ${Complexity.label(cc)}")
+                }) { Text("Сложность текста в результате") }
+            }
+
+            // Batch 18: версия +1
+            var ver by remember { mutableStateOf("1.0.0") }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                OutlinedTextField(ver, { ver = it }, label = { Text("Версия") }, modifier = Modifier.weight(1f))
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf("major", "minor", "patch").forEach { part ->
+                    TextButton(onClick = {
+                        run("Bump $part", VersionBump.bump(ver, part) ?: "не разобрать версию")
+                    }) { Text("+$part") }
+                }
+            }
+
+            // Batch 18: outline
+            TextButton(onClick = {
+                val syms = Outline.scan(result.ifEmpty { "class A {\n    fun b() {}\n}" })
+                run("Оглавление", if (syms.isEmpty()) "символов не найдено"
+                    else syms.joinToString("\n") { "${it.line}: ${it.kind} ${it.name}" })
+            }) { Text("Оглавление кода в результате") }
+
+            // Batch 18: покрытие тестами
+            var files by remember { mutableStateOf("") }
+            OutlinedTextField(files, { files = it }, label = { Text("Файлы проекта, по одному в строке") }, modifier = Modifier.fillMaxWidth())
+            TextButton(onClick = {
+                val gaps = CoverageGaps.untested(files.lines().filter { it.isNotBlank() })
+                run("Без тестов", if (gaps.isEmpty()) "у всех модулей есть тесты" else gaps.joinToString("\n"))
+            }) { Text("Какие модули без тестов") }
+
+            // Batch 18: changelog
+            var subjects by remember { mutableStateOf("") }
+            OutlinedTextField(subjects, { subjects = it }, label = { Text("Темы коммитов, по одной в строке") }, modifier = Modifier.fillMaxWidth())
+            TextButton(onClick = {
+                val g = Changelog.group(subjects.lines().filter { it.isNotBlank() })
+                run("Changelog", Changelog.markdown(g))
+            }) { Text("Собрать changelog") }
         }
     }
 }

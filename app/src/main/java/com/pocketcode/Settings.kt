@@ -74,6 +74,14 @@ data class Settings(
     /** Адрес локального маршрутизатора моделей (9Router / similar), пусто — выключено. */
     val routerBaseUrl: String = "",
     val routerApiKey: String = "",
+    /** Проверка секретов перед коммитом. */
+    val secretGate: Boolean = true,
+    /** Сканер TODO/FIXME в инструментах проекта. */
+    val todoScan: Boolean = true,
+    /** Живая сессия шелла доступна в терминале. */
+    val shellSession: Boolean = true,
+    /** Хаптик-отклик на завершение операций. */
+    val haptics: Boolean = true,
 )
 
 const val DEFAULT_PROJECT = "main"
@@ -148,6 +156,10 @@ class SettingsStore(context: Context) {
             executionProfileId = prefs.getString("executionProfileId", d.executionProfileId) ?: "",
             routerBaseUrl = prefs.getString("routerBaseUrl", d.routerBaseUrl) ?: "",
             routerApiKey = prefs.getString("routerApiKey", d.routerApiKey) ?: "",
+            secretGate = prefs.getBoolean("secretGate", d.secretGate),
+            todoScan = prefs.getBoolean("todoScan", d.todoScan),
+            shellSession = prefs.getBoolean("shellSession", d.shellSession),
+            haptics = prefs.getBoolean("haptics", d.haptics),
         )
     }
 
@@ -359,6 +371,10 @@ class SettingsStore(context: Context) {
             .putString("executionProfileId", s.executionProfileId)
             .putString("routerBaseUrl", s.routerBaseUrl)
             .putString("routerApiKey", s.routerApiKey)
+            .putBoolean("secretGate", s.secretGate)
+            .putBoolean("todoScan", s.todoScan)
+            .putBoolean("shellSession", s.shellSession)
+            .putBoolean("haptics", s.haptics)
             .apply()
     }
 }

@@ -27,6 +27,8 @@ data class ToonVoiceConfig(val baseUrl: String, val model: String, val key: Stri
 interface ToonVoice {
     /** Озвучивает текст; [index] — номер героя (у каждого свой голос или высота тона). */
     suspend fun speak(text: String, index: Int): Pcm
+    /** Язык следующей реплики (BCP-47, напр. «en»); null — как раньше, русский. */
+    var nextLang: String? = null
     fun close() {}
 }
 
@@ -44,7 +46,11 @@ class SystemToonVoice(private val ctx: Context, private val engine: String, priv
             }, engine.ifEmpty { null })
             cont.invokeOnCancellation { runCatching { made?.shutdown() } }
         } ?: throw IOException("Системный синтезатор речи не запустился. Проверьте движок в настройках ассистента.")
-        runCatching { t.setLanguage(Locale("ru", "RU")) }
+        runCatching {
+            val lang = nextLang ?: "ru"
+            val installed = runCatching { t.availableLanguages.orEmpty().map { it.toString() } }.getOrElse { emptyList() }
+            t.setLanguage(ToonVoiceLang.pickLocale(lang, installed))
+        }
         tts = t
         return t
     }

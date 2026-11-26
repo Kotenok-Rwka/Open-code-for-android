@@ -4,6 +4,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.LinearGradient
 import android.graphics.Paint
+import android.graphics.RadialGradient
 import android.graphics.Path
 import android.graphics.RectF
 import android.graphics.Shader
@@ -34,6 +35,7 @@ class ToonFrame(
 class ToonDraw(val w: Int = 720, val h: Int = 1280) {
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private val line = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND }
+    private val paintBmp = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
     private val textFill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE; typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD); textAlign = Paint.Align.CENTER }
     private val textStroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.BLACK; typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD); textAlign = Paint.Align.CENTER
@@ -42,20 +44,148 @@ class ToonDraw(val w: Int = 720, val h: Int = 1280) {
     private val rect = RectF()
     private val path = Path()
 
+    /** Batch23: детализированный рендер — узор обоев, шторы, тени, свет, виньетка. */
+    var detailed: Boolean = true
+    /** Палитры сцен (можно доработать и сохранить через ToonRichLib). */
+    var palettes: List<ToonRich> = ToonRichLib.defaults()
+    /** Batch24: реквизит сцены (стол, окно, чашка, свои PNG). */
+    var props: List<ToonProp> = emptyList()
+    /** Говорящий держит чашку у рта. */
+    var holdsCup: Boolean = false
+    /** Batch26: тонировка времени суток и погода. */
+    var sceneFx: ToonSceneFx = ToonSceneFx()
+    private val propBitmaps = HashMap<String, android.graphics.Bitmap?>()
 
     fun draw(c: Canvas, f: ToonFrame) {
         background(c, f.scene, f.t)
+        if (detailed) richDetails(c, f.scene, f.t)
+        drawProps(c)
         val n = f.heroes.size.coerceAtMost(4)
         for (i in 0 until n) {
             val cx = w * (i + 1f) / (n + 1f)
             val talking = f.heroes[i] == f.speaker
             val look = f.looks.getOrNull(i) ?: ToonLooks.of(f.heroes[i], i)
             val sc = (if (n >= 3) 0.8f else 1f) * look.scale
-            hero(c, look, cx, h * 0.58f + (1f - look.scale) * 200f, sc, f.t + i * 0.7, talking, if (talking) f.mouthOpen else 0f, if (talking) f.mouthWidth else 0f, if (talking) f.mood else Mood.CALM)
+            if (detailed) heroShadow(c, cx, sc)
+            hero(c, look, cx, h * 0.58f + (1f - look.scale) * 200f, sc, f.t + i * 0.7, talking, if (talking) f.mouthOpen else 0f, if (talking) f.mouthWidth else 0f, if (talking) f.mood else Mood.CALM, talking && holdsCup)
         }
         if (f.title.isNotEmpty() && f.t < 2.2) title(c, f.title, f.t)
         if (f.subtitle.isNotEmpty() && f.choiceAnim < 0f) subtitle(c, f.subtitle)
         if (f.choice != null && f.choiceAnim >= 0f) choice(c, f.choice, f.choiceAnim, f.cta)
+        if (detailed) vignette(c)
+        sceneWeather(c, f.t)
+    }
+
+    // ---------- Batch23: детали богатого фона ----------
+
+    private fun richOf(s: ToonScene): ToonRich? = palettes.firstOrNull { it.scene == s }
+
+    private fun richDetails(c: Canvas, s: ToonScene, t: Double) {
+        val p = richOf(s) ?: return
+        val floorY = h * 0.74f
+        // тёмная сцена: кладка стен + луч фонаря + дозиметр (Batch25)
+        if (s == ToonScene.BUNKER) {
+            fill.color = 0x66000000
+            for (b in ToonDark.bricks(w, floorY + 40f)) {
+                fill.color = 0x3D000000
+                c.drawRoundRect(RectF(b[0], b[1], b[0] + b[2], b[1] + b[3]), 4f, 4f, fill)
+            }
+            // луч фонаря от героя справа к центру, с плывущей пылью
+            val bm = ToonDark.beam(w * 0.82f, h * 0.42f, w * 0.38f, h * 0.62f)
+            fill.shader = LinearGradient(bm[0], bm[1], bm[2], bm[3],
+                0x66FFF0A8, 0x00000000, Shader.TileMode.CLAMP)
+            path.reset()
+            path.moveTo(bm[0], bm[1])
+            val ang = Math.toRadians(bm[4].toDouble())
+            val dx = bm[2] - bm[0]; val dy = bm[3] - bm[1]
+            val d = kotlin.math.sqrt(dx * dx + dy * dy)
+            val perpX = -dy / d; val perpY = dx / d
+            val spread = (Math.tan(ang) * d).toFloat()
+            path.lineTo(bm[2] + perpX * spread, bm[3] + perpY * spread)
+            path.lineTo(bm[2] - perpX * spread, bm[3] - perpY * spread)
+            path.close()
+            c.drawPath(path, fill)
+            fill.shader = null
+            fill.color = 0x88FFF0A8
+            for ((dustX, dustY) in ToonDark.dust(bm, t)) c.drawCircle(dustX, dustY, 3f, fill)
+            // дозиметр в руке: циферблат со шкалой и дрожащей стрелкой
+            val dcx = w * 0.80f; val dcy = h * 0.55f
+            fill.color = 0xFFE9E4D8
+            c.drawCircle(dcx, dcy, 74f, fill)
+            line.color = 0xFF22262E; line.strokeWidth = 6f
+            c.drawCircle(dcx, dcy, 74f, line)
+            line.strokeWidth = 4f
+            for ((tx, ty) in ToonDark.dialTicks(dcx, dcy, 62f)) c.drawLine(dcx, dcy, tx, ty, line)
+            // опасная зона красной дугой
+            line.color = 0xFFD23B2E; line.strokeWidth = 8f
+            c.drawArc(RectF(dcx - 62f, dcy - 62f, dcx + 62f, dcy + 62f), ToonDark.dangerArc().second, ToonDark.dangerArc().first - ToonDark.dangerArc().second, false, line)
+            val na = Math.toRadians(ToonDark.needleAngle(t, 0.72f).toDouble())
+            line.color = 0xFF22262E; line.strokeWidth = 6f
+            c.drawLine(dcx, dcy, dcx + (Math.cos(na) * 52f).toFloat(), dcy - (Math.sin(na) * 52f).toFloat(), line)
+        }
+        // узор обоев на стене
+        if (p.wallpaper != 0 && s != ToonScene.BUNKER) {
+            fill.color = p.wallpaper
+            fill.alpha = 42
+            for ((tx, ty) in ToonRichGeom.wallpaperTiles(w, h, 64)) {
+                if (ty > floorY - 20f) continue
+                path.reset()
+                path.moveTo(tx, ty - 9f); path.lineTo(tx + 9f, ty); path.lineTo(tx, ty + 9f); path.lineTo(tx - 9f, ty)
+                path.close()
+                c.drawPath(path, fill)
+            }
+            fill.alpha = 255
+        }
+        // плинтус
+        fill.color = p.baseboard
+        c.drawRect(0f, floorY - 14f, w.toFloat(), floorY, fill)
+        // картины и часы на стене (в «домашних» сценах, не в бункере)
+        if ((s == ToonScene.ROOM || s == ToonScene.GAS) && s != ToonScene.BUNKER) {
+            val fr = ToonRichGeom.pictureFrame(w, h, w * 0.22f, h * 0.26f, 1f)
+            fill.color = p.accent
+            c.drawRect(fr[0], fr[1], fr[2], fr[3], fill)
+            fill.color = 0xFF3A2A1A.toInt()
+            c.drawRect(fr[0] + 12f, fr[1] + 12f, fr[2] - 12f, fr[3] - 12f, fill)
+            // часы с качающимся маятником
+            val cx = w * 0.80f
+            val cy = h * 0.20f
+            fill.color = p.baseboard
+            c.drawCircle(cx, cy, 46f, fill)
+            line.color = 0xFF3A2A1A.toInt(); line.strokeWidth = 5f
+            val ang = Math.toRadians(ToonRichGeom.sway(t).toDouble())
+            c.drawLine(cx, cy, cx + (Math.sin(ang) * 34f).toFloat(), cy + (Math.cos(ang) * 34f).toFloat(), line)
+        }
+        // шторы по бокам
+        val cw = w * 0.09f
+        for (side in 0..1) {
+            val edgeX = if (side == 0) 0f else w - cw
+            fill.color = p.curtain
+            c.drawRect(edgeX, 0f, edgeX + cw, h * 0.62f, fill)
+            fill.color = p.curtainDark
+            for (fx in ToonRichGeom.curtainFolds(edgeX, cw, 4)) {
+                c.drawLine(fx, 0f, fx, h * 0.62f, line.apply { this.color = p.curtainDark; strokeWidth = 6f })
+            }
+        }
+        // тёплый свет лампы сверху (в бункере вместо него — луч фонаря)
+        if (p.lamp != 0 && s != ToonScene.BUNKER) {
+            fill.shader = RadialGradient(w / 2f, 0f, ToonRichGeom.lampRadius(w, 0.8f),
+                (p.lamp and 0xFFFFFF) or 0x33000000, 0x00000000, Shader.TileMode.CLAMP)
+            c.drawRect(0f, 0f, w.toFloat(), h * 0.7f, fill)
+            fill.shader = null
+        }
+    }
+
+    private fun heroShadow(c: Canvas, cx: Float, scale: Float) {
+        val sh = ToonRichGeom.heroShadow(cx, h * 0.92f, scale)
+        fill.color = 0x55000000
+        c.drawOval(RectF(sh[0] - sh[2], sh[1] - sh[3], sh[0] + sh[2], sh[1] + sh[3]), fill)
+    }
+
+    private fun vignette(c: Canvas) {
+        fill.shader = RadialGradient(w / 2f, h / 2f, w * 0.95f,
+            0x00000000, (ToonRichGeom.vignetteAlpha(w * 0.08f, h * 0.08f, w, h) shl 24), Shader.TileMode.CLAMP)
+        c.drawRect(0f, 0f, w.toFloat(), h.toFloat(), fill)
+        fill.shader = null
     }
 
     // ---------- фоны ----------
@@ -191,11 +321,12 @@ class ToonDraw(val w: Int = 720, val h: Int = 1280) {
 
     // ---------- герой ----------
 
-    private fun hero(c: Canvas, look: ToonLook, cx: Float, baseY: Float, scale: Float, t: Double, talking: Boolean, open: Float, width: Float, mood: Mood) {
+    private fun hero(c: Canvas, look: ToonLook, cx: Float, baseY: Float, scale: Float, t: Double, talking: Boolean, open: Float, width: Float, mood: Mood, holds: Boolean = false) {
         val skin = look.skin
         val hair = look.hair
         val shirt = look.shirt
-        val bob = (sin(t * 2.2) * 4.0 + (if (talking) abs(sin(t * 7.0)) * 6.0 * open else 0.0)).toFloat()
+        val pose = ToonAnim.pose(t, talking, open, ToonMood.valueOf(mood.name), holds)
+        val bob = pose.breath
         c.save()
         c.translate(cx, baseY + bob)
         c.scale(scale, scale)
@@ -211,16 +342,34 @@ class ToonDraw(val w: Int = 720, val h: Int = 1280) {
         // полоска на одежде, чтобы герои сильнее различались
         fill.color = Color.argb(60, 255, 255, 255)
         c.drawRect(-78f, 40f, 78f, 62f, fill)
-        // руки; говорящий жестикулирует
-        val wave = if (talking) (sin(t * 5.0) * 14.0).toFloat() else 0f
-        fill.color = shirt
-        c.drawRoundRect(RectF(-108f, -20f, -74f, 120f + wave), 17f, 17f, fill)
-        c.drawRoundRect(RectF(74f, -20f, 108f, 120f - wave), 17f, 17f, fill)
-        fill.color = skin
-        c.drawCircle(-91f, 126f + wave, 20f, fill)
-        c.drawCircle(91f, 126f - wave, 20f, fill)
+        // руки с суставами по реалистичным пропорциям (ToonBody): плечо→локоть→кисть
+        val lSh = pose.arms[0]; val lEl = pose.arms[1]; val rSh = pose.arms[2]; val rEl = pose.arms[3]
+        fun arm(sideSign: Float, shoulderDeg: Float, elbowDeg: Float) {
+            // локальные координаты героя: пол ≈ 316, рост ≈ 616 (от макушки -300)
+            val sx = sideSign * ToonBody.SHOULDER_W / 2 * 616f
+            val sy = -300f + (1f - ToonBody.SHOULDER) * 616f
+            val upper = 616f * ToonBody.UPPER_ARM
+            val fore = 616f * ToonBody.FOREARM
+            val a1 = Math.toRadians((180f + shoulderDeg * sideSign).toDouble())
+            val ex = sx + (Math.sin(a1) * upper).toFloat() * sideSign
+            val ey = sy + (Math.cos(a1) * upper).toFloat()
+            val a2 = a1 + Math.toRadians((elbowDeg * sideSign).toDouble())
+            val hx = ex + (Math.sin(a2) * fore).toFloat() * sideSign
+            val hy = ey + (Math.cos(a2) * fore).toFloat()
+            line.color = shirt; line.strokeWidth = 24f
+            c.drawLine(sx, sy, ex, ey, line)
+            c.drawLine(ex, ey, hx, hy, line)
+            fill.color = skin
+            c.drawCircle(hx, hy, 17f, fill)
+            if (holds && sideSign > 0) cup(c, hx, hy - 14f)
+        }
+        arm(-1f, lSh, lEl)
+        arm(1f, rSh, rEl)
         // шея
         c.drawRect(-18f, -62f, 18f, -30f, fill)
+        // голова с лёгким наклоном (поворот вокруг шеи)
+        c.save()
+        c.rotate(pose.headTilt, 0f, -30f)
         // длинные волосы сзади головы
         fill.color = hair
         if (look.style == HairStyle.LONG) c.drawRoundRect(RectF(-92f, -190f, 92f, -20f), 60f, 60f, fill)
@@ -259,17 +408,17 @@ class ToonDraw(val w: Int = 720, val h: Int = 1280) {
                 c.drawPath(path, fill)
             }
         }
-        // глаза с морганием; удивлённый смотрит шире
-        val blink = (t % 3.4) in 3.25..3.4
+        // глаза с плавным морганием (фаза Batch24); удивлённый смотрит шире
+        val eyeK = pose.eyeOpen
         val wide = if (mood == Mood.WOW) 8f else 0f
         fill.color = Color.WHITE
-        val eyeH = if (blink) 3f else 22f + wide
+        val eyeH = 3f + (22f + wide - 3f) * eyeK
         c.drawOval(RectF(-46f, -140f - eyeH / 2, -14f, -140f + eyeH / 2), fill)
         c.drawOval(RectF(14f, -140f - eyeH / 2, 46f, -140f + eyeH / 2), fill)
-        if (!blink) {
+        if (eyeK > 0.25f) {
             fill.color = 0xFF1B1B1B.toInt()
-            c.drawCircle(-30f, -139f, 7f, fill)
-            c.drawCircle(30f, -139f, 7f, fill)
+            c.drawCircle(-30f, -139f, 7f * eyeK.coerceAtLeast(0.4f), fill)
+            c.drawCircle(30f, -139f, 7f * eyeK.coerceAtLeast(0.4f), fill)
         }
         if (look.glasses) {
             line.color = 0xFF222222.toInt(); line.strokeWidth = 5f
@@ -321,6 +470,156 @@ class ToonDraw(val w: Int = 720, val h: Int = 1280) {
         if (open > 0.25f && width > -0.4f) {
             fill.color = Color.WHITE
             c.drawRoundRect(RectF(cx - mw * 0.7f, cy - mh / 2 + 1f, cx + mw * 0.7f, cy - mh / 2 + 9f), 3f, 3f, fill)
+        }
+    }
+
+    // ---------- Batch24: чашка и реквизит ----------
+
+    /** Чашка в кисти руки. */
+    private fun cup(c: Canvas, hx: Float, hy: Float) {
+        fill.color = 0xFFE8E4DC
+        c.drawRoundRect(RectF(hx - 20f, hy - 22f, hx + 20f, hy + 16f), 6f, 6f, fill)
+        line.color = 0xFFB9B2A6; line.strokeWidth = 6f
+        c.drawCircle(hx + 26f, hy - 2f, 10f, line)
+        fill.color = 0xFF6B4A32
+        c.drawOval(RectF(hx - 16f, hy - 20f, hx + 16f, hy - 12f), fill)
+    }
+
+    /** Нарисовать весь реквизит сцены позади героев. */
+    private fun drawProps(c: Canvas) {
+        val floorY = h * 0.74f
+        for (p in props) {
+            val px = w * p.x
+            val py = h * p.y
+            when (p.kind) {
+                ToonProp.Kind.TABLE -> {
+                    fill.color = 0xFF8A5A3B
+                    c.drawRoundRect(RectF(px - 130f, py - 14f, px + 130f, py + 10f), 6f, 6f, fill)
+                    c.drawRect(px - 100f, py, px - 84f, floorY, fill)
+                    c.drawRect(px + 84f, py, px + 100f, floorY, fill)
+                }
+                ToonProp.Kind.CHAIR -> {
+                    fill.color = 0xFF7A4E33
+                    c.drawRoundRect(RectF(px - 46f, py - 12f, px + 46f, py + 10f), 6f, 6f, fill)
+                    c.drawRoundRect(RectF(px - 46f, py - 120f, px + 46f, py - 96f), 8f, 8f, fill)
+                    c.drawRect(px - 40f, py, px - 26f, floorY, fill)
+                    c.drawRect(px + 26f, py, px + 40f, floorY, fill)
+                }
+                ToonProp.Kind.WINDOW -> {
+                    fill.color = 0xFFBFE6F7
+                    c.drawRoundRect(RectF(px - 90f, py - 120f, px + 90f, py + 90f), 8f, 8f, fill)
+                    line.color = 0xFFE8D8C0; line.strokeWidth = 12f
+                    c.drawRoundRect(RectF(px - 90f, py - 120f, px + 90f, py + 90f), 8f, 8f, line)
+                    c.drawLine(px, py - 120f, px, py + 90f, line)
+                    c.drawLine(px - 90f, py - 15f, px + 90f, py - 15f, line)
+                }
+                ToonProp.Kind.LAMP -> {
+                    fill.color = 0xFFE4B04A
+                    path.reset()
+                    path.moveTo(px - 60f, py - 150f); path.lineTo(px + 60f, py - 150f); path.lineTo(px + 38f, py - 110f); path.lineTo(px - 38f, py - 110f)
+                    path.close(); c.drawPath(path, fill)
+                    line.color = 0xFF6B5A3B; line.strokeWidth = 10f
+                    c.drawLine(px, py - 110f, px, floorY, line)
+                    c.drawRoundRect(RectF(px - 50f, floorY - 10f, px + 50f, floorY + 8f), 8f, 8f, fill)
+                }
+                ToonProp.Kind.TV -> {
+                    fill.color = 0xFF22262E
+                    c.drawRoundRect(RectF(px - 110f, py - 80f, px + 110f, py + 70f), 8f, 8f, fill)
+                    fill.color = 0xFF5F86B0
+                    c.drawRoundRect(RectF(px - 96f, py - 66f, px + 96f, py + 56f), 4f, 4f, fill)
+                    c.drawRect(px - 14f, py + 70f, px + 14f, floorY, fill)
+                }
+                ToonProp.Kind.PLANT -> {
+                    fill.color = 0xFFB0603C
+                    path.reset()
+                    path.moveTo(px - 44f, py - 60f); path.lineTo(px + 44f, py - 60f); path.lineTo(px + 30f, floorY); path.lineTo(px - 30f, floorY)
+                    path.close(); c.drawPath(path, fill)
+                    fill.color = 0xFF3E7A44
+                    for (leaf in listOf(-38f to -140f, 0f to -165f, 38f to -140f, -20f to -110f, 22f to -112f)) {
+                        c.drawOval(RectF(px + leaf.first - 18f, py + leaf.second, px + leaf.first + 18f, py + leaf.second + 58f), fill)
+                    }
+                }
+                ToonProp.Kind.SHELF -> {
+                    fill.color = 0xFF8A5A3B
+                    c.drawRect(px - 90f, py, px + 90f, py + 12f, fill)
+                    for (i in 0..2) {
+                        fill.color = 0xFF4A7BA8
+                        val bx = px - 60f + i * 55f
+                        c.drawRect(bx, py - 44f, bx + 34f, py, fill)
+                    }
+                }
+                ToonProp.Kind.CUP -> { /* чашка рисуется в руке героя */ }
+                ToonProp.Kind.PICTURE -> {
+                    val fr = ToonRichGeom.pictureFrame(w, h, px, py, 0.9f)
+                    fill.color = 0xFFE4B04A
+                    c.drawRect(fr[0], fr[1], fr[2], fr[3], fill)
+                    fill.color = 0xFF7FA8C9
+                    c.drawRect(fr[0] + 10f, fr[1] + 10f, fr[2] - 10f, fr[3] - 10f, fill)
+                }
+                ToonProp.Kind.CUSTOM -> customBitmap(c, p, px, py, floorY)
+            }
+        }
+    }
+
+    /** Своя картинка пользователя: вписать в сцену с мягкой тенью. */
+    private fun customBitmap(c: Canvas, p: ToonProp, px: Float, py: Float, floorY: Float) {
+        val bmp = propBitmaps.getOrPut(p.path) { decodeProp(p.path) }
+        if (bmp == null) {
+            // картинка не найдена/не читается — рисуем «заглушку-рамку», чтобы кадр не ломался
+            fill.color = 0x55888888
+            c.drawRoundRect(RectF(px - 60f, py - 80f, px + 60f, py + 40f), 6f, 6f, fill)
+            return
+        }
+        val targetH = 260f * p.scale
+        val k = targetH / bmp.height
+        val bw = bmp.width * k
+        val bh = targetH
+        fill.color = 0x44000000
+        c.drawOval(RectF(px - bw / 2, floorY - 14f, px + bw / 2, floorY + 12f), fill)
+        c.drawBitmap(bmp, null, RectF(px - bw / 2, floorY - bh, px + bw / 2, floorY), paintBmp)
+    }
+
+    private fun decodeProp(path: String): android.graphics.Bitmap? = try {
+        val f = java.io.File(path)
+        if (f.isFile) android.graphics.BitmapFactory.decodeFile(f.absolutePath) else null
+    } catch (_: Exception) { null }
+
+    /** Тонировка времени суток + погодные частицы поверх всего кадра (Batch26). */
+    private fun sceneWeather(c: Canvas, t: Double) {
+        val tint = ToonSceneFx.tintOf(sceneFx.time)
+        if (tint != 0) {
+            fill.color = tint
+            c.drawRect(0f, 0f, w.toFloat(), h.toFloat(), fill)
+        }
+        when (sceneFx.weather) {
+            "дождь" -> {
+                line.color = 0x88AFCBE8.toInt(); line.strokeWidth = 4f
+                var i = 0L
+                val n = 40
+                while (i < n) {
+                    val s = (i * 2654435761L) and 0xFFFF
+                    val x = ((s % w) + t * 60 * ((s % 3) + 1)) % w
+                    val y = ((s * 7) % h + t * 900) % h
+                    c.drawLine(x.toFloat(), y.toFloat(), (x - 8).toFloat(), (y + 34).toFloat(), line)
+                    i++
+                }
+            }
+            "снег" -> {
+                fill.color = 0xCCFFFFFF
+                var i = 0L
+                val n = 46
+                while (i < n) {
+                    val s = (i * 2654435761L) and 0xFFFF
+                    val x = ((s % w) + sin(t * 0.9 + i) * 30) % w
+                    val y = ((s * 13) % h + t * 120 * ((s % 3) + 1)) % h
+                    c.drawCircle(x.toFloat(), y.toFloat(), 3f + (s % 4), fill)
+                    i++
+                }
+            }
+            "туман" -> {
+                fill.color = 0x55C8D0D8
+                c.drawRect(0f, h * 0.4f, w.toFloat(), h.toFloat(), fill)
+            }
         }
     }
 

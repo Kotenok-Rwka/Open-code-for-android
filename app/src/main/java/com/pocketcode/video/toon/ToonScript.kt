@@ -7,7 +7,8 @@ enum class ToonScene(val label: String, val words: List<String>) {
     ROOM("Комната", listOf("комната", "дом", "квартира", "room", "home")),
     CITY("Город", listOf("город", "улица", "вечер", "city", "street")),
     GAS("Заправка", listOf("заправка", "мотель", "трасса", "дорога", "gas", "road")),
-    TENT("Лагерь", listOf("палатка", "лагерь", "лес", "горы", "tent", "camp"));
+    TENT("Лагерь", listOf("палатка", "лагерь", "лес", "горы", "tent", "camp")),
+    BUNKER("Бункер/убежище", listOf("бункер", "убежище", "подвал", "темнота", "бомбоубежище", "бункере", "bunker", "dark"));
 
     companion object {
         fun fromWord(w: String?): ToonScene? {

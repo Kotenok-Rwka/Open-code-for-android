@@ -172,6 +172,9 @@ class PhoneTypeTool(phone: PhoneController, confirm: () -> PhoneConfirm) : Phone
         needsApproval(input)
         return "Ввести «" + input.str("text").orEmpty().take(60) + "»"
     }
+    // ввод текста в рискованное поле (сообщение, поиск, сумма) — как нажатие на него (Batch29)
+    override fun risky(input: JsonObject): Boolean =
+        input.node()?.let { PhoneSafety.riskyNode(phone.nodeById(it)) } ?: false
     override suspend fun run(input: JsonObject): String = act { phone.typeText(input.need("text"), input.node()) }
 }
 

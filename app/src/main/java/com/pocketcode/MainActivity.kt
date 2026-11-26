@@ -349,8 +349,7 @@ class MainActivity : ComponentActivity() {
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Chat, "Диалоги OpenCode", "Список бесед: открыть, закрепить, переименовать, удалить, начать новую") { openFrom(Screen.HUB_AGENT, Screen.OCSESSIONS) },
                                 com.pocketcode.ui.hubHeader("История и обучение"),
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.History, "История чатов", "Прошлые беседы, вернуться к любой") { openFrom(Screen.HUB_AGENT, Screen.SESSIONS) },
-                                com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Info, "Как работает нейронка", "Контекст, инструменты, размышления простыми словами") { openFrom(Screen.HUB_AGENT, Screen.HOWAI) },
-                            ),
+                                com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Info, "Как работает нейронка", "Контекст, инструменты, размышления простыми словами") { openFrom(Screen.HUB_AGENT, Screen.HOWAI) },                            ),
                             onSearch = { openFrom(screen, Screen.FIND) },
                         )
                     }
@@ -359,29 +358,29 @@ class MainActivity : ComponentActivity() {
                         com.pocketcode.ui.HubScreen(
                             "Ещё", "Настройки, телефон и приложение",
                             listOf(
-                                com.pocketcode.ui.hubHeader("Основное"),
-                                com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Sliders, "Настройки", "Тема и вид, безопасность, правила, общие параметры") { openFrom(Screen.HUB_MORE, Screen.SETTINGS) },
-                                com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Key, "Аккаунты сервисов", "ChatGPT, Claude, Gemini — подключение по токену") { openFrom(Screen.HUB_MORE, Screen.ACCOUNTS) },
-                                com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Shield, "Центр безопасности", "Все разрешения и режимы в одном месте") { openFrom(Screen.HUB_MORE, Screen.SECURITYCENTER) },
+                                com.pocketcode.ui.hubHeader("Разговор с ассистентом"),
+                                com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Sparkles, "Ассистент и голос", "Вызов вместо Google, живой режим, поиск, погода, память", if (com.pocketcode.assist.PocketAssistService.isDefault(this@MainActivity)) "вкл" else null) { openFrom(Screen.HUB_MORE, Screen.ASSISTANT) },
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Sparkles, "Напоминания", "Таймеры и уведомления, работают при закрытом приложении") { openFrom(Screen.HUB_MORE, Screen.REMINDERS) },
-                                com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Sparkles, "Умные функции", "Авто-режим, предохранитель, корзина, автовыбор модели, карта проекта", if (pocketApp.controller.rootAuto) "авто вкл" else null) { openFrom(Screen.HUB_MORE, Screen.SMART) },
-                                com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Terminal, "Среда Linux", "Установка мини-Linux, python, git, node", if (!pocketApp.controller.linuxInstalled && pocketApp.controller.linuxSupported) "не установлен" else null) { openFrom(Screen.HUB_MORE, Screen.LINUX) },
-                                com.pocketcode.ui.hubHeader("Вид и удобство"),
-                                com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Sparkles, "Оформление и темы", "14 палитр, свой цвет, шрифты, размеры, фоны, анимации") { openFrom(Screen.HUB_MORE, Screen.APPEARANCE) },
-                                com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Globe, "Язык интерфейса", com.pocketcode.ui.I18n.all.firstOrNull { it.code == com.pocketcode.ui.I18n.code }?.native ?: "") { openFrom(Screen.HUB_MORE, Screen.LANGUAGE) },
-                                com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Bolt, "Тактильные подсказки", "Вибрация на шагах агента и при ответе") { openFrom(Screen.HUB_MORE, Screen.RUMBLE) },
-                                com.pocketcode.ui.hubHeader("Расход и состояние"),
-                                com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Activity, "Использование и расход", "Токены, стоимость, изменения кода ИИ") { openFrom(Screen.HUB_MORE, Screen.USAGE) },
-                                com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Wrench, "Диагностика приложения", "Состояние приложения, компоненты, место") { openFrom(Screen.HUB_MORE, Screen.DIAG) },
-                                com.pocketcode.ui.hubHeader("Телефон и устройства"),
+                                com.pocketcode.ui.hubHeader("Телефон"),
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Phone, "Управление телефоном", "Агент смотрит на экран и нажимает: служба доступности, помощник, фон", if (pocketApp.controller.phoneMode.enabled) "вкл" else null) { openFrom(Screen.HUB_MORE, Screen.PHONE) },
-                                com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Sparkles, "Ассистент", "Вызов вместо Google, поиск в интернете, показ ответа и прогресса", if (com.pocketcode.assist.PocketAssistService.isDefault(this@MainActivity)) "вкл" else null) { openFrom(Screen.HUB_MORE, Screen.ASSISTANT) },
-                                com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Shield, "Root и Android", "Как дать агенту данные с телефона: четыре способа", if (pocketApp.controller.rootAuto) "авто-режим вкл" else if (pocketApp.controller.hostMode == "ask") "мост вкл" else null) { openFrom(Screen.HUB_MORE, Screen.ROOT) },
-                                com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Phone, "Устройства и ADB", "ADB, root, подключённые устройства") { openFrom(Screen.HUB_MORE, Screen.DEVICES) },
+                                com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Shield, "Root и доступ к данным", "Как дать агенту данные с телефона: четыре способа", if (pocketApp.controller.rootAuto) "авто-режим вкл" else if (pocketApp.controller.hostMode == "ask") "мост вкл" else null) { openFrom(Screen.HUB_MORE, Screen.ROOT) },
+                                com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Phone, "Устройства и ADB", "Подключённые устройства, отладка, диагностика") { openFrom(Screen.HUB_MORE, Screen.DEVICES) },
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Refresh, "Синхронизация устройств", "Файлы и задачи между телефонами") { openFrom(Screen.HUB_MORE, Screen.REMOTE) },
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Desktop, "Автосинхронизация с ПК", "Проекты и история между телефоном и компьютером") { openFrom(Screen.HUB_MORE, Screen.AUTOSYNC) },
+                                com.pocketcode.ui.hubHeader("Настройки и вид"),
+                                com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Sliders, "Настройки", "Безопасность, правила, общие параметры") { openFrom(Screen.HUB_MORE, Screen.SETTINGS) },
+                                com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Sparkles, "Оформление и темы", "14 палитр, свой цвет, шрифты, размеры, фоны, анимации") { openFrom(Screen.HUB_MORE, Screen.APPEARANCE) },
+                                com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Globe, "Язык интерфейса", com.pocketcode.ui.I18n.all.firstOrNull { it.code == com.pocketcode.ui.I18n.code }?.native ?: "") { openFrom(Screen.HUB_MORE, Screen.LANGUAGE) },
+                                com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Bolt, "Вибрация и отклик", "Тактильные подсказки на шагах агента и при ответе") { openFrom(Screen.HUB_MORE, Screen.RUMBLE) },
+                                com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Key, "Аккаунты сервисов", "ChatGPT, Claude, Gemini — подключение по токену") { openFrom(Screen.HUB_MORE, Screen.ACCOUNTS) },
+                                com.pocketcode.ui.hubHeader("Продвинутым"),
+                                com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Sparkles, "Умные функции", "Авто-режим, предохранитель, корзина, автовыбор модели, карта проекта", if (pocketApp.controller.rootAuto) "авто вкл" else null) { openFrom(Screen.HUB_MORE, Screen.SMART) },
+                                com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Terminal, "Среда Linux", "Установка мини-Linux, python, git, node", if (!pocketApp.controller.linuxInstalled && pocketApp.controller.linuxSupported) "не установлен" else null) { openFrom(Screen.HUB_MORE, Screen.LINUX) },
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Grid, "Локальные панели", "Веб-панели Desktop, LM Studio, Ollama") { openFrom(Screen.HUB_MORE, Screen.WIDGETS) },
                                 com.pocketcode.ui.hubHeader("Приложение"),
+                                com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Activity, "Расход и токены", "Сколько потрачено, стоимость, изменения кода ИИ") { openFrom(Screen.HUB_MORE, Screen.USAGE) },
+                                com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Shield, "Центр безопасности", "Все разрешения и режимы в одном месте") { openFrom(Screen.HUB_MORE, Screen.SECURITYCENTER) },
+                                com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Wrench, "Диагностика", "Состояние приложения, компоненты, место") { openFrom(Screen.HUB_MORE, Screen.DIAG) },
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Package, "Обновления", "Версия ${pocketApp.controller.currentVersion}", if (pocketApp.controller.updateInfo != null) "новая" else null) { openFrom(Screen.HUB_MORE, Screen.UPDATE) },
                                 com.pocketcode.ui.HubItem(com.pocketcode.ui.AppIcons.Archive, "Резервная копия", "Сохранить и восстановить настройки и ключи") { openFrom(Screen.HUB_MORE, Screen.BACKUP) },
                                 com.pocketcode.ui.hubHeader("Помощь"),
@@ -522,6 +521,7 @@ class MainActivity : ComponentActivity() {
                             onBack = { screen = backTo },
                             onOpenHost = { openFrom(Screen.TERMINAL, Screen.HOST) },
                             onOpenChat = { screen = Screen.CHAT },
+                            settings = pocketApp.current.settings,
                         )
                     }
                     Screen.HOST -> {
@@ -663,7 +663,10 @@ class MainActivity : ComponentActivity() {
                     }
                     Screen.PROJTOOLS -> {
                         BackHandler { screen = backTo }
-                        com.pocketcode.ui.ProjectToolsScreen(onBack = { screen = backTo })
+                        com.pocketcode.ui.ProjectToolsScreen(
+                            onBack = { screen = backTo },
+                            settings = pocketApp.current.settings,
+                        )
                     }
                     Screen.USAGE -> {
                         BackHandler { screen = backTo }

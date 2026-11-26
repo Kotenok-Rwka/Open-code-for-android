@@ -3,6 +3,7 @@
 обрезка истории, сканер секретов, песочница, конфликты, шаблоны и пр.
 Только стандартная библиотека."""
 import csv
+import datetime
 import glob as globmod
 import hashlib
 import json
@@ -3792,3 +3793,758 @@ def dup_detect(project, top=10, max_size=5 * 1024 * 1024):
             for k, v in sorted(by_hash.items()) if len(v) > 1]
     wasted = sum(d["size"] * (len(d["files"]) - 1) for d in dups)
     return {"groups": len(dups), "wasted_bytes": wasted, "duplicates": dups[:top]}
+
+
+# ============================================================
+# Batch 18: дашборд, техдолг, мёртвый код, сложность, покрытие,
+# changelog, версии, экспорт проекта, outline, флаги-переключатели.
+# ============================================================
+
+SKIP_DIRS = {".git", "__pycache__", "node_modules", ".gradle", "build", ".idea", "venv", ".pocketcode"}
+TEXT_EXTS = {".py", ".kt", ".java", ".js", ".ts", ".md", ".txt", ".json", ".xml", ".yml", ".yaml",
+             ".sh", ".kts", ".gradle", ".html", ".css", ".properties", ".toml"}
+
+
+def _iter_files(root, max_files=3000):
+    root = Path(root)
+    if not root.is_dir():
+        return
+    n = 0
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS and not d.startswith(".")]
+        for fn in filenames:
+            if n >= max_files:
+                return
+            p = Path(dirpath) / fn
+            if p.suffix.lower() in TEXT_EXTS:
+                n += 1
+                yield p
+
+
+def _read(p):
+    try:
+        return p.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+
+
+def dashboard(project, days=7):
+    """Сводка проекта: файлы, строки, расширения, коммиты за период."""
+    root = Path(project)
+    if not root.is_dir():
+        return {"error": "проект не найден"}
+    files = loc = 0
+    by_ext = {}
+    for p in _iter_files(root):
+        files += 1
+        loc += _read(p).count("\n") + 1
+        e = p.suffix.lower() or "без расширения"
+        by_ext[e] = by_ext.get(e, 0) + 1
+    since = (datetime.datetime.utcnow() - datetime.timedelta(days=int(days))).strftime("%Y-%m-%d")
+    rc, out, err = _git(project, "log", "--since=" + since, "--pretty=%h|%an|%s")
+    commits = []
+    if rc == 0:
+        for ln in out.splitlines():
+            h, a, s = (ln.split("|", 2) + ["", ""])[:3]
+            commits.append({"hash": h, "author": a, "subject": s})
+    return {"files": files, "lines": loc,
+            "top_ext": sorted(by_ext.items(), key=lambda kv: -kv[1])[:8],
+            "commits_days": int(days), "commits": len(commits),
+            "recent": commits[:10]}
+
+
+def todo_scan(project, max_items=200):
+    """TODO / FIXME / HACK в коде: файл, строка, текст."""
+    root = Path(project)
+    if not root.is_dir():
+        return {"error": "проект не найден"}
+    rx = re.compile(r"\b(TODO|FIXME|HACK|XXX)\b[:\s]?(.{0,120})")
+    items = []
+    for p in _iter_files(root):
+        for i, ln in enumerate(_read(p).splitlines(), 1):
+            m = rx.search(ln)
+            if m:
+                items.append({"file": str(p.relative_to(root)), "line": i,
+                              "kind": m.group(1), "text": (m.group(2) or "").strip()})
+                if len(items) >= max_items:
+                    break
+        if len(items) >= max_items:
+            break
+    kinds = {}
+    for it in items:
+        kinds[it["kind"]] = kinds.get(it["kind"], 0) + 1
+    return {"total": len(items), "kinds": kinds, "items": items[:60]}
+
+
+_PY_DEF = re.compile(r"^(\s*)def\s+(\w+)\s*\(")
+_PY_BRAN = re.compile(r"\b(if|elif|for|while|and|or|except)\b")
+
+
+def complexity_py(project, top=15):
+    """Топ самых сложных функций Python-проекта (цикломатическая, приблизительно)."""
+    root = Path(project)
+    if not root.is_dir():
+        return {"error": "проект не найден"}
+    out = []
+    for p in _iter_files(root):
+        if p.suffix != ".py":
+            continue
+        cur = None
+        for ln in _read(p).splitlines():
+            m = _PY_DEF.match(ln)
+            if m:
+                if cur and cur["cc"] >= 2:
+                    out.append(cur)
+                indent = len(m.group(1))
+                cur = {"file": str(p.relative_to(root)), "name": m.group(2), "line": ln, "cc": 1}
+                cur["indent"] = indent
+                continue
+            if cur is not None and ln.strip():
+                if len(ln) - len(ln.lstrip()) <= cur["indent"] and ln.lstrip().startswith(("def ", "class ")):
+                    if cur["cc"] >= 2:
+                        out.append(cur)
+                    cur = None
+                else:
+                    cur["cc"] += len(_PY_BRAN.findall(ln))
+        if cur and cur["cc"] >= 2:
+            out.append(cur)
+    out.sort(key=lambda d: -d["cc"])
+    for d in out:
+        d.pop("indent", None)
+        d.pop("line", None)
+    return {"functions": len(out), "top": out[:top]}
+
+
+def dead_code_py(project, max_items=60):
+    """Функции/классы Python, чьё имя не встречается вне своего объявления и тела."""
+    root = Path(project)
+    if not root.is_dir():
+        return {"error": "проект не найден"}
+    import ast as _ast
+    files = {}
+    for p in _iter_files(root):
+        if p.suffix == ".py":
+            files[str(p.relative_to(root))] = _read(p)
+    defs = {}
+    uses_by_file = {}
+    for rel, text in files.items():
+        try:
+            tree = _ast.parse(text)
+        except SyntaxError:
+            continue
+        for node in _ast.walk(tree):
+            if isinstance(node, (_ast.FunctionDef, _ast.AsyncFunctionDef, _ast.ClassDef)) \
+                    and not node.name.startswith("__") and not node.name.startswith("test_"):
+                defs.setdefault(node.name, []).append("%s:%d" % (rel, node.lineno))
+        rx_all = re.compile(r"\b(\w+)\b")
+        for node in _ast.walk(tree):
+            if isinstance(node, _ast.Name):
+                uses_by_file.setdefault(node.id, set()).add(rel)
+            elif isinstance(node, _ast.Attribute):
+                uses_by_file.setdefault(node.attr, set()).add(rel)
+    dead = []
+    for name, places in sorted(defs.items()):
+        if name in ("setUp", "tearDown", "main"):
+            continue
+        # использование в файле, где нет определения этого имени, — точно живое
+        if any(rel not in {pl.rsplit(":", 1)[0] for pl in places} for rel in uses_by_file.get(name, ())):
+            continue
+        dead.append({"name": name, "places": places[:3]})
+    return {"dead": len(dead), "items": dead[:max_items]}
+
+
+def coverage_gaps(project):
+    """Модули без тестов: для X.py ищем test_X*, для X.kt — XTest*."""
+    root = Path(project)
+    if not root.is_dir():
+        return {"error": "проект не найден"}
+    all_paths = [p for p in _iter_files(root)]
+    names = {p.name for p in all_paths}
+    gaps = []
+    for p in all_paths:
+        stem = p.stem
+        if stem.startswith("test_") or stem.endswith("Test") or "Test" in stem:
+            continue
+        if p.suffix == ".py":
+            cands = ["test_" + stem + e for e in (".py",)]
+        elif p.suffix in (".kt", ".java"):
+            cands = [stem + "Test" + p.suffix, stem + "Tests.kt"]
+        else:
+            continue
+        if not any(c in names for c in cands):
+            gaps.append(str(p.relative_to(root)))
+    return {"modules": len(gaps), "untested": gaps[:80]}
+
+
+def changelog(project, limit=40):
+    """Changelog по-русски из git-лога: фичи, фиксы, прочее."""
+    rc, out, err = _git(project, "log", "--pretty=%s", "-n", str(int(limit)))
+    if rc != 0:
+        return {"error": (err or "нет git").strip()[:200]}
+    feats, fixes, other = [], [], []
+    for s in out.splitlines():
+        s = s.strip()
+        if not s:
+            continue
+        low = s.lower()
+        if low.startswith(("feat", "добав", "new:", "+")):
+            feats.append(s)
+        elif low.startswith(("fix", "исправ", "баг")):
+            fixes.append(s)
+        else:
+            other.append(s)
+    return {"features": feats, "fixes": fixes, "other": other}
+
+
+def project_version_bump(project, part="patch"):
+    """Поднять версию в version.properties: major/minor/patch. part по умолчанию patch."""
+    vp = Path(project) / "version.properties"
+    if not vp.is_file():
+        return {"error": "version.properties не найден"}
+    text = _read(vp)
+    m = dict(re.findall(r"^(VERSION_[A-Z]+)\s*=\s*(\d+)\s*$", text, re.M))
+    if not m:
+        return {"error": "нет VERSION_* в version.properties"}
+    key = "VERSION_" + str(part).upper()
+    if key not in m:
+        return {"error": "неизвестная часть: %s" % part}
+    m[key] = str(int(m[key]) + 1)
+    if part == "major":
+        m["VERSION_MINOR"] = m["VERSION_PATCH"] = "0"
+    elif part == "minor":
+        m["VERSION_PATCH"] = "0"
+    new = "".join("%s=%s\n" % (k, v) for k, v in sorted(m.items()))
+    vp.write_text(new, encoding="utf-8")
+    ver = "%s.%s.%s" % (m.get("VERSION_MAJOR", "0"), m.get("VERSION_MINOR", "0"), m.get("VERSION_PATCH", "0"))
+    return {"ok": True, "version": ver, "bumped": part}
+
+
+def project_export(project, out=None):
+    """Проект в один zip (без .git/build/кэшей) — для переноса между устройствами."""
+    root = Path(project)
+    if not root.is_dir():
+        return {"error": "проект не найден"}
+    out = Path(out) if out else root.parent / (root.name + "-export.zip")
+    n = 0
+    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
+        for p in _iter_files(root, max_files=5000):
+            z.write(p, str(p.relative_to(root)))
+            n += 1
+    return {"ok": True, "zip": str(out), "files": n, "bytes": out.stat().st_size}
+
+
+def project_import(zip_path, dest):
+    """Распаковать проект из zip (project_export) в папку dest."""
+    zp = Path(zip_path)
+    if not zp.is_file():
+        return {"error": "zip не найден"}
+    d = Path(dest)
+    if d.exists() and any(d.iterdir()):
+        return {"error": "папка назначения не пуста"}
+    d.mkdir(parents=True, exist_ok=True)
+    n = 0
+    with zipfile.ZipFile(zp) as z:
+        for info in z.infolist():
+            name = info.filename
+            if name.startswith("/") or ".." in Path(name).parts:
+                continue
+            if any(part in SKIP_DIRS for part in Path(name).parts):
+                continue
+            target = d / name
+            if info.is_dir():
+                target.mkdir(parents=True, exist_ok=True)
+                continue
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(z.read(info))
+            n += 1
+    return {"ok": True, "dest": str(d), "files": n}
+
+
+def outline_py(text, max_items=200):
+    """Оглавление кода: классы и функции с номерами строк."""
+    items = []
+    for i, ln in enumerate(text.splitlines(), 1):
+        m = re.match(r"\s*(class|def)\s+(\w+)", ln)
+        if m:
+            items.append({"line": i, "kind": m.group(1), "name": m.group(2),
+                          "indent": len(ln) - len(ln.lstrip())})
+    return {"items": items[:max_items]}
+
+
+# ---------- переключатели (feature flags) ----------
+
+FEATURE_LIST = [
+    {"id": "tools_panel", "title": "Инструменты проекта", "default": True},
+    {"id": "secret_gate", "title": "Проверка секретов перед коммитом", "default": True},
+    {"id": "dead_code", "title": "Поиск мёртвого кода", "default": True},
+    {"id": "todo_scan", "title": "Сканер TODO/FIXME", "default": True},
+    {"id": "coverage_gaps", "title": "Модули без тестов", "default": True},
+    {"id": "complexity", "title": "Сложность функций", "default": False},
+    {"id": "dashboard", "title": "Дашборд проекта", "default": True},
+    {"id": "changelog", "title": "Changelog из коммитов", "default": True},
+    {"id": "auto_export", "title": "Экспорт проекта в zip", "default": True},
+]
+
+
+def _flags_path(project):
+    return _pc_json(project, "feature_flags.json")
+
+
+def flags_get(project):
+    saved = _pc_load(_flags_path(project), {})
+    out = []
+    for f in FEATURE_LIST:
+        out.append({"id": f["id"], "title": f["title"],
+                    "enabled": bool(saved.get(f["id"], f["default"]))})
+    return {"flags": out}
+
+
+def flags_set(project, flag_id, enabled):
+    if flag_id not in {f["id"] for f in FEATURE_LIST}:
+        return {"error": "нет такого флага: %s" % flag_id}
+    saved = _pc_load(_flags_path(project), {})
+    saved[flag_id] = bool(enabled)
+    _pc_save(_flags_path(project), saved)
+    return {"ok": True, "id": flag_id, "enabled": bool(enabled)}
+
+
+def flag_enabled(project, flag_id):
+    base = {f["id"]: f["default"] for f in FEATURE_LIST}
+    saved = _pc_load(_flags_path(project), {})
+    return bool(saved.get(flag_id, base.get(flag_id, True)))
+
+
+# ============================================================
+# Batch 19: удобство, терминал, агент-контроль, надёжность, качество.
+# ============================================================
+
+# ---------- 1. Экран «Сегодня» ----------
+def today_digest(project):
+    """Незавершённое: открытые TODO, последние изменённые файлы, последний коммит."""
+    root = Path(project)
+    if not root.is_dir():
+        return {"error": "проект не найден"}
+    todos = todo_scan(root, max_items=20)
+    files = []
+    for p in _iter_files(root):
+        try:
+            files.append((p.stat().st_mtime, str(p.relative_to(root))))
+        except OSError:
+            pass
+    files.sort(reverse=True)
+    rc, out, _ = _git(root, "log", "-1", "--pretty=%h %ad %s", "--date=short")
+    return {"todos": todos["items"][:10], "todo_total": todos["total"],
+            "recent_files": [f for _, f in files[:10]],
+            "last_commit": out.strip() if rc == 0 else ""}
+
+
+# ---------- 2. Глобальный поиск ----------
+def global_search(project, query, max_hits=80):
+    """Поиск подстроки по именам файлов и содержимому, без регэкспа."""
+    root = Path(project)
+    if not root.is_dir():
+        return {"error": "проект не найден"}
+    q = str(query or "").strip().lower()
+    if not q:
+        return {"error": "пустой запрос"}
+    name_hits, content_hits = [], []
+    for p in _iter_files(root):
+        rel = str(p.relative_to(root))
+        if q in p.name.lower() and len(name_hits) < max_hits:
+            name_hits.append(rel)
+        if len(content_hits) < max_hits and p.stat().st_size < 400_000:
+            for i, ln in enumerate(_read(p).splitlines(), 1):
+                if q in ln.lower():
+                    content_hits.append({"file": rel, "line": i, "text": ln.strip()[:160]})
+                    if len(content_hits) >= max_hits:
+                        break
+    return {"query": q, "name_hits": name_hits, "content_hits": content_hits,
+            "total": len(name_hits) + len(content_hits)}
+
+
+# ---------- 5/8. Палитра команд и шаблоны промптов ----------
+COMMAND_PALETTE = [
+    {"id": "tools", "title": "Инструменты проекта", "how": "меню «Ещё»"},
+    {"id": "terminal", "title": "Терминал и запуск", "how": "меню «Ещё»"},
+    {"id": "dashboard", "title": "Дашборд проекта", "how": "Инструменты проекта"},
+    {"id": "todos", "title": "TODO/FIXME скан", "how": "Инструменты проекта"},
+    {"id": "deadcode", "title": "Мёртвый код", "how": "Инструменты проекта"},
+    {"id": "coverage", "title": "Модули без тестов", "how": "Инструменты проекта"},
+    {"id": "export", "title": "Экспорт проекта в zip", "how": "Инструменты проекта"},
+    {"id": "bump", "title": "Поднять версию", "how": "Инструменты проекта"},
+    {"id": "standup", "title": "Стендап-отчёт", "how": "Инструменты проекта"},
+    {"id": "secrets", "title": "Скан секретов", "how": "Инструменты проекта"},
+]
+
+
+def palette_search(query=""):
+    q = str(query or "").strip().lower()
+    items = [c for c in COMMAND_PALETTE if not q or q in c["title"].lower()]
+    return {"items": items}
+
+
+def prompt_templates(project):
+    """Пользовательские шаблоны промптов с подстановками {{файл}}, {{проект}}."""
+    return _pc_load(_pc_json(project, "prompt_templates.json"), [])
+
+
+def prompt_template_add(project, name, text):
+    tpl = prompt_templates(project)
+    tpl.append({"name": str(name)[:80], "text": str(text)[:4000]})
+    _pc_save(_pc_json(project, "prompt_templates.json"), tpl)
+    return {"ok": True, "count": len(tpl)}
+
+
+def prompt_render(template, filename="", project=""):
+    return (str(template)
+            .replace("{{файл}}", str(filename))
+            .replace("{{проект}}", str(project)))
+
+
+# ---------- 10. Отложенные задачи ----------
+def reminder_note_add(project, text, when):
+    items = _pc_load(_pc_json(project, "reminders.json"), [])
+    items.append({"text": str(text)[:300], "when": str(when), "done": False})
+    _pc_save(_pc_json(project, "reminders.json"), items)
+    return {"ok": True, "count": len(items)}
+
+
+def reminders_due(project, today):
+    """Незакрытые напоминания с датой <= today."""
+    items = _pc_load(_pc_json(project, "reminders.json"), [])
+    due = [r for r in items if not r.get("done") and str(r.get("when", "")) <= str(today)]
+    return {"due": due}
+
+
+def reminder_done(project, index):
+    items = _pc_load(_pc_json(project, "reminders.json"), [])
+    i = int(index)
+    if not (0 <= i < len(items)):
+        return {"error": "нет такого напоминания"}
+    items[i]["done"] = True
+    _pc_save(_pc_json(project, "reminders.json"), items)
+    return {"ok": True}
+
+
+# ---------- 11/12. Токены и экспорт чата ----------
+def session_usage(messages):
+    """Приблизительные токены сессии: ~4 символа на токен."""
+    chars = sum(len(str(m)) for m in messages)
+    return {"messages": len(messages), "approx_tokens": chars // 4}
+
+
+def chat_export_md(messages, title="Чат"):
+    lines = ["# " + str(title), ""]
+    for m in messages:
+        role = str(m.get("role", "user")) if isinstance(m, dict) else "msg"
+        text = str(m.get("text", m)) if isinstance(m, dict) else str(m)
+        lines += ["**%s:**" % role, "", text, ""]
+    return "\n".join(lines)
+
+
+# ---------- 13/15. Терминал: история и сниппеты ----------
+def term_history_add(project, cmd, out_hash=""):
+    items = _pc_load(_pc_json(project, "term_history.json"), [])
+    items.append({"cmd": str(cmd)[:500], "at": datetime.datetime.utcnow().isoformat("T", "seconds")})
+    _pc_save(_pc_json(project, "term_history.json"), items[-200:])
+    return {"ok": True}
+
+
+def term_history(project, limit=30):
+    items = _pc_load(_pc_json(project, "term_history.json"), [])
+    return {"items": items[-int(limit):][::-1]}
+
+
+def term_snippet_add(project, name, cmd):
+    items = _pc_load(_pc_json(project, "term_snippets.json"), [])
+    items.append({"name": str(name)[:80], "cmd": str(cmd)[:500]})
+    _pc_save(_pc_json(project, "term_snippets.json"), items)
+    return {"ok": True, "count": len(items)}
+
+
+def term_snippet_render(snippet, **params):
+    out = str(snippet)
+    for k, v in params.items():
+        out = out.replace("{{" + k + "}}", str(v))
+    return out
+
+
+# ---------- 17/19/20/22. Редактор ----------
+def diff_preview(old, new):
+    """Мини-дифф двух текстов: добавленные/удалённые строки."""
+    old_l = str(old).splitlines()
+    new_l = str(new).splitlines()
+    import difflib
+    added = [l for l in difflib.unified_diff(old_l, new_l, lineterm="") if l.startswith("+") and not l.startswith("+++")]
+    removed = [l for l in difflib.unified_diff(old_l, new_l, lineterm="") if l.startswith("-") and not l.startswith("---")]
+    return {"added": len(added), "removed": len(removed),
+            "added_lines": added[:40], "removed_lines": removed[:40]}
+
+
+def regex_replace(text, pattern, repl, flags=""):
+    f = re.IGNORECASE if "i" in flags else 0
+    f |= re.MULTILINE if "m" in flags else 0
+    try:
+        new, n = re.subn(str(pattern), str(repl), str(text), flags=f)
+        return {"ok": True, "replacements": n, "text": new}
+    except re.error as e:
+        return {"error": "плохой регэксп: %s" % e}
+
+
+def undo_stack_push(project, path, content):
+    """Многошаговая отмена: сохранить текущее содержимое файла в стек."""
+    key = "undo_" + re.sub(r"[^0-9A-Za-z._-]", "_", str(path))
+    stack = _pc_load(_pc_json(project, key + ".json"), [])
+    stack.append({"content": str(content)[:200000], "at": datetime.datetime.utcnow().isoformat("T", "seconds")})
+    _pc_save(_pc_json(project, key + ".json"), stack[-20:])
+    return {"ok": True, "depth": len(stack)}
+
+
+def undo_stack_pop(project, path):
+    key = "undo_" + re.sub(r"[^0-9A-Za-z._-]", "_", str(path))
+    stack = _pc_load(_pc_json(project, key + ".json"), [])
+    if not stack:
+        return {"error": "стек пуст"}
+    entry = stack.pop()
+    _pc_save(_pc_json(project, key + ".json"), stack)
+    return {"ok": True, "content": entry["content"], "depth": len(stack)}
+
+
+# ---------- 24/25/27/29/30. Агент-контроль ----------
+def edit_risk_score(diff_added, diff_removed, touched_files):
+    """Оценка риска правки по объёму и числу файлов."""
+    a, r, f = int(diff_added or 0), int(diff_removed or 0), int(touched_files or 0)
+    score = a + r + f * 5
+    level = "безопасно" if score < 30 else ("осторожно" if score < 120 else "опасно")
+    return {"score": score, "level": level}
+
+
+def session_edits_log(project):
+    """Все правки сессии из журнала."""
+    return {"edits": _pc_load(_pc_json(project, "session_edits.json"), [])}
+
+
+def session_edit_log_add(project, path, added, removed, rolled_back=False):
+    edits = _pc_load(_pc_json(project, "session_edits.json"), [])
+    edits.append({"path": str(path)[:300], "added": int(added or 0), "removed": int(removed or 0),
+                  "rolled_back": bool(rolled_back),
+                  "at": datetime.datetime.utcnow().isoformat("T", "seconds")})
+    _pc_save(_pc_json(project, "session_edits.json"), edits[-300:])
+    return {"ok": True}
+
+
+def rollback_stats(project):
+    """Какие пути агент чаще всего откатывал — чтобы не повторять."""
+    edits = _pc_load(_pc_json(project, "session_edits.json"), [])
+    stats = {}
+    for e in edits:
+        if e.get("rolled_back"):
+            stats[e["path"]] = stats.get(e["path"], 0) + 1
+    return {"worst": sorted(stats.items(), key=lambda kv: -kv[1])[:10]}
+
+
+def verify_answer_paths(answer, project):
+    """Проверка: упомянутые в ответе пути существуют в проекте (анти-галлюцинация)."""
+    root = Path(project)
+    if not root.is_dir():
+        return {"error": "проект не найден"}
+    real = {str(p.relative_to(root)) for p in _iter_files(root)}
+    mentioned = set(re.findall(r"[\w./\\-]+\.[A-Za-z]{1,5}\b", str(answer)))
+    checked = []
+    for m in mentioned:
+        m2 = m.replace("\\", "/").lstrip("./")
+        if m2 in real:
+            checked.append({"path": m2, "exists": True})
+        else:
+            checked.append({"path": m2, "exists": False})
+    return {"verified": sum(1 for c in checked if c["exists"]), "total": len(checked), "items": checked[:50]}
+
+
+# ---------- 31. Лимит токенов ----------
+def usage_limit_set(project, daily_tokens):
+    _pc_save(_pc_json(project, "usage_limit.json"), {"daily": int(daily_tokens)})
+    return {"ok": True, "daily": int(daily_tokens)}
+
+
+def usage_limit_check(project, used_today):
+    lim = _pc_load(_pc_json(project, "usage_limit.json"), {})
+    daily = int(lim.get("daily", 0))
+    used = int(used_today or 0)
+    return {"allowed": daily == 0 or used < daily, "daily": daily, "used": used,
+            "left": max(0, daily - used)}
+
+
+# ---------- 33/34/35/36/37. Надёжность ----------
+def backup_branch_plan(project, interval_minutes=60):
+    """План автобэкапа: список изменённых файлов для ветки backup/auto."""
+    rc, out, _ = _git(project, "status", "--porcelain")
+    if rc != 0:
+        return {"error": "не git-репозиторий"}
+    changed = [ln[3:] for ln in out.splitlines() if ln.strip()]
+    return {"interval_minutes": int(interval_minutes), "changed": changed[:100], "count": len(changed)}
+
+
+def trash_restore_json(project, index):
+    """Восстановить файл из json-корзины (trash_add)."""
+    trash = _pc_load(_pc_json(project, "trash.json"), [])
+    i = int(index)
+    if not (0 <= i < len(trash)):
+        return {"error": "нет такой записи"}
+    entry = trash[i]
+    safe = _safe_join(project, entry["path"])
+    if safe is None:
+        return {"error": "путь вне проекта"}
+    safe.parent.mkdir(parents=True, exist_ok=True)
+    safe.write_text(entry["content"], encoding="utf-8")
+    trash.pop(i)
+    _pc_save(_pc_json(project, "trash.json"), trash)
+    return {"ok": True, "restored": entry["path"]}
+
+
+def trash_add(project, path, content):
+    """Корзина: сохранённая копия удалённого файла (json-вариант)."""
+    trash = _pc_load(_pc_json(project, "trash.json"), [])
+    trash.append({"path": str(path)[:300], "content": str(content)[:100000],
+                  "deleted_at": datetime.datetime.utcnow().isoformat("T", "seconds")})
+    _pc_save(_pc_json(project, "trash.json"), trash[-100:])
+    return {"ok": True, "count": len(trash)}
+
+
+def settings_export(settings_dict, password=""):
+    """Экспорт настроек в json; с паролем — XOR-обфускация (не крипто)."""
+    blob = json.dumps(settings_dict, ensure_ascii=False).encode("utf-8")
+    if password:
+        key = str(password).encode("utf-8")
+        blob = bytes(b ^ key[i % len(key)] for i, b in enumerate(blob))
+    return {"ok": True, "blob": blob.hex()}
+
+
+def settings_import(blob, password=""):
+    try:
+        data = bytes.fromhex(str(blob))
+        if password:
+            key = str(password).encode("utf-8")
+            data = bytes(b ^ key[i % len(key)] for i, b in enumerate(data))
+        return {"ok": True, "settings": json.loads(data.decode("utf-8"))}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+def file_checksum(path):
+    import hashlib
+    p = Path(path)
+    if not p.is_file():
+        return {"error": "файл не найден"}
+    return {"sha256": hashlib.sha256(p.read_bytes()).hexdigest()}
+
+
+def protected_files(project):
+    return {"files": _pc_load(_pc_json(project, "protected_files.json"), [])}
+
+
+def protected_file_add(project, path):
+    files = protected_files(project)["files"]
+    p = str(path).replace("\\", "/")
+    if p not in files:
+        files.append(p)
+        _pc_save(_pc_json(project, "protected_files.json"), files)
+    return {"ok": True, "count": len(files)}
+
+
+def is_protected(project, path):
+    p = str(path).replace("\\", "/")
+    return any(p == f or p.startswith(f.rstrip("/") + "/") for f in protected_files(project)["files"])
+
+
+def session_state_save(project, state_dict):
+    _pc_save(_pc_json(project, "session_state.json"), state_dict)
+    return {"ok": True}
+
+
+def session_state_load(project):
+    return _pc_load(_pc_json(project, "session_state.json"), None)
+
+
+# ---------- 43/45/48/50/52. Качество ----------
+def prepush_gate(project):
+    """Прегейт: тесты секретов и TODO перед пушем."""
+    sec = secret_scan(project) if "secret_scan" in globals() else {"findings": []}
+    return {"secrets": sec, "todos": todo_scan(project)["total"],
+            "pass": (not sec.get("findings")) and todo_scan(project)["total"] < 50}
+
+
+def style_fix_py(text):
+    """Мелкий автофикс стиля Python: хвостовые пробелы, двойные пустые строки, tab→4."""
+    out = str(text).replace("\t", "    ")
+    lines = [l.rstrip() for l in out.splitlines()]
+    res = []
+    blank = 0
+    for l in lines:
+        if not l.strip():
+            blank += 1
+            if blank > 2:
+                continue
+        else:
+            blank = 0
+        res.append(l)
+    return {"ok": True, "text": "\n".join(res).strip("\n") + "\n"}
+
+
+def dup_similarity(a, b):
+    """Похожесть двух текстов: доля общих строк (Jaccard по множествам строк)."""
+    sa = {l.strip() for l in str(a).splitlines() if l.strip()}
+    sb = {l.strip() for l in str(b).splitlines() if l.strip()}
+    if not sa or not sb:
+        return {"similarity": 0.0}
+    inter = len(sa & sb)
+    union = len(sa | sb)
+    return {"similarity": round(inter / union, 3)}
+
+
+def release_checklist(project):
+    """Чеклист перед релизом: версия, тесты, секреты, TODO."""
+    vp = Path(project) / "version.properties"
+    ver = ""
+    if vp.is_file():
+        m = dict(re.findall(r"^(VERSION_[A-Z]+)\s*=\s*(\d+)\s*$", _read(vp), re.M))
+        ver = "%s.%s.%s" % (m.get("VERSION_MAJOR", "?"), m.get("VERSION_MINOR", "?"), m.get("VERSION_PATCH", "?"))
+    gate = prepush_gate(project)
+    return {"version": ver, "secrets_found": bool(gate["secrets"].get("findings")),
+            "todos": gate["todos"], "pass": gate["pass"]}
+
+
+# ---------- 54–60. UX ----------
+def haptic_signal(kind="short"):
+    """Сигнал для хаптика: приложение решает, как вибрировать."""
+    return {"kind": kind in ("short", "long", "double") and kind or "short"}
+
+
+def tts_chunks(text, max_chars=300):
+    """Разбить ответ агента на куски для озвучивания."""
+    sents = re.split(r"(?<=[.!?…])\s+", str(text).strip())
+    chunks, cur = [], ""
+    for s in sents:
+        if len(cur) + len(s) + 1 > max_chars and cur:
+            chunks.append(cur.strip())
+            cur = ""
+        cur += (s + " ")
+    if cur.strip():
+        chunks.append(cur.strip())
+    return {"chunks": chunks[:50]}
+
+
+def whats_new_markdown(from_version, to_version, changes):
+    lines = ["# Обновление %s → %s" % (from_version, to_version), ""]
+    for c in changes:
+        lines.append("- " + str(c))
+    return "\n".join(lines) + "\n"
+
+
+def onboarding_steps():
+    return {"steps": [
+        {"step": 1, "title": "Проект", "text": "Открой или создай проект — папка с кодом."},
+        {"step": 2, "title": "Чат", "text": "Пиши агенту задачу: он читает и правит файлы."},
+        {"step": 3, "title": "Инструменты", "text": "«Ещё → Инструменты проекта»: дашборд, техдолг, тесты."},
+        {"step": 4, "title": "Терминал", "text": "Живая сессия sh: команды, cd, переменные сохраняются."},
+        {"step": 5, "title": "Настройки", "text": "Переключатели функций — там же, где тумблеры."},
+    ]}

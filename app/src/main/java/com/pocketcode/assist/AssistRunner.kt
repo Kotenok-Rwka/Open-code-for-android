@@ -134,7 +134,31 @@ object AssistRunner {
                 if (ready == null) {
                     runLinks(id, q, noKey = prefs.answerKind == AnswerKind.AI)
                 } else {
-                    runAgent(id, ready, q, forceSearch, screenText, pageUrl, prefs.depth, about)
+                    // локальные быстрые ответы: память, калькулятор, болтовня (Batch28/29)
+                    val memory = AssistMemory.parse(AssistMemoryPrefs.load(context))
+                    val memoryKey = AssistMemory.parseSave(q)
+                    if (memoryKey != null) {
+                        val updated = AssistMemory.put(memory, memoryKey.first, memoryKey.second)
+                        AssistMemoryPrefs.save(context, AssistMemory.serialize(updated))
+                        update(id) {
+                            it.copy(status = Status.DONE,
+                                answer = "Запомнил: ${memoryKey.first} = ${memoryKey.second}",
+                                finishedAt = System.currentTimeMillis())
+                        }
+                    } else {
+                        val memAnswer = AssistMemory.answer(q, memory)
+                        val calcAnswer = AssistCalc.answer(q)
+                        val small = com.pocketcode.tools.SmallTalk.reply(q)
+                        val recipe = AssistRecipes.resolve(q)
+                        when {
+                            recipe != null -> runAgent(id, ready, recipe.joinToString(". "), forceSearch, screenText, pageUrl, prefs.depth, about)
+                            small != null && prefs.answerKind == AnswerKind.AI ->
+                                update(id) { it.copy(status = Status.DONE, answer = small, finishedAt = System.currentTimeMillis()) }
+                            memAnswer != null || calcAnswer != null ->
+                                update(id) { it.copy(status = Status.DONE, answer = listOfNotNull(memAnswer, calcAnswer).joinToString(". "), finishedAt = System.currentTimeMillis()) }
+                            else -> runAgent(id, ready, q, forceSearch, screenText, pageUrl, prefs.depth, about)
+                        }
+                    }
                 }
                 finished(app, id, q, prefs)
             } catch (e: CancellationException) {
@@ -171,7 +195,7 @@ object AssistRunner {
             val now = java.text.SimpleDateFormat("EEEE, d MMMM yyyy, HH:mm", java.util.Locale.getDefault()).format(java.util.Date())
             Agent(
                 llm = ready.llm,
-                tools = listOf(WebSearchTool(), WebFetchTool()),
+                tools = listOf(WebSearchTool(), WebFetchTool(), com.pocketcode.tools.WeatherTool()),
                 system = AssistPrompt.system(now, java.util.TimeZone.getDefault().id, com.pocketcode.ui.I18n.code, depth, about),
                 autoApprove = true,
                 contextLimit = ready.contextLimit,

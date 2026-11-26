@@ -2,6 +2,7 @@ package com.pocketcode.ui
 
 import android.content.Intent
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -25,10 +26,21 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import com.pocketcode.ui.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -62,14 +74,48 @@ private fun SupportLinkCard(icon: ImageVector, title: String, about: String, onC
     }
 }
 
+/** Пасхалка: цветное конфетти, нарисованное кодом (без картинок). Показывается `burst` раз, затем гаснет. */
+@Composable
+private fun Confetti(burstKey: Int) {
+    if (burstKey == 0) return
+    val progress = remember(burstKey) { Animatable(0f) }
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(burstKey) {
+        progress.snapTo(0f)
+        progress.animateTo(1f, tween(2200, easing = LinearEasing))
+    }
+    val pieces = remember(burstKey) {
+        List(70) {
+            floatArrayOf(kotlin.random.Random.nextFloat(), kotlin.random.Random.nextFloat(), kotlin.random.Random.nextFloat())
+        }
+    }
+    val colors = listOf(Color(0xFFFFCA28), Color(0xFFF48FB1), Color(0xFF4DD0C4), Color(0xFF8AB4F8), Color(0xFF7BD88F), Color(0xFFB69DF8))
+    val t = progress.value
+    Canvas(Modifier.fillMaxSize()) {
+        if (t >= 1f) return@Canvas
+        pieces.forEachIndexed { i, p ->
+            val w = size.width
+            val x = w * p[0] + kotlin.math.sin(p[1] * 20f + t * 9f) * 40f
+            val y = size.height * (p[1] - 0.2f) + t * t * size.height * 1.4f
+            val sizeF = 8f + p[2] * 8f
+            drawCircle(colors[i % colors.size].copy(alpha = (1f - t).coerceIn(0f, 1f)), radius = sizeF / 2f, center = androidx.compose.ui.geometry.Offset(x, y))
+        }
+    }
+}
+
 /** Экран «Спасибо автору»: несколько необязательных способов сказать спасибо. Ничего не навязывает. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SupportScreen(vm: ChatController, onBack: () -> Unit) {
     val ctx = LocalContext.current
+    var burstKey by remember { mutableIntStateOf(0) }
+    var eggTaps by remember { mutableIntStateOf(0) }
+    var eggFound by remember { mutableStateOf(false) }
     fun open(url: String) {
         if (!Support.isAllowed(url)) return
+        val first = !vm.thanksUnlocked
         vm.markThanks()
+        if (first) burstKey++
         runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url))) }
     }
     Scaffold(
@@ -80,8 +126,10 @@ fun SupportScreen(vm: ChatController, onBack: () -> Unit) {
             )
         },
     ) { pad ->
+        Box(Modifier.padding(pad)) {
+        Confetti(burstKey)
         Column(
-            Modifier.padding(pad).fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Box(
@@ -90,7 +138,13 @@ fun SupportScreen(vm: ChatController, onBack: () -> Unit) {
                 ),
             ) {
                 Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    SupportBadge(AppIcons.Heart, 52)
+                    Box(Modifier.clip(RoundedCornerShape(18.dp)).clickable {
+                        eggTaps++
+                        if (eggTaps >= 5 && !eggFound) {
+                            eggFound = true
+                            burstKey++
+                        }
+                    }) { SupportBadge(AppIcons.Heart, 52) }
                     Text("Спасибо, что пользуешься PocketCode", style = MaterialTheme.typography.titleLarge)
                     Text(
                         "Приложение бесплатное и таким останется. Если оно пригодилось и захочется сказать спасибо, ниже несколько способов. Это ни к чему не обязывает: можно просто закрыть экран.",
@@ -129,7 +183,15 @@ fun SupportScreen(vm: ChatController, onBack: () -> Unit) {
 
             if (vm.thanksUnlocked) {
                 Text(
-                    "Спасибо 💛 В «Ещё → Настройки», в разделе «Цвет акцента», появились новые цвета.",
+                    "Спасибо 💛 Бонус открыт: в «Ещё → Настройки», в разделе «Цвет акцента», появились новые цвета, а на этом экране теперь живёт пасхалка. Подсказка: сердечко в шапке не простое.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                )
+            }
+            if (eggFound) {
+                Text(
+                    "🎉 Пасхалка найдена! Ты нажал на сердечко пять раз — конфетти твоя награда. Спасибо, что ты такой внимательный. Нажимать на сердечко можно и просто так.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
@@ -142,6 +204,7 @@ fun SupportScreen(vm: ChatController, onBack: () -> Unit) {
                 modifier = Modifier.padding(horizontal = 12.dp),
             )
             Spacer(Modifier.height(16.dp))
+        }
         }
     }
 }

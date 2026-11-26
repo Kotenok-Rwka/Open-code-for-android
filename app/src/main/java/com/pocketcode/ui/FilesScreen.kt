@@ -148,6 +148,19 @@ fun FilesScreen(
         return true
     }
 
+    fun openExternal(f: File): Boolean {
+        return runCatching {
+            val uri = androidx.core.content.FileProvider.getUriForFile(context, context.packageName + ".fileprovider", f)
+            val mime = android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(f.extension.lowercase())
+                ?: "application/octet-stream"
+            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, mime)
+                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            context.startActivity(android.content.Intent.createChooser(intent, "Открыть в:"))
+        }.isSuccess
+    }
+
     fun open(f: File) {
         if (openMedia(f)) return
         scope.launch {
@@ -162,7 +175,10 @@ fun FilesScreen(
                         showSearch = false
                         matchRange = null
                     }
-                    is Loaded.Refused -> message = "${f.name}: ${it.reason}"
+                    is Loaded.Refused -> {
+                        // сами открыть не можем — предлагаем сторонний файловый менеджер/просмотрщик
+                        if (!openExternal(f)) message = "${f.name}: ${it.reason} (и нет приложения, которое может открыть)"
+                    }
                 }
             }.onFailure { message = "Не удалось открыть: ${it.message}" }
         }

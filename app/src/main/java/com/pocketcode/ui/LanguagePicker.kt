@@ -32,6 +32,17 @@ import androidx.compose.ui.unit.dp
 fun LanguagePicker(first: Boolean, onDone: () -> Unit) {
     val langs = remember { I18n.available }
     var sel by remember { mutableStateOf(if (first) I18n.systemDefault() else I18n.code) }
+    var onlineOn by remember { mutableStateOf(I18n.onlineStatus()) }
+    var engine by remember { mutableStateOf("google") }
+    var apiKey by remember { mutableStateOf("") }
+    var server by remember { mutableStateOf("https://translate.disroot.org") }
+    androidx.compose.runtime.LaunchedEffect(onlineOn) {
+        if (onlineOn) {
+            engine = I18n.engine()
+            apiKey = I18n.apiKey()
+            server = I18n.serverUrl()
+        }
+    }
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(Modifier.fillMaxSize().padding(24.dp)) {
             Text(if (first) "Language · Язык · اللغة" else "Язык", style = MaterialTheme.typography.headlineSmall)
@@ -52,7 +63,114 @@ fun LanguagePicker(first: Boolean, onDone: () -> Unit) {
                     }
                 }
             }
-            Button(onClick = { I18n.choose(sel); onDone() }, modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
+            if (sel !in setOf("ru", "en", "ar", "es", "de", "zh", "tr", "fr", "it", "pt", "hi", "id", "bn")) {
+                Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    androidx.compose.material3.Switch(checked = onlineOn, onCheckedChange = { onlineOn = it })
+                    Column(Modifier.padding(start = 8.dp)) {
+                        androidx.compose.material3.Text("Онлайн-переводчик", style = MaterialTheme.typography.titleSmall)
+                        androidx.compose.material3.Text(
+                            "Переводить интерфейс на лету и сохранять перевод на устройстве",
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+                if (onlineOn) {
+                    Column(Modifier.fillMaxWidth().padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
+                        var expJson by remember { mutableStateOf("") }
+                        var ovRu by remember { mutableStateOf("") }
+                        var ovTr by remember { mutableStateOf("") }
+                        var msg by remember { mutableStateOf("") }
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            androidx.compose.material3.OutlinedButton(onClick = {
+                                clipboard.setText(androidx.compose.ui.text.AnnotatedString(I18n.exportOnlineCache()))
+                                msg = "Переводы скопированы в буфер обмена"
+                            }) { Text("Экспорт переводов") }
+                            androidx.compose.material3.OutlinedButton(onClick = {
+                                val n = I18n.importOnlineCache(expJson)
+                                msg = if (n > 0) "Импортировано строк: $n" else "В вставленном тексте нет переводов"
+                                if (n > 0) expJson = ""
+                            }) { Text("Импорт переводов") }
+                        }
+                        androidx.compose.material3.OutlinedTextField(
+                            value = expJson,
+                            onValueChange = { expJson = it },
+                            label = { Text("JSON с переводами (вставьте сюда для импорта)") },
+                            modifier = Modifier.fillMaxWidth(),
+                            minLines = 2,
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            androidx.compose.material3.OutlinedTextField(
+                                value = ovRu,
+                                onValueChange = { ovRu = it },
+                                label = { Text("Русская строка") },
+                                modifier = Modifier.weight(1f),
+                                singleLine = true,
+                            )
+                            androidx.compose.material3.OutlinedTextField(
+                                value = ovTr,
+                                onValueChange = { ovTr = it },
+                                label = { Text("Правильный перевод") },
+                                modifier = Modifier.weight(1f),
+                                singleLine = true,
+                            )
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            androidx.compose.material3.OutlinedButton(
+                                onClick = {
+                                    I18n.overrideTranslation(ovRu.trim(), ovTr.trim())
+                                    msg = "Исправление сохранено"; ovRu = ""; ovTr = ""
+                                },
+                                enabled = ovRu.isNotBlank() && ovTr.isNotBlank(),
+                            ) { Text("Сохранить исправление") }
+                            if (msg.isNotEmpty()) Text(msg, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        val engineNames = mapOf("google" to "Google", "deepl" to "DeepL", "libre" to "LibreTranslate")
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            engineNames.forEach { (id, name) ->
+                                androidx.compose.material3.FilterChip(
+                                    selected = engine == id,
+                                    onClick = { engine = id },
+                                    label = { androidx.compose.material3.Text(name) },
+                                )
+                            }
+                        }
+                        if (engine == "deepl") {
+                            androidx.compose.material3.OutlinedTextField(
+                                value = apiKey,
+                                onValueChange = { apiKey = it },
+                                label = { androidx.compose.material3.Text("Ключ DeepL API (auth_key)") },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true,
+                            )
+                        }
+                        if (engine == "libre") {
+                            androidx.compose.material3.OutlinedTextField(
+                                value = server,
+                                onValueChange = { server = it },
+                                label = { androidx.compose.material3.Text("Адрес сервера LibreTranslate") },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true,
+                            )
+                            androidx.compose.material3.OutlinedTextField(
+                                value = apiKey,
+                                onValueChange = { apiKey = it },
+                                label = { androidx.compose.material3.Text("API-ключ (если требуется)") },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true,
+                            )
+                        }
+                    }
+                }
+            }
+            Button(onClick = {
+                I18n.choose(sel)
+                I18n.setOnlineEnabled(onlineOn)
+                I18n.setEngine(engine)
+                I18n.setApiKey(apiKey.trim())
+                I18n.setServerUrl(server)
+                onDone()
+            }, modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
                 androidx.compose.material3.Text(
                     when (sel) { "ru" -> "Продолжить"; "ar" -> "متابعة"; "es" -> "Continuar"; "de" -> "Weiter"; "zh" -> "继续"; "tr" -> "Devam"; "uk" -> "Продовжити"; else -> "Continue" },
                 )

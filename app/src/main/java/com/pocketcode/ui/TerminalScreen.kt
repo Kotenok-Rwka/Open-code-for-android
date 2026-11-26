@@ -36,7 +36,7 @@ import androidx.compose.ui.unit.sp
 /** Ручной терминал: команды выполняются в папке проекта, без участия модели. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun TerminalScreen(vm: ChatController, onBack: () -> Unit, onOpenHost: () -> Unit = {}, onOpenChat: () -> Unit = onBack) {
+fun TerminalScreen(vm: ChatController, onBack: () -> Unit, onOpenHost: () -> Unit = {}, onOpenChat: () -> Unit = onBack, settings: Settings = Settings()) {
     var cmd by remember { mutableStateOf("") }
     var tty by remember { mutableStateOf(false) }
     var danger by remember { mutableStateOf<String?>(null) }
@@ -169,6 +169,25 @@ fun TerminalScreen(vm: ChatController, onBack: () -> Unit, onOpenHost: () -> Uni
                 }
             }
             Text("~/" + vm.termRel, fontFamily = FontFamily.Monospace, fontSize = 11.sp, color = MaterialTheme.colorScheme.primary)
+            // Живая сессия: состояние (cd, переменные) живёт между командами; видна при включённом тумблере в настройках
+            if (settings.shellSession) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (vm.shellAlive) {
+                        AssistChip(onClick = { vm.shellKill() }, label = { Text("● сессия активна — закрыть") })
+                    } else {
+                        AssistChip(onClick = { vm.shellStart() }, label = { Text("○ Живая сессия (sh)") })
+                    }
+                }
+            }
+            if (vm.shellAlive && vm.shellOut.isNotEmpty()) {
+                androidx.compose.foundation.text.selection.SelectionContainer {
+                    Text(
+                        vm.shellOut.takeLast(1200),
+                        fontFamily = FontFamily.Monospace, fontSize = 11.sp, lineHeight = 14.sp,
+                        modifier = Modifier.weight(0.4f).fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    )
+                }
+            }
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(
                     value = cmd, onValueChange = { cmd = it }, modifier = Modifier.weight(1f),
@@ -178,6 +197,8 @@ fun TerminalScreen(vm: ChatController, onBack: () -> Unit, onOpenHost: () -> Uni
                 if (vm.termBusy) {
                     Button(onClick = { vm.termSend(cmd + (if (tty) "\r" else "\n")); cmd = "" }) { Text("↵") }
                     OutlinedButton(onClick = { vm.termStop() }) { Text("Стоп") }
+                } else if (vm.shellAlive) {
+                    Button(onClick = { vm.shellExec(cmd); cmd = "" }, enabled = cmd.isNotBlank()) { Text("▶ в сессию") }
                 } else Button(onClick = { runCmd(cmd) }, enabled = cmd.isNotBlank()) { Text("▶") }
             }
             BgPanel(vm)

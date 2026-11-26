@@ -14,6 +14,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.concurrent.CancellationException
+import kotlin.math.abs
 
 enum class ToonVoiceMode(val label: String) {
     SYSTEM("Встроенный голос (без интернета)"),
@@ -68,6 +69,26 @@ class ToonMaker(
     var autoSpeech by mutableStateOf((get("toonAuto") ?: "1") == "1")
     var mode by mutableStateOf(ToonVoiceMode.values().firstOrNull { it.name == get("toonMode") } ?: ToonVoiceMode.SYSTEM)
     var url by mutableStateOf(get("toonUrl") ?: TOON_DEFAULT_URL)
+
+    /** Библиотека персонажей: имя → JSON-подобная строка «имя|язык|голос|custom» (Batch21). */
+    var castLibraryLines by mutableStateOf(get("toonCast") ?: "")
+
+    fun castLibrary(): Map<String, ToonCharacter> =
+        castLibraryLines.lines().filter { it.isNotBlank() }.mapNotNull { ln ->
+            val p = ln.split("|")
+            if (p.size < 2) null else ToonCharacter(p[0],
+                ToonLooks.of(p[0], abs(p[0].hashCode()) % 7).applyAppearance(ToonAppearance.parse(p.getOrElse(4) { "" })),
+                voice = p.getOrElse(2) { "нейтрально" }, lang = p.getOrElse(1) { "ru" },
+                custom = p.getOrElse(3) { "0" } == "1")
+        }.associateBy { it.name.trim().lowercase() }
+
+    fun castSaveLine(character: ToonCharacter) {
+        val line = listOf(character.name, character.lang, character.voice,
+            if (character.custom) "1" else "0").joinToString("|")
+        castLibraryLines = (castLibraryLines.lines().filter { it.isNotBlank() && !it.startsWith(character.name + "|") } + line)
+            .joinToString("\n")
+        put("toonCast", castLibraryLines)
+    }
     var model by mutableStateOf(get("toonModel") ?: TOON_DEFAULT_MODEL)
     var key by mutableStateOf(get("toonKey") ?: "")
     var voices by mutableStateOf(get("toonVoices") ?: TOON_DEFAULT_VOICES)
@@ -75,6 +96,10 @@ class ToonMaker(
     var multiEngines by mutableStateOf(get("toonMultiEngines") ?: "")
     var multiPitches by mutableStateOf(get("toonMultiPitches") ?: "")
     var multiRates by mutableStateOf(get("toonMultiRates") ?: "")
+    /** Batch23: детализированный рендер фонов (переключатель в настройках). */
+    var detailRender by mutableStateOf(get("toonDetail") != "0")
+    /** Палитры фонов пользователя: одна строка на сцену «СЦЕНА|цвета…». */
+    var backdrops by mutableStateOf(get("toonBackdrops") ?: "")
     /** Произвольные параметры сценария: name=value построчно. */
     var extraParams by mutableStateOf(get("toonExtraParams") ?: "")
     /** Сколько вариантов в блоке выбора (0 — сколько сочинила модель). */
@@ -113,6 +138,8 @@ class ToonMaker(
         put("toonMultiEngines", multiEngines.trim())
         put("toonMultiPitches", multiPitches.trim())
         put("toonMultiRates", multiRates.trim())
+        put("toonDetail", if (detailRender) "1" else "0")
+        put("toonBackdrops", backdrops.trim())
         put("toonExtraParams", extraParams.trim())
         put("toonChoiceCount", choiceCount.toString())
         put("toonAlwaysVoice", if (alwaysVoice) "1" else "0")
@@ -276,10 +303,19 @@ class ToonMaker(
         if (continueFrom?.id == e.id) continueFrom = null
     }
 
-    private fun voiceFor(): ToonVoice? = when (mode) {
+    private fun voiceFor(cast: Map<String, ToonCharacter> = emptyMap()): ToonVoice? = when (mode) {
         ToonVoiceMode.SILENT -> null
         ToonVoiceMode.SYSTEM -> SystemToonVoice(app, ttsEngine(), app.cacheDir)
-        ToonVoiceMode.SYSTEM_MULTI -> MultiToonVoice(app, multiEngines, app.cacheDir, multiPitches, multiRates)
+        ToonVoiceMode.SYSTEM_MULTI -> {
+            // Пусто в настройках → пул всех 4 sherpa-голосов, распределённых по персонажам (Batch22)
+            val csv = multiEngines.trim().ifEmpty {
+                if (cast.isEmpty()) "" else ToonEnginePool.enginesCsv(ToonEnginePool.assign(cast.keys.toList()))
+            }
+            val pitches = multiPitches.trim().ifEmpty {
+                if (csv.isEmpty()) "" else cast.keys.toList().map { ToonEnginePool.pitchFor(cast[it]?.voice ?: "").toString() }.joinToString(",")
+            }
+            MultiToonVoice(app, csv, app.cacheDir, pitches, multiRates)
+        }
         ToonVoiceMode.CLOUD -> {
             val k = key.trim().ifBlank { fallbackKey(url)?.first.orEmpty() }
             require(k.isNotBlank()) { "Для озвучки нейросетью нужен ключ: впишите его в настройках озвучки на этом экране." }
@@ -292,16 +328,30 @@ class ToonMaker(
         val sc = ToonScript.parse(scriptText)
         val dictList = Pronounce.parseDict(dict)
         val heroes = sc.speakers.take(4)
-        val voice = voiceFor()
+        // каст: известные персонажи из библиотеки, новые получают автолук (Batch21)
+        // нейронка может создать героев прямо в сценарии: «КАСТ: Имя|lang|voice|0|…» (Batch26)
+        val scriptCast = ToonSceneFx.castFromScript(scriptText)
+        val scriptMoods = ToonSceneFx.moodsFromScript(scriptText)
+        val castBase = if (scriptCast.isEmpty()) castLibrary() else {
+            val merged = castLibrary().toMutableMap()
+            for (ch in scriptCast) merged[ch.name.trim().lowercase()] = ch
+            merged
+        }
+        val cast = ToonCast.resolve(sc.speakers, castBase) { ToonLooks.of(it, abs(it.hashCode()) % 7) }
+        val voice = voiceFor(cast)
         val fps = 24
+        // реквизит сцены из строк «КОМНАТА: …» (Batch24); чашка в реквизите → говорящий держит её
+        val sceneProps = ToonProps.fromScript(scriptText)
         try {
-            val texts = sc.lines.map { stripStressMarks(Pronounce.forVoice(it.sub, it.say, dictList, autoSpeech)) }
+            val texts = sc.lines.map { stripStressMarks(ToonTranscribe.line(Pronounce.forVoice(it.sub, it.say, dictList, autoSpeech), cast[it.speaker], dictList)) }
             val pcms = ArrayList<Pcm?>()
             for ((i, l) in sc.lines.withIndex()) {
                 if (cancelFlag) throw CancellationException()
                 message = "Озвучиваю ${i + 1} из ${sc.lines.size}"
                 progress = i.toFloat() / (sc.lines.size + 1)
                 val idx = if (l.narrator) 4 else heroes.indexOf(l.speaker).coerceAtLeast(0)
+                // язык реплики — из персонажа (Batch21); офлайн-голос ставится перед синтезом
+                if (voice != null) voice.nextLang = cast[l.speaker]?.lang
                 pcms += voice?.speak(texts[i], idx)
             }
             val choiceText = sc.choice?.let { c ->
@@ -319,6 +369,11 @@ class ToonMaker(
             }
             val subs = plan.clips.flatMap { c -> ToonSubs.timed(ToonSubs.chunks(c.line.sub), c.start, c.end) }
             val draw = ToonDraw()
+            draw.detailed = detailRender
+            if (backdrops.isNotBlank()) draw.palettes = ToonRichLib.merge(ToonRichLib.defaults(), ToonRichLib.parse(backdrops))
+            draw.props = sceneProps
+            draw.holdsCup = ToonProps.hasCup(sceneProps)
+            draw.sceneFx = ToonSceneFx.fromScript(scriptText)
             val scene = sc.scene ?: ToonScene.CITY
             val looks = heroes.mapIndexed { i, n -> ToonLooks.of(n, i) }
 
@@ -347,6 +402,8 @@ class ToonMaker(
                             width = k.width[li]
                             speaker = if (c.line.narrator) null else c.line.speaker
                             mood = ToonLooks.mood(c.line.sub)
+                            // директива «ЭМОЦИЯ Имя: …» задаёт настроение героя (Batch26)
+                            scriptMoods[speaker?.lowercase() ?: ""]?.let { mood = it }
                             break
                         }
                     }
@@ -369,6 +426,11 @@ class ToonMaker(
             val name = "toon_" + SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date()) + ".mp4"
             val out = File(dir, name)
             enc.mux(vTmp, if (hasAudio) aTmp else null, out)
+            // каптион для TikTok рядом с файлом: заголовок + хук + хэштеги
+            runCatching {
+                val cap = ToonCaption.caption(sc.title, ToonPlanner.hook(sc.lines.firstOrNull()?.sub ?: ""), scene.name)
+                File(dir, name.removeSuffix(".mp4") + ".txt").writeText(cap, Charsets.UTF_8)
+            }
             vTmp.delete(); aTmp.delete()
             progress = 1f
             return "video/$name"

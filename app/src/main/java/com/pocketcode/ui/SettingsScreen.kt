@@ -88,6 +88,10 @@ fun SettingsScreen(
     var ecoMode by remember { mutableStateOf(initial.ecoMode) }
     var fontScale by remember { mutableStateOf(initial.fontScale) }
     var compactUi by remember { mutableStateOf(initial.compactUi) }
+    var secretGate by remember { mutableStateOf(initial.secretGate) }
+    var todoScan by remember { mutableStateOf(initial.todoScan) }
+    var shellSession by remember { mutableStateOf(initial.shellSession) }
+    var haptics by remember { mutableStateOf(initial.haptics) }
     var showTemplates by remember { mutableStateOf(false) }
     var hooksMsg by remember { mutableStateOf<String?>(null) }
 
@@ -122,6 +126,8 @@ fun SettingsScreen(
         autoContinue = autoContinue, helperModel = helperModel, maxOutputTokens = maxOutput.toIntOrNull() ?: 0,
         fallbackProfileId = fallbackId, permissionRules = permissionRules, fileHooks = fileHooks,
         ecoMode = ecoMode, fontScale = fontScale, compactUi = compactUi,
+        secretGate = secretGate, todoScan = todoScan,
+        shellSession = shellSession, haptics = haptics,
     )
 
     // Автосохранение: через полсекунды после последнего изменения
@@ -129,6 +135,8 @@ fun SettingsScreen(
         provider, baseUrl, model, apiKey, githubToken, gitName, gitEmail, autoApprove, contextTokens, freshOnStart,
         smartApprove, allowRules, promptCaching, maxSteps, permissionRules, fileHooks, maxOutput, helperModel,
         fallbackId, autoContinue, ecoMode, fontScale, compactUi, label, activeId, profiles,
+        secretGate, todoScan,
+        shellSession, haptics,
     )
     var firstRun by remember { mutableStateOf(true) }
     var savedMark by remember { mutableStateOf(false) }
@@ -403,6 +411,34 @@ fun SettingsScreen(
                     )
                 }
                 AppSwitch(checked = ecoMode, onCheckedChange = { ecoMode = it })
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Проверка секретов перед коммитом")
+                    Text("Перед коммитом сканировать изменённые файлы на ключи и токены.", style = MaterialTheme.typography.bodySmall)
+                }
+                AppSwitch(checked = secretGate, onCheckedChange = { secretGate = it })
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Сканер TODO/FIXME")
+                    Text("Показывать техдолг (TODO/FIXME/HACK) в «Инструментах проекта».", style = MaterialTheme.typography.bodySmall)
+                }
+                AppSwitch(checked = todoScan, onCheckedChange = { todoScan = it })
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Живая сессия в терминале")
+                    Text("Постоянный sh: cd и переменные сохраняются между командами.", style = MaterialTheme.typography.bodySmall)
+                }
+                AppSwitch(checked = shellSession, onCheckedChange = { shellSession = it })
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Хаптик-отклик")
+                    Text("Вибросигнал при завершении длинных операций.", style = MaterialTheme.typography.bodySmall)
+                }
+                AppSwitch(checked = haptics, onCheckedChange = { haptics = it })
             }
             Text("Частота запросов", style = MaterialTheme.typography.titleMedium, modifier = sec("rate").padding(top = 8.dp))
             Text(

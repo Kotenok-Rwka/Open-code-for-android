@@ -2938,6 +2938,63 @@ class ChatController(
 
     fun termStop() { termJob?.cancel() }
 
+    // ---------- Живая сессия шелла: состояние (cd, переменные) живёт между командами ----------
+
+    private var shellProc: Process? = null
+    var shellAlive by mutableStateOf(false)
+        private set
+    var shellOut by mutableStateOf("")
+        private set
+
+    /** Открыть постоянный sh внутри той же среды, что и команды агента. */
+    fun shellStart() {
+        if (shellAlive) return
+        val proc = shell.builder(if (linuxActive) proxyEnv() + "exec sh -i" else "exec sh -i", termDir())
+            .redirectErrorStream(true)
+            .start()
+        shellProc = proc
+        shellAlive = true
+        shellOut = ""
+        scope.launch(Dispatchers.IO) {
+            val reader = proc.inputStream.reader(Charsets.UTF_8)
+            val buf = CharArray(2048)
+            while (shellAlive) {
+                val n = runCatching { reader.read(buf) }.getOrDefault(-1)
+                if (n < 0) break
+                val chunk = String(buf, 0, n)
+                withContext(Dispatchers.Main) {
+                    shellOut = (shellOut + chunk).takeLast(20000)
+                }
+            }
+            withContext(Dispatchers.Main) { shellAlive = false; shellProc = null }
+        }
+        shellSendRaw("cd ${termDir().path} 2>/dev/null; PS1=''\n")
+    }
+
+    /** Выполнить строку в живой сессии. */
+    fun shellExec(cmd: String) {
+        if (!shellAlive) shellStart()
+        val p = shellProc ?: return
+        rememberCommand(cmd)
+        shellSendRaw(cmd + "\n")
+        shellOut += "$ $cmd\n"
+    }
+
+    /** Прервать живую сессию. */
+    fun shellKill() {
+        shellAlive = false
+        runCatching { shellProc?.outputStream?.write("exit\n".toByteArray()) }
+        shellProc?.destroyForcibly()
+        shellProc = null
+    }
+
+    private fun shellSendRaw(text: String) {
+        val p = shellProc ?: return
+        scope.launch(Dispatchers.IO) {
+            runCatching { p.outputStream.write(text.toByteArray()); p.outputStream.flush() }
+        }
+    }
+
     var gitOut by mutableStateOf("")
         private set
     var gitBusy by mutableStateOf(false)
@@ -3601,6 +3658,52 @@ class ChatController(
         "hostMode", "rootDelay", "rpmLimit", "ratePeriod", "learnDone", "savedModels", "fallbackChain", "profileRates", "sf_undo", "ocBudget", "ocListLim", "ocShowLim", "ocFresh", "ocExtMode", "ocModel", "ocCards", "themeMode", "palette", "amoled", "uiStyle", "reduceMotion", "templates", "stars", "ocPins", "ocTitles", "bigInput",
     )
 
+    /** Экспорт кэшей онлайн-перевода всех языков (кроме ru): {"meta":..., "caches": {"en": {...}}}. */
+    fun exportTranslationCaches(): String {
+        val obj = kotlinx.serialization.json.buildJsonObject {
+            put("app", "pocketcode-translations"); put("version", 1)
+            put("caches", kotlinx.serialization.json.buildJsonObject {
+                val dir = File(app.filesDir, "").parentFile
+                app.filesDir.listFiles { f -> f.name.startsWith("i18n_online_") }?.forEach { f ->
+                    runCatching {
+                        put(f.name.removePrefix("i18n_online_").removeSuffix(".json"),
+                            kotlinx.serialization.json.Json.parseToJsonElement(f.readText()))
+                    }
+                }
+            })
+        }
+        return kotlinx.serialization.json.Json { prettyPrint = true }
+            .encodeToString(kotlinx.serialization.json.JsonObject.serializer(), obj)
+    }
+
+    /** Импорт кэшей онлайн-перевода из строки exportTranslationCaches. Возвращает число добавленных строк. */
+    fun importTranslationCaches(text: String): Int {
+        var n = 0
+        runCatching {
+            val o = kotlinx.serialization.json.Json.parseToJsonElement(text) as kotlinx.serialization.json.JsonObject
+            require((o["app"] as? kotlinx.serialization.json.JsonPrimitive)?.content == "pocketcode-translations") { "не файл переводов" }
+            val caches = o["caches"] as? kotlinx.serialization.json.JsonObject ?: return 0
+            caches.forEach { (lang, v) ->
+                if (lang != "ru") {
+                    File(app.filesDir, "i18n_online_$lang.json").let { f ->
+                        val merged = HashMap<String, String>()
+                        runCatching {
+                            val old = kotlinx.serialization.json.Json.parseToJsonElement(f.readText()) as kotlinx.serialization.json.JsonObject
+                            old.forEach { (k, vv) -> merged[k] = (vv as kotlinx.serialization.json.JsonPrimitive).content }
+                        }
+                        (v as? kotlinx.serialization.json.JsonObject)?.forEach { (k, vv) ->
+                            val c = (vv as kotlinx.serialization.json.JsonPrimitive).content
+                            if (merged[k] != c) n++
+                            merged[k] = c
+                        }
+                        f.writeText(org.json.JSONObject(merged as Map<*, *>).toString())
+                    }
+                }
+            }
+        }
+        return n
+    }
+
     private fun cryptKey(password: String, salt: ByteArray): javax.crypto.spec.SecretKeySpec {
         val f = javax.crypto.SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
         val k = f.generateSecret(javax.crypto.spec.PBEKeySpec(password.toCharArray(), salt, 120_000, 256)).encoded
@@ -3658,6 +3761,7 @@ class ChatController(
                         put("prefs", kotlinx.serialization.json.buildJsonObject {
                             backupPrefKeys.forEach { k -> settingsStore.rawGet(k)?.let { put(k, it) } }
                         })
+                        put("translations", runCatching { exportTranslationCaches() }.getOrNull() ?: "")
                     }
                     var bytes = j.encodeToString(kotlinx.serialization.json.JsonObject.serializer(), obj).toByteArray()
                     if (backupPassword.isNotBlank()) bytes = encryptBackup(bytes, backupPassword)
@@ -3731,6 +3835,9 @@ class ChatController(
                     }
                 }
                 (o["prefs"] as? kotlinx.serialization.json.JsonObject)?.forEach { (k, v) -> if (k in backupPrefKeys) settingsStore.rawPut(k, (v as kotlinx.serialization.json.JsonPrimitive).content) }
+                (o["translations"] as? kotlinx.serialization.json.JsonPrimitive)?.let { t ->
+                    runCatching { importTranslationCaches(t.content) }
+                }
                 agent = null
                 refreshExtensions()
                 refreshOcAccounts(); refreshOcCustom()

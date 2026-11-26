@@ -341,7 +341,16 @@ object Subtitles {
                 SubStyle.CLASSIC, SubStyle.BOX -> {
                     val words = ws.map { it.text }
                     val f = fit(words, sp.fs, avail, 3, softChars = 36)
-                    dl(0, s, e, f.size, "{\\fad(90,90)}" + joinFit(words, f))
+                    // ключевое слово фразы подсвечивается акцентом (Batch27)
+                    val key = SubHighlight.keyIndex(ws)
+                    val acc = SubHighlight.accentColor(tweak)
+                    val text = buildString {
+                        for ((i, x) in words.withIndex()) {
+                            append(if (i == key) "{\\c$acc}$x{\\r}" else x)
+                            if (i < words.lastIndex) append(if (i in f.breaks) "\\N" else " ")
+                        }
+                    }
+                    dl(0, s, e, f.size, "{\\fad(90,90)}" + text)
                 }
 
                 SubStyle.KARAOKE -> {

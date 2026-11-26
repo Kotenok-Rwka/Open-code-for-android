@@ -1991,6 +1991,42 @@ class App:
         self.btn(row3, "Стендап за день", lambda: call("standup_report", project=project, days=1))
         self.btn(row3, "Стендап за неделю", lambda: call("standup_report", project=project, days=7))
 
+        row4 = tk.Frame(win, bg=BG); row4.pack(fill="x", padx=16, pady=(4, 0))
+        self.btn(row4, "Дашборд", lambda: call("dashboard", project=project))
+        self.btn(row4, "TODO/FIXME", lambda: call("todo_scan", project=project))
+        self.btn(row4, "Мёртвый код", lambda: call("dead_code_py", project=project))
+        row5 = tk.Frame(win, bg=BG); row5.pack(fill="x", padx=16, pady=(4, 0))
+        self.btn(row5, "Без тестов", lambda: call("coverage_gaps", project=project))
+        self.btn(row5, "Сложность", lambda: call("complexity_py", project=project))
+        self.btn(row5, "Changelog", lambda: call("changelog", project=project))
+        row6 = tk.Frame(win, bg=BG); row6.pack(fill="x", padx=16, pady=(4, 0))
+        self.btn(row6, "Версия +1", lambda: call("project_version_bump", project=project, part="patch"))
+        self.btn(row6, "Экспорт в zip", lambda: call("project_export", project=project))
+
+        sep = tk.Frame(win, bg=BG, height=1, highlightthickness=1)
+        sep.pack(fill="x", padx=16, pady=(10, 2))
+        self.label(win, "Переключатели функций (хранятся в проекте)", 9, MUTED, "bold").pack(padx=16, pady=(2, 4))
+        flags_box = tk.Frame(win, bg=BG); flags_box.pack(fill="x", padx=16, pady=(0, 10))
+
+        def refresh_flags():
+            for w in flags_box.winfo_children():
+                w.destroy()
+            flags = core.fx.flags_get(project)["flags"]
+            for f in flags:
+                fr = tk.Frame(flags_box, bg=BG); fr.pack(fill="x", pady=1)
+                var = tk.BooleanVar(value=f["enabled"])
+
+                def toggle(fid=f["id"], v=var):
+                    r = core.fx.flags_set(project, fid, v.get())
+                    out.configure(text="%s: %s" % (fid, "вкл" if r.get("enabled") else "выкл"))
+
+                tk.Checkbutton(fr, text=f["title"], variable=var, command=toggle,
+                               bg=BG, fg=TEXT, selectcolor="#141828",
+                               activebackground=BG, activeforeground=TEXT,
+                               highlightthickness=0, anchor="w").pack(anchor="w")
+
+        refresh_flags()
+
     def show_secret_scanner(self):
         win = tk.Toplevel(self.root)
         win.title("Сканер секретов")

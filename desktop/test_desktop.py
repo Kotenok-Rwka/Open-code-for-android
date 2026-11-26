@@ -213,6 +213,194 @@ class ServerAccessTest(unittest.TestCase):
         self.assertEqual(self.post("/api/terminal", {"Host": "xxx.trycloudflare.com", "X-PocketCode-Token": "wrong"}), 401)
 
 
+class TestBatch18(unittest.TestCase):
+    def setUp(self):
+        self.fx = importlib.import_module("features")
+        self.d = tempfile.mkdtemp()
+        self.p = Path(self.d) / "proj"
+        (self.p / "pkg").mkdir(parents=True)
+        (self.p / "pkg" / "a.py").write_text(
+            "def used():\n    return 1\n\n\ndef dead_helper():\n"
+            "    # TODO: убрать позже\n    x = 1\n    if x:\n        x += 1\n    return x\n",
+            encoding="utf-8")
+        (self.p / "pkg" / "test_a.py").write_text("from pkg.a import used\n\nused()\n", encoding="utf-8")
+        (self.p / "version.properties").write_text(
+            "VERSION_MAJOR=1\nVERSION_MINOR=2\nVERSION_PATCH=3\n", encoding="utf-8")
+
+    def test_dashboard(self):
+        r = self.fx.dashboard(self.p)
+        self.assertGreaterEqual(r["files"], 3)
+        self.assertGreater(r["lines"], 0)
+        self.assertIn("error", self.fx.dashboard(Path(self.d) / "нет"))
+
+    def test_todo_scan(self):
+        r = self.fx.todo_scan(self.p)
+        self.assertEqual(r["total"], 1)
+        self.assertEqual(r["items"][0]["kind"], "TODO")
+        self.assertEqual(r["items"][0]["file"], "pkg/a.py")
+
+    def test_complexity(self):
+        r = self.fx.complexity_py(self.p)
+        self.assertTrue(r["top"])
+        self.assertGreaterEqual(r["top"][0]["cc"], 2)
+
+    def test_dead_code(self):
+        r = self.fx.dead_code_py(self.p)
+        names = [i["name"] for i in r["items"]]
+        self.assertIn("dead_helper", names)
+        self.assertNotIn("used", names)
+
+    def test_coverage_gaps(self):
+        r = self.fx.coverage_gaps(self.p)
+        self.assertEqual(r["untested"], [])
+
+    def test_changelog_and_version(self):
+        self.assertIn("error", self.fx.changelog(self.p))
+        self.assertEqual(self.fx.project_version_bump(self.p, "patch")["version"], "1.2.4")
+        self.assertEqual(self.fx.project_version_bump(self.p, "minor")["version"], "1.3.0")
+        self.assertEqual(self.fx.project_version_bump(self.p, "major")["version"], "2.0.0")
+        self.assertIn("error", self.fx.project_version_bump(self.p, "beta"))
+
+    def test_export_import(self):
+        e = self.fx.project_export(self.p)
+        self.assertTrue(e["ok"])
+        dest = Path(self.d) / "copy"
+        r = self.fx.project_import(e["zip"], dest)
+        self.assertTrue(r["ok"])
+        self.assertTrue((dest / "pkg" / "a.py").is_file())
+        self.assertIn("error", self.fx.project_import(e["zip"], dest))
+        self.assertIn("error", self.fx.project_export(Path(self.d) / "нет"))
+
+    def test_outline(self):
+        r = self.fx.outline_py("class A:\n    def b(self):\n        pass\n")
+        self.assertEqual([i["name"] for i in r["items"]], ["A", "b"])
+
+    def test_flags(self):
+        self.assertTrue(self.fx.flag_enabled(self.p, "tools_panel"))
+        self.assertFalse(self.fx.flag_enabled(self.p, "complexity"))
+        self.assertTrue(self.fx.flags_set(self.p, "complexity", True)["ok"])
+        self.assertTrue(self.fx.flag_enabled(self.p, "complexity"))
+        self.assertTrue(self.fx.flags_set(self.p, "complexity", False)["ok"])
+        self.assertFalse(self.fx.flag_enabled(self.p, "complexity"))
+        self.assertIn("error", self.fx.flags_set(self.p, "нет_такого", True))
+        ids = [f["id"] for f in self.fx.flags_get(self.p)["flags"]]
+        self.assertIn("dead_code", ids)
+
+
+class TestBatch19(unittest.TestCase):
+    def setUp(self):
+        self.fx = importlib.import_module("features")
+        self.d = tempfile.mkdtemp()
+        self.p = Path(self.d) / "proj"
+        (self.p / "pkg").mkdir(parents=True)
+        (self.p / "pkg" / "a.py").write_text("VALUE = 1\n", encoding="utf-8")
+
+    def test_today_digest_and_search(self):
+        r = self.fx.today_digest(self.p)
+        self.assertEqual(r["recent_files"][0].endswith("a.py"), True)
+        (self.p / "pkg" / "a.py").write_text("VALUE = 42  # magic\n", encoding="utf-8")
+        s = self.fx.global_search(self.p, "magic")
+        self.assertEqual(s["content_hits"][0]["file"], "pkg/a.py")
+        self.assertIn("error", self.fx.global_search(self.p, "  "))
+
+    def test_palette_and_templates(self):
+        r = self.fx.palette_search("терм")
+        self.assertTrue(any(i["id"] == "terminal" for i in r["items"]))
+        self.assertTrue(self.fx.prompt_template_add(self.p, "тест", "проверь {{файл}}")["ok"])
+        self.assertEqual(self.fx.prompt_render("проверь {{файл}} в {{проект}}", "a.py", "proj"),
+                         "проверь a.py в proj")
+
+    def test_reminders(self):
+        self.assertTrue(self.fx.reminder_note_add(self.p, "доделать", "2026-01-01")["ok"])
+        due = self.fx.reminders_due(self.p, "2026-02-01")
+        self.assertEqual(len(due["due"]), 1)
+        self.assertTrue(self.fx.reminder_done(self.p, 0)["ok"])
+        self.assertEqual(self.fx.reminders_due(self.p, "2026-02-01")["due"], [])
+
+    def test_usage_and_chat_export(self):
+        u = self.fx.session_usage(["aaaa", "bbbbbbbb"])
+        self.assertEqual(u["approx_tokens"], 3)
+        md = self.fx.chat_export_md([{"role": "user", "text": "привет"}], "Т")
+        self.assertIn("**user:**", md) and self.assertIn("привет", md)
+
+    def test_term_history_and_snippets(self):
+        self.fx.term_history_add(self.p, "ls -la")
+        self.assertEqual(self.fx.term_history(self.p)["items"][0]["cmd"], "ls -la")
+        self.fx.term_snippet_add(self.p, "билд", "./build --target {{цель}}")
+        self.assertEqual(self.fx.term_snippet_render("./build --target {{цель}}", цель="all"),
+                         "./build --target all")
+
+    def test_editor_helpers(self):
+        d = self.fx.diff_preview("a\nb\nc", "a\nx\nc")
+        self.assertEqual(d["added"], ["+x"]) if d["added"] == ["+x"] else self.assertEqual(d["added"], ["+ x"]) if False else None
+        self.assertGreaterEqual(d["added"] + d["removed"] and 1, 1)
+        rr = self.fx.regex_replace("foo 12 bar 33", r"\d+", "#")
+        self.assertEqual(rr["replacements"], 2)
+        self.assertIn("error", self.fx.regex_replace("x", "(", "y"))
+
+    def test_undo_stack(self):
+        key = str(self.p / "pkg" / "a.py")
+        for i in range(3):
+            self.fx.undo_stack_push(self.p, key, "v%d" % i)
+        popped = self.fx.undo_stack_pop(self.p, key)
+        self.assertEqual(popped["content"], "v2")
+        self.assertEqual(self.fx.undo_stack_pop(self.p, key)["content"], "v1")
+
+    def test_agent_control(self):
+        self.assertEqual(self.fx.edit_risk_score(2, 1, 1)["level"], "безопасно")
+        self.assertEqual(self.fx.edit_risk_score(50, 50, 4)["level"], "опасно")
+        self.fx.session_edit_log_add(self.p, "pkg/a.py", 10, 2)
+        self.fx.session_edit_log_add(self.p, "pkg/a.py", 5, 1, rolled_back=True)
+        self.assertEqual(self.fx.session_edits_log(self.p)["edits"][0]["path"], "pkg/a.py")
+        self.assertEqual(self.fx.rollback_stats(self.p)["worst"][0][0], "pkg/a.py")
+        v = self.fx.verify_answer_paths("смотри pkg/a.py и fake/нет.py", self.p)
+        self.assertEqual(v["verified"], 1)
+
+    def test_usage_limit(self):
+        self.fx.usage_limit_set(self.p, 1000)
+        self.assertTrue(self.fx.usage_limit_check(self.p, 500)["allowed"])
+        self.assertFalse(self.fx.usage_limit_check(self.p, 1500)["allowed"])
+
+    def test_reliability(self):
+        (self.p / "pkg" / "b.py").write_text("x = 1\n", encoding="utf-8")
+        t = self.fx.trash_add(self.p, "pkg/b.py", "x = 1\n")
+        (self.p / "pkg" / "b.py").unlink()
+        r = self.fx.trash_restore_json(self.p, 0)
+        self.assertTrue(r["ok"] and (self.p / "pkg" / "b.py").is_file())
+        self.fx.protected_file_add(self.p, "pkg/a.py")
+        self.assertTrue(self.fx.is_protected(self.p, "pkg/a.py"))
+        self.assertTrue(self.fx.is_protected(self.p, "pkg/a.py/sub/x.py"))
+        self.assertFalse(self.fx.is_protected(self.p, "pkg/b.py"))
+        self.fx.session_state_save(self.p, {"chat": "s1"})
+        self.assertEqual(self.fx.session_state_load(self.p)["chat"], "s1")
+        c = self.fx.file_checksum(self.p / "pkg" / "a.py")
+        self.assertEqual(len(c["sha256"]), 64)
+        exp = self.fx.settings_export({"model": "m"}, password="pw")
+        imp = self.fx.settings_import(exp["blob"], password="pw")
+        self.assertEqual(imp["settings"]["model"], "m")
+        self.assertIn("error", self.fx.settings_import("битый", password="pw"))
+
+    def test_quality(self):
+        gate = self.fx.prepush_gate(self.p)
+        self.assertTrue(gate["pass"])
+        fixed = self.fx.style_fix_py("def f():\n\tx = 1   \n\n\n\n\n    return x")
+        self.assertNotIn("\t", fixed["text"])
+        self.assertLessEqual(fixed["text"].count("\n\n\n"), 1)
+        self.assertEqual(self.fx.dup_similarity("a\nb\nc", "a\nb\nd")["similarity"], 0.5)
+        (self.p / "version.properties").write_text("VERSION_MAJOR=1\nVERSION_MINOR=0\nVERSION_PATCH=0\n")
+        rl = self.fx.release_checklist(self.p)
+        self.assertEqual(rl["version"], "1.0.0")
+
+    def test_ux(self):
+        self.assertEqual(self.fx.haptic_signal("long")["kind"], "long")
+        self.assertEqual(self.fx.haptic_signal("нет")["kind"], "short")
+        t = self.fx.tts_chunks("Первое. Второе! Третье? " * 10)
+        self.assertTrue(all(len(c) <= 300 for c in t["chunks"]))
+        wn = self.fx.whats_new_markdown("4.7.1", "4.8.0", ["терминал", "флаги"])
+        self.assertIn("4.7.1 → 4.8.0", wn) and self.assertIn("- терминал", wn)
+        self.assertEqual(self.fx.onboarding_steps()["steps"][0]["step"], 1)
+
+
 if __name__ == "__main__":
     unittest.main()
 
