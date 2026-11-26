@@ -69,14 +69,19 @@ data class ToonAppearance(
                     key == "борода" -> a = a.copy(beard = true)
                     // без двоеточия: «рыжие», «очки», «борода», «кепка»…
                     else -> {
-                        hairWords[key]?.let { a = a.copy(hairColor = it); continue }
-                        shirtWords[key]?.let { a = a.copy(shirtColor = it); continue }
-                        styleWords[key]?.let { a = a.copy(style = it); continue }
-                        when (key) {
-                            "очки" -> a = a.copy(glasses = true)
-                            "борода" -> a = a.copy(beard = true)
-                            "высокий", "высокая" -> a = a.copy(tall = 1.12f)
-                            "низкий", "низкая" -> a = a.copy(tall = 0.88f)
+                        val hairHit = hairWords[key]
+                        val shirtHit = shirtWords[key]
+                        val styleHit = styleWords[key]
+                        when {
+                            hairHit != null -> a = a.copy(hairColor = hairHit)
+                            shirtHit != null -> a = a.copy(shirtColor = shirtHit)
+                            styleHit != null -> a = a.copy(style = styleHit)
+                            else -> when (key) {
+                                "очки" -> a = a.copy(glasses = true)
+                                "борода" -> a = a.copy(beard = true)
+                                "высокий", "высокая" -> a = a.copy(tall = 1.12f)
+                                "низкий", "низкая" -> a = a.copy(tall = 0.88f)
+                            }
                         }
                     }
                 }
@@ -142,8 +147,7 @@ data class ToonSceneFx(
                 if (p.isEmpty() || p[0].isBlank()) return@mapNotNull null
                 val name = p[0].trim()
                 ToonCharacter(name,
-                    ToonLooks.of(name, abs(name.hashCode()) % 7)
-                        .applyAppearance(ToonAppearance.parse(p.getOrElse(4) { "" })),
+                    ToonLooks.of(name, abs(name.hashCode()) % 7).applyAppearance(ToonAppearance.parse(p.getOrElse(4) { "" })),
                     voice = p.getOrElse(2) { "нейтрально" },
                     lang = p.getOrElse(1) { "ru" },
                     custom = p.getOrElse(3) { "0" } == "1")

@@ -68,20 +68,20 @@ object ToonAnim {
      * слушающий почти неподвижен. Если holds — правая рука согнута к лицу (чашка у рта).
      */
     fun arms(t: Double, talking: Boolean, open: Float, holds: Boolean): FloatArray {
-        val lSh = if (talking) (sin(2.0 * PI * t / 1.7) * 10f + sin(2.0 * PI * t / 0.8) * 5f * open)
-        else (sin(2.0 * PI * t / 4.7) * 2f)
-        val rSh = if (talking) (sin(2.0 * PI * t / 1.3 + 1.1) * 12f + sin(2.0 * PI * t / 0.7 + 0.5) * 5f * open)
-        else (sin(2.0 * PI * t / 4.7 + 1.0) * 2f)
-        val lEl = 8f + abs(sin(2.0 * PI * t / 2.3)) * (if (talking) 14f else 3f)
+        val lSh = if (talking) ((sin(2.0 * PI * t / 1.7) * 10.0 + sin(2.0 * PI * t / 0.8) * 5.0 * open).toFloat())
+        else (sin(2.0 * PI * t / 4.7) * 2.0).toFloat()
+        val rSh = if (talking) ((sin(2.0 * PI * t / 1.3 + 1.1) * 12.0 + sin(2.0 * PI * t / 0.7 + 0.5) * 5.0 * open).toFloat())
+        else (sin(2.0 * PI * t / 4.7 + 1.0) * 2.0).toFloat()
+        val lEl = 8f + abs(sin(2.0 * PI * t / 2.3)).toFloat() * (if (talking) 14f else 3f)
         val rSh2: Float
         val rEl: Float
         if (holds) {
             // правая рука поднята и согнута: чашка у рта
-            rSh2 = -95f + sin(2.0 * PI * t / 3.1) * 2f
+            rSh2 = -95f + (sin(2.0 * PI * t / 3.1) * 2.0).toFloat()
             rEl = 95f
         } else {
             rSh2 = rSh
-            rEl = 8f + abs(sin(2.0 * PI * t / 2.0 + 0.4)) * (if (talking) 14f else 3f)
+            rEl = 8f + abs(sin(2.0 * PI * t / 2.0 + 0.4)).toFloat() * (if (talking) 14f else 3f)
         }
         return floatArrayOf(lSh, lEl, rSh2, rEl)
     }

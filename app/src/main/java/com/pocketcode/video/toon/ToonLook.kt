@@ -17,16 +17,6 @@ data class ToonLook(
 )
 
 object ToonLooks {
-    /** Применить описание внешности (Batch26) поверх базовой внешности из имени. */
-    fun ToonLook.applyAppearance(a: ToonAppearance): ToonLook = ToonLook(
-        skin = a.skinColor ?: skin,
-        hair = a.hairColor ?: hair,
-        shirt = a.shirtColor ?: shirt,
-        style = a.style ?: style,
-        glasses = a.glasses ?: glasses,
-        beard = a.beard ?: beard,
-        scale = scale * (a.tall ?: 1f),
-    )
     private val skins = intArrayOf(0xFFF2C6A0.toInt(), 0xFFE0A87C.toInt(), 0xFFFAD7B5.toInt(), 0xFFC68B63.toInt(), 0xFF9B6B4A.toInt())
     private val hairs = intArrayOf(0xFF3B2A20.toInt(), 0xFFB5651D.toInt(), 0xFF1E1E24.toInt(), 0xFFE5C07B.toInt(), 0xFF8A8A92.toInt(), 0xFFB5382B.toInt())
     private val shirts = intArrayOf(0xFFE5533D.toInt(), 0xFF3D7BE5.toInt(), 0xFF3DB27A.toInt(), 0xFF9B59D0.toInt(), 0xFFEFB43A.toInt(), 0xFF2FA7B8.toInt(), 0xFF5C6B7A.toInt())
@@ -87,3 +77,14 @@ object ToonLooks {
         }
     }
 }
+
+/** Применить описание внешности (Batch26) поверх базовой внешности из имени. */
+fun ToonLook.applyAppearance(a: ToonAppearance): ToonLook = ToonLook(
+    skin = a.skinColor ?: skin,
+    hair = a.hairColor ?: hair,
+    shirt = a.shirtColor ?: shirt,
+    style = a.style ?: style,
+    glasses = a.glasses ?: glasses,
+    beard = a.beard ?: beard,
+    scale = scale * (a.tall ?: 1f),
+)

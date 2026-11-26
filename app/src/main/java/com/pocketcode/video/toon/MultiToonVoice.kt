@@ -23,6 +23,7 @@ class MultiToonVoice(
     private val pitchCsv: String = "",
     private val rateCsv: String = "",
 ) : ToonVoice {
+    override var nextLang: String? = null
     private val engines: List<String> = enginesCsv.split('|').map { it.trim() }.filter { it.isNotEmpty() }.ifEmpty { listOf("") }
     private val ttsList = arrayOfNulls<TextToSpeech>(engines.size)
     private var counter = 0

@@ -100,8 +100,8 @@ object I18n {
                 if (tr != null && tr.isNotBlank()) {
                     onlineCache[s] = tr
                     if (onlineCache.size > 8000) {
-                        val it = onlineCache.entries.iterator()
-                        repeat(2000) { if (it.hasNext()) { it.next(); it.remove() } }
+                        val keys = onlineCache.keys.take(2000)
+                        for (k in keys) onlineCache.remove(k)
                     }
                     saveOnlineCache()
                     android.os.Handler(android.os.Looper.getMainLooper()).post { cache.clear() }

@@ -85,9 +85,9 @@ class ToonDraw(val w: Int = 720, val h: Int = 1280) {
         val floorY = h * 0.74f
         // тёмная сцена: кладка стен + луч фонаря + дозиметр (Batch25)
         if (s == ToonScene.BUNKER) {
-            fill.color = 0x66000000
+            fill.color = 0x66000000.toInt()
             for (b in ToonDark.bricks(w, floorY + 40f)) {
-                fill.color = 0x3D000000
+                fill.color = 0x3D000000.toInt()
                 c.drawRoundRect(RectF(b[0], b[1], b[0] + b[2], b[1] + b[3]), 4f, 4f, fill)
             }
             // луч фонаря от героя справа к центру, с плывущей пылью
@@ -106,21 +106,21 @@ class ToonDraw(val w: Int = 720, val h: Int = 1280) {
             path.close()
             c.drawPath(path, fill)
             fill.shader = null
-            fill.color = 0x88FFF0A8
+            fill.color = 0x88FFF0A8.toInt()
             for ((dustX, dustY) in ToonDark.dust(bm, t)) c.drawCircle(dustX, dustY, 3f, fill)
             // дозиметр в руке: циферблат со шкалой и дрожащей стрелкой
             val dcx = w * 0.80f; val dcy = h * 0.55f
-            fill.color = 0xFFE9E4D8
+            fill.color = 0xFFE9E4D8.toInt()
             c.drawCircle(dcx, dcy, 74f, fill)
-            line.color = 0xFF22262E; line.strokeWidth = 6f
+            line.color = 0xFF22262E.toInt(); line.strokeWidth = 6f
             c.drawCircle(dcx, dcy, 74f, line)
             line.strokeWidth = 4f
             for ((tx, ty) in ToonDark.dialTicks(dcx, dcy, 62f)) c.drawLine(dcx, dcy, tx, ty, line)
             // опасная зона красной дугой
-            line.color = 0xFFD23B2E; line.strokeWidth = 8f
+            line.color = 0xFFD23B2E.toInt(); line.strokeWidth = 8f
             c.drawArc(RectF(dcx - 62f, dcy - 62f, dcx + 62f, dcy + 62f), ToonDark.dangerArc().second, ToonDark.dangerArc().first - ToonDark.dangerArc().second, false, line)
             val na = Math.toRadians(ToonDark.needleAngle(t, 0.72f).toDouble())
-            line.color = 0xFF22262E; line.strokeWidth = 6f
+            line.color = 0xFF22262E.toInt(); line.strokeWidth = 6f
             c.drawLine(dcx, dcy, dcx + (Math.cos(na) * 52f).toFloat(), dcy - (Math.sin(na) * 52f).toFloat(), line)
         }
         // узор обоев на стене
@@ -177,7 +177,7 @@ class ToonDraw(val w: Int = 720, val h: Int = 1280) {
 
     private fun heroShadow(c: Canvas, cx: Float, scale: Float) {
         val sh = ToonRichGeom.heroShadow(cx, h * 0.92f, scale)
-        fill.color = 0x55000000
+        fill.color = 0x55000000.toInt()
         c.drawOval(RectF(sh[0] - sh[2], sh[1] - sh[3], sh[0] + sh[2], sh[1] + sh[3]), fill)
     }
 
@@ -390,7 +390,7 @@ class ToonDraw(val w: Int = 720, val h: Int = 1280) {
         // причёска или кепка
         fill.color = hair
         when (look.style) {
-            HairStyle.BALD -> {}
+            HairStyle.BALD, HairStyle.LONG, HairStyle.BUN -> {}
             HairStyle.CAP -> {
                 fill.color = shirts2(shirt)
                 path.reset()
@@ -477,11 +477,11 @@ class ToonDraw(val w: Int = 720, val h: Int = 1280) {
 
     /** Чашка в кисти руки. */
     private fun cup(c: Canvas, hx: Float, hy: Float) {
-        fill.color = 0xFFE8E4DC
+        fill.color = 0xFFE8E4DC.toInt()
         c.drawRoundRect(RectF(hx - 20f, hy - 22f, hx + 20f, hy + 16f), 6f, 6f, fill)
-        line.color = 0xFFB9B2A6; line.strokeWidth = 6f
+        line.color = 0xFFB9B2A6.toInt(); line.strokeWidth = 6f
         c.drawCircle(hx + 26f, hy - 2f, 10f, line)
-        fill.color = 0xFF6B4A32
+        fill.color = 0xFF6B4A32.toInt()
         c.drawOval(RectF(hx - 16f, hy - 20f, hx + 16f, hy - 12f), fill)
     }
 
@@ -493,57 +493,57 @@ class ToonDraw(val w: Int = 720, val h: Int = 1280) {
             val py = h * p.y
             when (p.kind) {
                 ToonProp.Kind.TABLE -> {
-                    fill.color = 0xFF8A5A3B
+                    fill.color = 0xFF8A5A3B.toInt()
                     c.drawRoundRect(RectF(px - 130f, py - 14f, px + 130f, py + 10f), 6f, 6f, fill)
                     c.drawRect(px - 100f, py, px - 84f, floorY, fill)
                     c.drawRect(px + 84f, py, px + 100f, floorY, fill)
                 }
                 ToonProp.Kind.CHAIR -> {
-                    fill.color = 0xFF7A4E33
+                    fill.color = 0xFF7A4E33.toInt()
                     c.drawRoundRect(RectF(px - 46f, py - 12f, px + 46f, py + 10f), 6f, 6f, fill)
                     c.drawRoundRect(RectF(px - 46f, py - 120f, px + 46f, py - 96f), 8f, 8f, fill)
                     c.drawRect(px - 40f, py, px - 26f, floorY, fill)
                     c.drawRect(px + 26f, py, px + 40f, floorY, fill)
                 }
                 ToonProp.Kind.WINDOW -> {
-                    fill.color = 0xFFBFE6F7
+                    fill.color = 0xFFBFE6F7.toInt()
                     c.drawRoundRect(RectF(px - 90f, py - 120f, px + 90f, py + 90f), 8f, 8f, fill)
-                    line.color = 0xFFE8D8C0; line.strokeWidth = 12f
+                    line.color = 0xFFE8D8C0.toInt(); line.strokeWidth = 12f
                     c.drawRoundRect(RectF(px - 90f, py - 120f, px + 90f, py + 90f), 8f, 8f, line)
                     c.drawLine(px, py - 120f, px, py + 90f, line)
                     c.drawLine(px - 90f, py - 15f, px + 90f, py - 15f, line)
                 }
                 ToonProp.Kind.LAMP -> {
-                    fill.color = 0xFFE4B04A
+                    fill.color = 0xFFE4B04A.toInt()
                     path.reset()
                     path.moveTo(px - 60f, py - 150f); path.lineTo(px + 60f, py - 150f); path.lineTo(px + 38f, py - 110f); path.lineTo(px - 38f, py - 110f)
                     path.close(); c.drawPath(path, fill)
-                    line.color = 0xFF6B5A3B; line.strokeWidth = 10f
+                    line.color = 0xFF6B5A3B.toInt(); line.strokeWidth = 10f
                     c.drawLine(px, py - 110f, px, floorY, line)
                     c.drawRoundRect(RectF(px - 50f, floorY - 10f, px + 50f, floorY + 8f), 8f, 8f, fill)
                 }
                 ToonProp.Kind.TV -> {
-                    fill.color = 0xFF22262E
+                    fill.color = 0xFF22262E.toInt()
                     c.drawRoundRect(RectF(px - 110f, py - 80f, px + 110f, py + 70f), 8f, 8f, fill)
-                    fill.color = 0xFF5F86B0
+                    fill.color = 0xFF5F86B0.toInt()
                     c.drawRoundRect(RectF(px - 96f, py - 66f, px + 96f, py + 56f), 4f, 4f, fill)
                     c.drawRect(px - 14f, py + 70f, px + 14f, floorY, fill)
                 }
                 ToonProp.Kind.PLANT -> {
-                    fill.color = 0xFFB0603C
+                    fill.color = 0xFFB0603C.toInt()
                     path.reset()
                     path.moveTo(px - 44f, py - 60f); path.lineTo(px + 44f, py - 60f); path.lineTo(px + 30f, floorY); path.lineTo(px - 30f, floorY)
                     path.close(); c.drawPath(path, fill)
-                    fill.color = 0xFF3E7A44
+                    fill.color = 0xFF3E7A44.toInt()
                     for (leaf in listOf(-38f to -140f, 0f to -165f, 38f to -140f, -20f to -110f, 22f to -112f)) {
                         c.drawOval(RectF(px + leaf.first - 18f, py + leaf.second, px + leaf.first + 18f, py + leaf.second + 58f), fill)
                     }
                 }
                 ToonProp.Kind.SHELF -> {
-                    fill.color = 0xFF8A5A3B
+                    fill.color = 0xFF8A5A3B.toInt()
                     c.drawRect(px - 90f, py, px + 90f, py + 12f, fill)
                     for (i in 0..2) {
-                        fill.color = 0xFF4A7BA8
+                        fill.color = 0xFF4A7BA8.toInt()
                         val bx = px - 60f + i * 55f
                         c.drawRect(bx, py - 44f, bx + 34f, py, fill)
                     }
@@ -551,9 +551,9 @@ class ToonDraw(val w: Int = 720, val h: Int = 1280) {
                 ToonProp.Kind.CUP -> { /* чашка рисуется в руке героя */ }
                 ToonProp.Kind.PICTURE -> {
                     val fr = ToonRichGeom.pictureFrame(w, h, px, py, 0.9f)
-                    fill.color = 0xFFE4B04A
+                    fill.color = 0xFFE4B04A.toInt()
                     c.drawRect(fr[0], fr[1], fr[2], fr[3], fill)
-                    fill.color = 0xFF7FA8C9
+                    fill.color = 0xFF7FA8C9.toInt()
                     c.drawRect(fr[0] + 10f, fr[1] + 10f, fr[2] - 10f, fr[3] - 10f, fill)
                 }
                 ToonProp.Kind.CUSTOM -> customBitmap(c, p, px, py, floorY)
@@ -566,7 +566,7 @@ class ToonDraw(val w: Int = 720, val h: Int = 1280) {
         val bmp = propBitmaps.getOrPut(p.path) { decodeProp(p.path) }
         if (bmp == null) {
             // картинка не найдена/не читается — рисуем «заглушку-рамку», чтобы кадр не ломался
-            fill.color = 0x55888888
+            fill.color = 0x55888888.toInt()
             c.drawRoundRect(RectF(px - 60f, py - 80f, px + 60f, py + 40f), 6f, 6f, fill)
             return
         }
@@ -574,7 +574,7 @@ class ToonDraw(val w: Int = 720, val h: Int = 1280) {
         val k = targetH / bmp.height
         val bw = bmp.width * k
         val bh = targetH
-        fill.color = 0x44000000
+        fill.color = 0x44000000.toInt()
         c.drawOval(RectF(px - bw / 2, floorY - 14f, px + bw / 2, floorY + 12f), fill)
         c.drawBitmap(bmp, null, RectF(px - bw / 2, floorY - bh, px + bw / 2, floorY), paintBmp)
     }
@@ -605,11 +605,11 @@ class ToonDraw(val w: Int = 720, val h: Int = 1280) {
                 }
             }
             "снег" -> {
-                fill.color = 0xCCFFFFFF
-                var i = 0L
+                fill.color = 0xCCFFFFFF.toInt()
+                var i = 0
                 val n = 46
                 while (i < n) {
-                    val s = (i * 2654435761L) and 0xFFFF
+                    val s = ((i * 2654435761L) and 0xFFFF).toInt()
                     val x = ((s % w) + sin(t * 0.9 + i) * 30) % w
                     val y = ((s * 13) % h + t * 120 * ((s % 3) + 1)) % h
                     c.drawCircle(x.toFloat(), y.toFloat(), 3f + (s % 4), fill)
@@ -617,7 +617,7 @@ class ToonDraw(val w: Int = 720, val h: Int = 1280) {
                 }
             }
             "туман" -> {
-                fill.color = 0x55C8D0D8
+                fill.color = 0x55C8D0D8.toInt()
                 c.drawRect(0f, h * 0.4f, w.toFloat(), h.toFloat(), fill)
             }
         }

@@ -111,7 +111,7 @@ object ToonTranscribe {
 
     /** Полный конвейер одной реплики: язык → словарь → нормализация. */
     fun line(text: String, character: ToonCharacter?, dict: List<Pair<String, String>> = emptyList()): String {
-        val lang = detect(text, character)
+        val lang = ToonVoiceLang.detect(text, character)
         return transcribe(text, lang, dict)
     }
 }

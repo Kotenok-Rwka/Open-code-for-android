@@ -9,9 +9,9 @@ import org.jsoup.Jsoup
 import java.net.URLDecoder
 import java.util.concurrent.TimeUnit
 
-private const val UA = "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Mobile Safari/537.36"
+internal const val UA = "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Mobile Safari/537.36"
 
-private val webHttp = OkHttpClient.Builder()
+internal val webHttp = OkHttpClient.Builder()
     .connectTimeout(15, TimeUnit.SECONDS)
     .readTimeout(30, TimeUnit.SECONDS)
     .followRedirects(true)

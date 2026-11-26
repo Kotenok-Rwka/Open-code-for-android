@@ -21,8 +21,7 @@ class WeatherTool : Tool {
     override val schema = objSchema(
         Prop("city", "string", "Город, например «Москва» или «Санкт-Петербург»"),
     )    override fun needsApproval(input: JsonObject) = false
-    override fun describe(input: JsonObject) = "погода: ${input.str("city") ?: ""}"
-    override suspend fun run(input: JsonObject): String = withContext(Dispatchers.IO) {
+    override fun describe(input: JsonObject) = "погода: ${input.str("city") ?: ""}"    override suspend fun run(input: JsonObject): String = withContext(Dispatchers.IO) {
         val city = input.need("city").trim()
         check(city.isNotEmpty()) { "укажи город" }
         val enc = java.net.URLEncoder.encode(city, "UTF-8")

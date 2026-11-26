@@ -28,12 +28,13 @@ interface ToonVoice {
     /** Озвучивает текст; [index] — номер героя (у каждого свой голос или высота тона). */
     suspend fun speak(text: String, index: Int): Pcm
     /** Язык следующей реплики (BCP-47, напр. «en»); null — как раньше, русский. */
-    var nextLang: String? = null
+    var nextLang: String?
     fun close() {}
 }
 
 /** Системный движок синтеза речи: работает без интернета. Героям меняется высота тона. */
 class SystemToonVoice(private val ctx: Context, private val engine: String, private val cache: File) : ToonVoice {
+    override var nextLang: String? = null
     private var tts: TextToSpeech? = null
     private var counter = 0
 

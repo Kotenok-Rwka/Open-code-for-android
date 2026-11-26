@@ -81,18 +81,17 @@ object ToonDark {
     /** Угол стрелки (градусы) по значению 0..1 с лёгким дрожанием прибора. */
     fun needleAngle(t: Double, value: Float): Float {
         val v = value.coerceIn(0f, 1f)
-        val jitter = sin(t * 9.0) * 1.5f + sin(t * 3.7) * 1.0f
+        val jitter = (sin(t * 9.0) * 1.5 + sin(t * 3.7) * 1.0).toFloat()
         return 200f - 220f * v + jitter
     }
 
     /** Опасная зона шкалы (последние 25%): [от угла, до угла]. */
-    fun dangerArc(): Pair<Float, Float> = 145f to -20f
-}
+    fun dangerArc(): Pair<Float, Float> = 145f to -20f}
 
 /** Реалистичные пропорции тела: все размеры — доли роста героя. */
 object ToonBody {
-    const val HEAD: Float = 1f / 7f          // голова ~1/7 роста (реалистично, не чиби)
-    const val CHIN: Float = 6f / 7f
+    const val HEAD: Float = 0.14285715f      // голова ~1/7 роста (реалистично, не чиби)
+    const val CHIN: Float = 0.85714287f
     const val SHOULDER: Float = 0.815f
     const val WAIST: Float = 0.60f
     const val HIP: Float = 0.52f

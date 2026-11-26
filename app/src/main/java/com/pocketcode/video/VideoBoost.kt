@@ -135,7 +135,7 @@ object SceneCuts {
                     val last = out.removeAt(out.size - 1)
                     out += TimeRange(last.start, e)
                 }
-                len < minLen -> out += TimeRange(s, min(e, s + minLen))
+                len < minLen -> out += TimeRange(s, kotlin.math.min(e, s + minLen))
                 len <= maxLen -> out += TimeRange(s, e)
                 else -> {
                     var cur = s

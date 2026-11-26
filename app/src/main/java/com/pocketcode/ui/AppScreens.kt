@@ -30,14 +30,8 @@ private const val VPN_NOTE = "Скачивание может идти быст�
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun Page(title: String, onBack: () -> Unit, content: @Composable () -> Unit) {
-    // позиция скролла переживает выход из подменю и возврат: rememberSaveable с Saver (Batch29)
-    val scroll = androidx.compose.runtime.saveable.rememberSaveable(
-        inputs = arrayOf(title),
-        saver = androidx.compose.ui.saveable.Saver(
-            save = { it.value },
-            restore = { androidx.compose.foundation.ScrollState(it) },
-        ),
-    ) { androidx.compose.foundation.ScrollState(0) }
+    // rememberScrollState в Page — позиция скролла живёт, пока жив экран; окно хранит состояние
+    val scroll = androidx.compose.foundation.rememberScrollState()
     Scaffold(
         topBar = {
             AppTopBar(
