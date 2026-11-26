@@ -197,7 +197,7 @@ def batch_files(root, pattern):
         if parts & SKIP_DIRS:
             continue
         if p.match(str(pattern)) or globmod.fnmatch.fnmatch(p.name, str(pattern)):
-            out.append(str(p.relative_to(root)))
+            out.append((p.relative_to(root)).as_posix())
     return sorted(out)[:500]
 
 
@@ -659,7 +659,7 @@ def list_files_safe(root, rel="", depth=2):
         for p in sorted(target.iterdir()):
             if p.name.startswith(".") or p.name in SKIP_DIRS:
                 continue
-            rel_path = str(p.relative_to(base))
+            rel_path = (p.relative_to(base)).as_posix()
             if p.is_dir():
                 items.append({"name": p.name, "dir": True, "path": rel_path})
             else:
@@ -834,7 +834,7 @@ def scan_todos(root, max_files=2000, timeout_s=10):
             for n, line in enumerate(p.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
                 m = TODO_RE.search(line)
                 if m:
-                    out.append({"file": str(p.relative_to(base)), "line": n,
+                    out.append({"file": (p.relative_to(base)).as_posix(), "line": n,
                                 "kind": m.group(1).upper(), "text": m.group(2).strip()})
                 if len(out) >= 300:
                     return out
@@ -863,7 +863,7 @@ def search_project(root, query, pattern="*", max_hits=200, timeout_s=10):
         try:
             for n, line in enumerate(p.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
                 if q.lower() in line.lower():
-                    hits.append({"file": str(p.relative_to(base)), "line": n, "text": line.strip()[:200]})
+                    hits.append({"file": (p.relative_to(base)).as_posix(), "line": n, "text": line.strip()[:200]})
                     if len(hits) >= max_hits:
                         return hits
         except OSError:
@@ -968,7 +968,7 @@ def file_risk_metrics(root, max_files=50):
         long_fn = sum(1 for l in lines if l.startswith("def ") or l.startswith("    def "))
         risk = 3 * text.count("except:") + 2 * text.count("eval(") + 2 * text.count("exec(") \
              + text.count("# TODO") + (1 if long_fn > 30 else 0)
-        rows.append({"file": str(p.relative_to(base)), "lines": len(lines), "risk": risk})
+        rows.append({"file": (p.relative_to(base)).as_posix(), "lines": len(lines), "risk": risk})
     rows.sort(key=lambda r: -r["risk"])
     return rows
 
@@ -1463,7 +1463,7 @@ def find_dead_code(root, max_files=300):
             uses = sum(len(re.findall(r"\b%s\b" % re.escape(name), t)) for t in texts.values())
             if uses <= 1:
                 line = text.count("\n", 0, m.start()) + 1
-                dead.append({"file": str(p.relative_to(root)), "name": name, "line": line})
+                dead.append({"file": (p.relative_to(root)).as_posix(), "name": name, "line": line})
     return {"dead": dead[:200], "scanned": len(texts)}
 
 
@@ -1748,7 +1748,7 @@ def guest_view(project, token, max_files=200):
             continue
         if any(part in _SKIP_DIRS or part.startswith(".") for part in p.parts):
             continue
-        files.append(str(p.relative_to(root)))
+        files.append((p.relative_to(root)).as_posix())
         if len(files) >= int(max_files):
             break
     memory = ""
@@ -1901,7 +1901,7 @@ def media_list(root, max_files=100):
             size = _img_size(head, p.suffix.lower())
             if size:
                 w, h = size
-        out.append({"file": str(p.relative_to(root)), "bytes": p.stat().st_size,
+        out.append({"file": (p.relative_to(root)).as_posix(), "bytes": p.stat().st_size,
                     "width": w, "height": h})
         if len(out) >= int(max_files):
             break
@@ -2222,7 +2222,7 @@ def biggest_files(root, limit=10):
     items = []
     for p in root.rglob("*"):
         if p.is_file() and not any(part in _SKIP_DIRS or part.startswith(".") for part in p.parts):
-            items.append((p.stat().st_size, str(p.relative_to(root))))
+            items.append((p.stat().st_size, (p.relative_to(root)).as_posix()))
     items.sort(reverse=True)
     return {"items": [{"file": f, "kb": round(b / 1024, 1)} for b, f in items[:max(1, int(limit or 10))]]}
 
@@ -2239,7 +2239,7 @@ def stale_files(root, days=30, limit=20):
         if p.is_file() and not any(part in _SKIP_DIRS or part.startswith(".") for part in p.parts):
             m = p.stat().st_mtime
             if m < cut:
-                items.append((m, str(p.relative_to(root))))
+                items.append((m, (p.relative_to(root)).as_posix()))
     items.sort()
     return {"items": [{"file": f, "days_old": int((time.time() - m) / 86400)} for m, f in items[:limit]]}
 
@@ -2265,7 +2265,7 @@ def dup_files(root, max_mb=5, limit=50):
                 h = hashlib.md5(p.read_bytes()).hexdigest()  # не для криптографии
             except OSError:
                 continue
-            by_hash.setdefault(h, []).append(str(p.relative_to(root)))
+            by_hash.setdefault(h, []).append((p.relative_to(root)).as_posix())
         for h, files in by_hash.items():
             if len(files) >= 2:
                 dups.append({"files": files, "kb": round(size / 1024, 1)})
@@ -2282,7 +2282,7 @@ def empty_dirs(root):
     for p in sorted(root.rglob("*"), reverse=True):
         if p.is_dir() and not any(part in _SKIP_DIRS or part.startswith(".") for part in p.parts) \
                 and not any(p.iterdir()):
-            out.append(str(p.relative_to(root)))
+            out.append((p.relative_to(root)).as_posix())
     return {"items": out}
 
 
@@ -2304,7 +2304,7 @@ def md_broken_links(root, max_files=100):
             target = _safe_join(p.parent, m.group(1).strip())
             checked += 1
             if target is None or not target.exists():
-                broken.append({"file": str(p.relative_to(root)), "link": m.group(1)})
+                broken.append({"file": (p.relative_to(root)).as_posix(), "link": m.group(1)})
     return {"broken": broken, "checked": checked}
 
 
@@ -3694,7 +3694,7 @@ def secret_scan_project(project, max_files=200):
             continue
         scanned += 1
         for f in scan_secrets(text):
-            findings.append({"file": str(p.relative_to(root)), "line": f["line"],
+            findings.append({"file": (p.relative_to(root)).as_posix(), "line": f["line"],
                              "kind": f["kind"]})
     return {"scanned": scanned, "findings": findings, "clean": not findings}
 
@@ -3720,7 +3720,7 @@ def long_file_check(project, max_lines=400, top=20):
         except OSError:
             continue
         if n > max_lines:
-            items.append({"file": str(p.relative_to(root)), "lines": n})
+            items.append({"file": (p.relative_to(root)).as_posix(), "lines": n})
     items.sort(key=lambda i: (-i["lines"], i["file"]))
     return {"max_lines": max_lines, "over": len(items), "items": items[:top]}
 
@@ -3788,7 +3788,7 @@ def dup_detect(project, top=10, max_size=5 * 1024 * 1024):
             h = hashlib.sha256(p.read_bytes()).hexdigest()
         except OSError:
             continue
-        by_hash.setdefault((p.stat().st_size, h), []).append(str(p.relative_to(root)))
+        by_hash.setdefault((p.stat().st_size, h), []).append((p.relative_to(root)).as_posix())
     dups = [{"hash": k[1][:12], "size": k[0], "files": v}
             for k, v in sorted(by_hash.items()) if len(v) > 1]
     wasted = sum(d["size"] * (len(d["files"]) - 1) for d in dups)
@@ -3864,7 +3864,7 @@ def todo_scan(project, max_items=200):
         for i, ln in enumerate(_read(p).splitlines(), 1):
             m = rx.search(ln)
             if m:
-                items.append({"file": str(p.relative_to(root)), "line": i,
+                items.append({"file": (p.relative_to(root)).as_posix(), "line": i,
                               "kind": m.group(1), "text": (m.group(2) or "").strip()})
                 if len(items) >= max_items:
                     break
@@ -3896,7 +3896,7 @@ def complexity_py(project, top=15):
                 if cur and cur["cc"] >= 2:
                     out.append(cur)
                 indent = len(m.group(1))
-                cur = {"file": str(p.relative_to(root)), "name": m.group(2), "line": ln, "cc": 1}
+                cur = {"file": (p.relative_to(root)).as_posix(), "name": m.group(2), "line": ln, "cc": 1}
                 cur["indent"] = indent
                 continue
             if cur is not None and ln.strip():
@@ -3924,7 +3924,7 @@ def dead_code_py(project, max_items=60):
     files = {}
     for p in _iter_files(root):
         if p.suffix == ".py":
-            files[str(p.relative_to(root))] = _read(p)
+            files[(p.relative_to(root)).as_posix()] = _read(p)
     defs = {}
     uses_by_file = {}
     for rel, text in files.items():
@@ -3972,7 +3972,7 @@ def coverage_gaps(project):
         else:
             continue
         if not any(c in names for c in cands):
-            gaps.append(str(p.relative_to(root)))
+            gaps.append((p.relative_to(root)).as_posix())
     return {"modules": len(gaps), "untested": gaps[:80]}
 
 
@@ -4028,7 +4028,7 @@ def project_export(project, out=None):
     n = 0
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
         for p in _iter_files(root, max_files=5000):
-            z.write(p, str(p.relative_to(root)))
+            z.write(p, (p.relative_to(root)).as_posix())
             n += 1
     return {"ok": True, "zip": str(out), "files": n, "bytes": out.stat().st_size}
 
@@ -4128,7 +4128,7 @@ def today_digest(project):
     files = []
     for p in _iter_files(root):
         try:
-            files.append((p.stat().st_mtime, str(p.relative_to(root))))
+            files.append((p.stat().st_mtime, (p.relative_to(root)).as_posix()))
         except OSError:
             pass
     files.sort(reverse=True)
@@ -4149,7 +4149,7 @@ def global_search(project, query, max_hits=80):
         return {"error": "пустой запрос"}
     name_hits, content_hits = [], []
     for p in _iter_files(root):
-        rel = str(p.relative_to(root))
+        rel = (p.relative_to(root)).as_posix()
         if q in p.name.lower() and len(name_hits) < max_hits:
             name_hits.append(rel)
         if len(content_hits) < max_hits and p.stat().st_size < 400_000:
@@ -4348,7 +4348,7 @@ def verify_answer_paths(answer, project):
     root = Path(project)
     if not root.is_dir():
         return {"error": "проект не найден"}
-    real = {str(p.relative_to(root)) for p in _iter_files(root)}
+    real = {(p.relative_to(root)).as_posix() for p in _iter_files(root)}
     mentioned = set(re.findall(r"[\w./\\-]+\.[A-Za-z]{1,5}\b", str(answer)))
     checked = []
     for m in mentioned:
