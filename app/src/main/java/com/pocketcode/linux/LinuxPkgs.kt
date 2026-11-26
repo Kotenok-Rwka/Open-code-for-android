@@ -42,8 +42,12 @@ object LinuxPkgs {
         "gcompat" to "libc6",
     )
 
+    private val ALPINE_NAMES = mapOf(
+        "pip" to "py3-pip",
+    )
+
     fun packageFor(flavor: String, name: String): String =
-        if (isUbuntu(flavor)) UBUNTU_NAMES[name] ?: name else name
+        if (isUbuntu(flavor)) UBUNTU_NAMES[name] ?: name else ALPINE_NAMES[name] ?: name
 
     /** Полная команда установки пакетов для выбранного образа. */
     fun install(flavor: String, vararg packages: String): String {
