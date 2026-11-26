@@ -1,6 +1,7 @@
 package com.pocketcode.linux
 
 import android.content.Context
+import android.net.ConnectivityManager
 import android.os.Build
 import com.pocketcode.formatSize
 import kotlinx.coroutines.Dispatchers
@@ -70,8 +71,8 @@ case "§CMD" in
       esac
     done
     [ -z "§PKGS" ] && exit 0
-    apt-get update -qq >/dev/null 2>&1
-    DEBIAN_FRONTEND=noninteractive apt-get install -y -qq §PKGS
+    apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 update -qq >/dev/null 2>&1
+    DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 install -y -qq --fix-missing §PKGS
     ;;
   info)
     for a in "§@"; do
@@ -87,7 +88,7 @@ case "§CMD" in
     done
     ;;
   update)
-    apt-get update -qq
+    apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 update -qq
     ;;
   *)
     echo "apk (совместимость Ubuntu): команда §CMD не поддерживается" >&2
@@ -174,6 +175,7 @@ class LinuxEnv(private val context: Context) {
         val guestCwd = if (rel.isEmpty() || rel.startsWith("..")) "/work" else "/work/$rel"
         File(rootfs, "tmp").mkdirs()
         File(rootfs, "root").mkdirs()
+        refreshDns()
         // Скачанные GGUF лежат в приватной папке приложения (models). Подключаем её в Linux,
         // иначе llama-server не видит модель и не может её запустить.
         val models = File(context.filesDir, "models").apply { mkdirs() }
@@ -202,6 +204,23 @@ class LinuxEnv(private val context: Context) {
             if (noSeccomp) put("PROOT_NO_SECCOMP", "1")
         }
         return pb
+    }
+
+    /**
+     * Записывает /etc/resolv.conf rootfs: DNS активной сети телефона + запасные публичные.
+     * Вызывается перед каждым запуском proot: при включённом VPN публичные 8.8.8.8/1.1.1.1
+     * часто недоступны напрямую, а DNS из LinkProperties идёт через туннель. Без этого apt
+     * и запросы к нейросетям внутри Linux висят или падают «сервер недоступен».
+     */
+    fun refreshDns() {
+        val servers = runCatching {
+            val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+            cm?.getLinkProperties(cm.activeNetwork)?.dnsServers
+                ?.mapNotNull { it?.hostAddress }
+                .orEmpty()
+        }.getOrDefault(emptyList())
+        File(rootfs, "etc").mkdirs()
+        File(rootfs, "etc/resolv.conf").writeText(LinuxDns.resolvConf(servers))
     }
 
     /** Скачивает и распаковывает rootfs, затем проверяет, что proot вообще работает. */
@@ -278,8 +297,7 @@ class LinuxEnv(private val context: Context) {
         extract(archive, rootfs)
         archive.delete()
         if (ubuntu) installApkCompat()
-        File(rootfs, "etc").mkdirs()
-        File(rootfs, "etc/resolv.conf").writeText("nameserver 8.8.8.8\nnameserver 1.1.1.1\n")
+        refreshDns()
         File(rootfs, "tmp").mkdirs()
         File(rootfs, "root").mkdirs()
 

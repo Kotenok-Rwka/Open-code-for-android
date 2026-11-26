@@ -49,7 +49,7 @@ object LinuxPkgs {
     fun install(flavor: String, vararg packages: String): String {
         val names = packages.map { packageFor(flavor, it) }.distinct().joinToString(" ")
         return if (isUbuntu(flavor)) {
-            "apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq $names"
+            "apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq $names"
         } else {
             "apk add --no-cache $names"
         }
