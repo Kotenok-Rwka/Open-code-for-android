@@ -53,7 +53,7 @@ class Batch27Test {
     fun sceneCutDetect() {
         // яркая смена на кадре 24 (1 c), затем шум ниже порога
         val fp = DoubleArray(48) { 100.0 } + DoubleArray(48) { 130.0 }
-        fp[24] = 100.0; fp[25] = 130.0
+        for (i in 25..47) fp[i] = 130.0 // смена начинается ровно на кадре 25
         val cuts = SceneCuts.detect(fp, 24.0, threshold = 26.0, minGap = 0.8)
         assertEquals(1, cuts.size)
         assertEquals(25.0 / 24.0, cuts[0], 1e-9)
@@ -74,7 +74,8 @@ class Batch27Test {
         // короткий хвост приклеивается к предыдущему
         val r2 = SceneCuts.ranges(listOf(5.0, 5.8), 20.0, minLen = 1.2)
         assertEquals(2, r2.size)
-        assertEquals(5.8, r2[1].end, 1e-9)
+        assertEquals(5.8, r2[0].end, 1e-9) // короткий [5,5.8] приклеен к [0,5]
+        assertEquals(20.0, r2[1].end, 1e-9) // покрытие видео непрерывно
         // длинный кусок режется по maxLen
         val r3 = SceneCuts.ranges(emptyList(), 30.0, maxLen = 10.0)
         assertEquals(3, r3.size)

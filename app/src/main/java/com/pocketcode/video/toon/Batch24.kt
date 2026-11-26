@@ -47,7 +47,7 @@ object ToonAnim {
         val closeAt = period - 0.24
         if (ph < closeAt) return 1f
         val k = ((ph - closeAt) / 0.24).coerceIn(0.0, 1.0)
-        return (0.5 + 0.5 * Math.cos(PI * k)).toFloat() // 1→0→1 плавно
+        return (0.5 + 0.5 * Math.cos(2 * PI * k)).toFloat() // 1→0→1 плавно, минимум в середине фазы
     }
 
     /** Дыхание: медленный подъём-спад ±2.5 px, у говорящего лёгкий акцент от рта. */
@@ -138,8 +138,14 @@ object ToonProps {
             if (t.isEmpty()) continue
             var where = "слева"
             var word = t
-            for (w in listOf("слева", "справа", "над", "вцентре", "центр")) {
-                if (t.endsWith(w)) { where = w; word = t.removeSuffix(w); break }
+            when {
+                t.endsWith("слева") -> word = t.removeSuffix("слева")
+                t.endsWith("справа") -> { where = "справа"; word = t.removeSuffix("справа") }
+                t.contains("над") && t.indexOf("над") > 0 -> { where = "над"; word = t.substringBefore("над") }
+                t.contains("центр") -> {
+                    where = "вцентре"
+                    word = t.replace("вцентре", "").replace("центру", "").replace("центр", "")
+                }
             }
             if (word.startsWith("моё:") || word.startsWith("мое:")) {
                 val p = word.substringAfter(':')

@@ -40,7 +40,7 @@ object ToonSeries {
         "Выбор: ${question.trim()} | ${optionA.trim()} | ${optionB.trim()}"
 
     fun nextTitle(prevTitle: String, topic: String): String {
-        val m = Regex("(?i)часть\\s*(\\d+)").find(prevTitle)
+        val m = Regex("(?iu)часть\\s*(\\d+)").find(prevTitle)
         val next = (m?.groupValues?.get(1)?.toIntOrNull() ?: 1) + 1
         return title(topic, next)
     }

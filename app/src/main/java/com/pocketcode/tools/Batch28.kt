@@ -62,12 +62,16 @@ object SmallTalk {
     fun isSmallTalk(text: String): Boolean {
         val t = text.trim().lowercase()
         if (t.isEmpty() || t.length > 120) return false
-        return startsWithAny(t, greetings + howAreYou + thanks + bye + about)
+        val hit = (greetings + howAreYou + thanks + bye + about)
+            .filter { t.startsWith(it) }.maxByOrNull { it.length } ?: return false
+        val rest = t.removePrefix(hit).trim().trimEnd('?', '!', '.', ' ')
+        return rest.isEmpty() || rest.split(' ').size <= 2
     }
 
     /** Короткий живой ответ на болтовню (null — не болтовня, нужен обычный ход). */
     fun reply(text: String, appName: String = "Помощник"): String? {
         val t = text.trim().lowercase()
+        if (!isSmallTalk(t)) return null
         return when {
             startsWithAny(t, greetings) ->
                 "Привет! Я на связи. Могу поболтать, ответить на вопрос, найти что-то в интернете или помочь с проектом."

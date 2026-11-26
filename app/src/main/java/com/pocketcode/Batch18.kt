@@ -8,9 +8,8 @@ object VersionBump {
 
     fun parse(s: String): SemVer? {
         val parts = s.trim().split(".")
-        if (parts.size !in 2..3) return null
+        if (parts.size != 3) return null
         val nums = parts.map { it.toIntOrNull() ?: return null }
-        if (nums.size == 2) return SemVer(nums[0], nums[1], 0)
         return SemVer(nums[0], nums[1], nums[2])
     }
 
@@ -20,7 +19,7 @@ object VersionBump {
             "major" -> SemVer(v.major + 1, 0, 0)
             "minor" -> SemVer(v.major, v.minor + 1, 0)
             "patch" -> SemVer(v.major, v.minor, v.patch + 1)
-            else -> null
+            else -> return null
         }.toString()
     }
 }
@@ -88,9 +87,16 @@ object DeadCode {
         val dead = mutableListOf<String>()
         for ((name, lines) in declarations) {
             val used = lines.any { ln ->
-                val body = ln.substringAfter(":", "").trim()
-                !body.startsWith("fun $name") && !body.startsWith("class $name") &&
-                    !body.startsWith("object $name") && Regex("""\b${Regex.escape(name)}\b""").containsMatchIn(body)
+                val body = ln.substringAfter(":", "").trim().replace(Regex("^\\d+\\s+"), "")
+                val isDecl = body.startsWith("fun $name") || body.startsWith("class $name") ||
+                    body.startsWith("object $name") || body.startsWith("val $name") || body.startsWith("var $name")
+                if (isDecl) {
+                    // объявление использует имя, только если имя есть в сигнатуре/теле после скобок
+                    val after = body.substringAfter(')', "").substringAfter('{', "")
+                    after.contains(name)
+                } else {
+                    Regex("""\b${Regex.escape(name)}\b""").containsMatchIn(body)
+                }
             }
             if (!used) dead.add(name)
         }

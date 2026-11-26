@@ -13,7 +13,7 @@ class Batch29Test {
 
     @Test
     fun memorySaveParse() {
-        assertEquals("люблю овсянку" to "овсянку", null) // sanity: pair shape below
+        // parseSave возвращает пару ключ–значение (проверяется ниже)
         val (k, v) = AssistMemory.parseSave("Запомни: любимый завтрак=овсянка")!!
         assertEquals("любимый завтрак", k)
         assertEquals("овсянка", v)

@@ -70,13 +70,13 @@ class Batch25Test {
         val sk = ToonBody.skeletonStanding(360f, 1280f, 700f)
         val headTop = sk[6]; val ground = 1280f
         // рост = 7 голов
-        assertEquals((ground - headTop) / 7f, ground - sk[0] + sk[0] - headTop, 1f) // согласованность
-        assertEquals(700f / 7f, ground - headTop - (ground - 1280f), 0.01f)
+        assertEquals((ground - headTop), 14f * (sk[0] - headTop), 1f) // голова = 2×(центр−макушка)
+        assertEquals(700f / 7f, 2f * (sk[0] - headTop), 0.01f) // размер головы = рост/7
         // макушка на 7 голов выше пола: головаY в центре верхней головы
         assertEquals(1280f - 700f, headTop, 0.01f)
-        assertEquals(1280f - 700f / 14f, sk[0], 0.01f)
+        assertEquals(1280f - 700f + 700f / 14f, sk[0], 0.01f)
         // плечи ниже шеи, бёдра ниже талии, колено ниже бёдер
-        assertTrue(sk[2] < sk[1]); assertTrue(sk[4] < sk[3]); assertTrue(sk[5] < sk[4])
+        assertTrue(sk[2] > sk[1]); assertTrue(sk[4] > sk[3]); assertTrue(sk[5] > sk[4])
         // рука: кисть ниже локтя при опущенной руке
         val hand = ToonBody.handPoint(360f, sk[2], 700f, 1f, 0f, 0f)
         assertTrue(hand[1] > sk[2]); assertTrue(hand[3] > hand[1])

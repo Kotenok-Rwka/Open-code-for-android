@@ -30,7 +30,7 @@ object AssistMemory {
         val body = when {
             low.startsWith("запомни:") -> t.substringAfter(":").trim()
             low.startsWith("запомни,") -> t.substringAfter(",").trim()
-            low.startsWith("запомни ") -> t.removePrefix(t.substringBefore(" ").first().toString()).removePrefix("").let { t.substringAfter(' ').trim() }
+            low.startsWith("запомни ") -> t.substringAfter(' ').trim()
             else -> return null
         }
         if (body.isEmpty()) return null
@@ -50,14 +50,19 @@ object AssistMemory {
             .replace(Regex("[?!.,]$"), "")
             .take(40)
 
+    /** Синонимы в вопросах: «меня зовут» = «имя» и т.п. */
+    private val synonyms = listOf("зовут" to "имя", "называют" to "имя")
+
     /** Ответ на вопрос из памяти: точное или частичное совпадение ключей. */
     fun answer(question: String, store: Map<String, String>): String? {
         if (store.isEmpty()) return null
-        val q = normalizeKey(question)
+        var q = normalizeKey(question)
+        for ((from, to) in synonyms) q = q.replace(from, to)
         store[q]?.let { return it }
-        // частичное: вопрос содержит ключ или ключ содержит слово вопроса
+        // частичное: вопрос содержит ключ, ключ содержит вопрос или пересечение значимых слов
         store.entries.firstOrNull { (k, _) ->
-            q.contains(k) || k.contains(q) || k.split(' ').any { it.length > 3 && q.contains(it) }
+            q.contains(k) || k.contains(q) || k.split(' ').any { it.length > 3 && q.contains(it) } ||
+                q.split(' ').any { w -> w.length > 2 && w in k }
         }?.let { return it.value }
         return null
     }
@@ -137,7 +142,7 @@ object AssistCalc {
     fun convert(s: String, rateUsdToRub: Double?): Double? {
         if (rateUsdToRub == null || rateUsdToRub <= 0) return null
         val t = s.trim().lowercase()
-        val m = Regex("(\\d+([.,]\\d+)?)\\s*(доллар\\w*|usd|\\$)\\s*(в|to)\\s*(рубл\\w*|rub|р)").find(t) ?: return null
+        val m = Regex("(\\d+([.,]\\d+)?)\\s*(доллар[а-яё]*|usd|\\$)\\s*(в|to)\\s*(рубл[а-яё]*|rub|р)", RegexOption.IGNORE_CASE).find(t) ?: return null
         val v = m.groupValues[1].replace(',', '.').toDoubleOrNull() ?: return null
         return v * rateUsdToRub
     }

@@ -56,7 +56,7 @@ object SayText {
     fun forPiper(text: String, stressDict: Map<String, String> = emptyMap()): String {
         var t = text.trim()
         stressDict.forEach { (word, stressed) ->
-            t = Regex("(?i)\\b" + Regex.escape(word) + "\\b").replace(t) { m ->
+            t = Regex("(?iU)\\b" + Regex.escape(word) + "\\b").replace(t) { m ->
                 val s = stressed
                 if (m.value[0].isUpperCase()) s.replaceFirstChar { it.uppercase() } else s
             }

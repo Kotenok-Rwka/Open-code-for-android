@@ -27,11 +27,12 @@ object ToonCast {
     fun resolve(speakers: List<String>, library: Map<String, ToonCharacter>,
                 autoLook: (String) -> ToonLook): Map<String, ToonCharacter> {
         val out = mutableMapOf<String, ToonCharacter>()
+        var fresh = 0
         speakers.forEachIndexed { i, name ->
             val key = name.trim().lowercase()
-            out[name] = library[key]
-                ?: library[name]
-                ?: ToonCharacter(name, autoLook(name), voice = if (i % 2 == 0) "муж" else "жен")
+            val fromLib = library[key] ?: library[name]
+            out[name] = fromLib
+                ?: ToonCharacter(name, autoLook(name), voice = if (fresh++ % 2 == 0) "муж" else "жен")
         }
         return out
     }
@@ -52,7 +53,7 @@ object ToonCast {
 // ---------- Озвучка: офлайн-языки ----------
 
 object ToonVoiceLang {
-    /** Язык реплики: по персонажу, иначе по буквам текста (кириллица→ru, латиница→en). */
+    /** Язык реплики: по буквам текста (кириллица→ru, латиница→en); без букв — голос персонажа. */
     fun detect(text: String, character: ToonCharacter?): String {
         val cyr = text.count { it in 'а'..'я' || it in 'А'..'Я' || it == 'ё' || it == 'Ё' }
         val lat = text.count { it in 'a'..'z' || it in 'A'..'Z' }
@@ -103,15 +104,17 @@ object ToonTranscribe {
         t = t.replace(Regex("(?i)\\b(\\d{1,2}):(\\d{2})\\b")) { m ->
             val h = m.groupValues[1].toLong()
             val min = m.groupValues[2]
-            "${PronounceEn.words(h)} ${if (min == "00") "o'clock" else PronounceEn.words(min.toLong()) + (if (min.toLong() == 1L) " minute" else " minutes")}"
+            "${PronounceEn.words(h)} ${if (min == "00") "o'clock" else PronounceEn.words(min.toLong())}"
         }
+        t = t.replace(Regex("(?<=\\s|^)-(\\d+)\\b")) { m -> "minus " + PronounceEn.words(m.groupValues[1].toLong()) }
         t = t.replace(Regex("\\b\\d+\\b")) { m -> PronounceEn.words(m.value.toLong()) }
         return t.replace(Regex("\\s+"), " ").trim()
     }
 
     /** Полный конвейер одной реплики: язык → словарь → нормализация. */
     fun line(text: String, character: ToonCharacter?, dict: List<Pair<String, String>> = emptyList()): String {
-        val lang = ToonVoiceLang.detect(text, character)
+        // реплика озвучивается голосом персонажа; detect() — только когда голоса нет
+        val lang = character?.lang?.takeIf { it.isNotBlank() } ?: ToonVoiceLang.detect(text, null)
         return transcribe(text, lang, dict)
     }
 }
@@ -125,12 +128,10 @@ object PronounceEn {
     fun words(n: Long): String {
         if (n < 0L) return "minus " + words(-n)
         if (n < 20L) return ones[n.toInt()]
-        if (n < 100L) return tens[(n / 10).toInt()] + (if (n % 10 != 0L) "-" + ones[(n % 10).toInt()] else "")
+        if (n < 100L) return tens[(n / 10).toInt()] + (if (n % 10 != 0L) " " + ones[(n % 10).toInt()] else "")
+        if (n < 1_000L) return ones[(n / 100).toInt()] + " hundred" + (if (n % 100 != 0L) " " + words(n % 100) else "")
         if (n < 1_000_000L) {
-            val head = when {
-                n < 1000L -> ones[(n / 100).toInt()] + " hundred"
-                else -> words(n / 1000) + " thousand"
-            }
+            val head = words(n / 1000) + " thousand"
             return head + (if (n % 1000 != 0L) " " + words(n % 1000) else "")
         }
         return words(n / 1_000_000) + " million" + (if (n % 1_000_000 != 0L) " " + words(n % 1_000_000) else "")

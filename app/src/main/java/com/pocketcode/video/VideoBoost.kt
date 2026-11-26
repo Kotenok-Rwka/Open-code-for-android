@@ -41,7 +41,7 @@ object SubHighlight {
         var bestLen = -1
         var bestSpan = -1.0
         for ((i, w) in words.withIndex()) {
-            val t = tidy(w.text)
+            val t = w.text
             if (norm(t) in STOP) continue
             val len = t.length
             val span = w.end - w.start
@@ -88,7 +88,7 @@ data class PlatformPreset(
             val v = y.coerceIn(0.0, 1.0)
             return when {
                 v < p.safeTop -> p.safeTop
-                v > 1.0 - p.safeBottom -> 1.0 - p.safeBottom
+                v > 1.0 - p.safeBottom -> p.safeBottom
                 else -> v
             }
         }

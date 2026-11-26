@@ -144,7 +144,7 @@ data class ToonSceneFx(
                 val body = ln.trim().substringAfter(':').trim()
                 if (body.isEmpty()) return@mapNotNull null
                 val p = body.split("|")
-                if (p.isEmpty() || p[0].isBlank()) return@mapNotNull null
+                if (p.size < 2 || p[0].isBlank() || p[1].isBlank()) return@mapNotNull null
                 val name = p[0].trim()
                 ToonCharacter(name,
                     ToonLooks.of(name, abs(name.hashCode()) % 7).applyAppearance(ToonAppearance.parse(p.getOrElse(4) { "" })),
@@ -159,7 +159,7 @@ data class ToonSceneFx(
             for (ln in script.lines()) {
                 val h = ln.trim()
                 if (!h.uppercase().startsWith("ЭМОЦИЯ")) continue
-                val body = h.substringAfter(':')
+                val body = h.substringAfter("ЭМОЦИЯ").trim()
                 val name = body.substringBefore(':').trim()
                 if (name.isEmpty()) continue
                 out[name.lowercase()] = moodOf(body.substringAfter(':', ""))

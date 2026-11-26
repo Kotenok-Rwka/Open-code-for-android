@@ -57,8 +57,6 @@ object ToonRichLib {
             0xFF3E4A5C.toInt(), 0xFF2C3546.toInt(), 0xFF57565E.toInt(), 0xFFC9CED6.toInt(), 0xFFFF6B4A.toInt(), 0xFFFFC08A.toInt()),
         ToonRich(ToonScene.TENT, 0xFF2F4A33.toInt(), 0xFF1E3323.toInt(), 0xFF3C5A40.toInt(),
             0xFF4A6741.toInt(), 0xFF354C2F.toInt(), 0xFF54452F.toInt(), 0xFFB9A87E.toInt(), 0xFFFFA94D.toInt(), 0xFF9FB98F.toInt()),
-        ToonRich(ToonScene.BUNKER, 0xFF4A4E52.toInt(), 0xFF2B2E33.toInt(), 0xFF3A3E44.toInt(),
-            0xFF2C3038.toInt(), 0xFF1F232A.toInt(), 0xFF3E424A.toInt(), 0xFF9AA0A8.toInt(), 0xFFB8FF6E.toInt(), 0xFFFFF0A8.toInt()),
     )
 
     /** Сериализация библиотеки: строка на сцену, «#»-комментарии игнорируются. */
@@ -115,7 +113,7 @@ object ToonRichGeom {
 
     /** Прогресс качания маятника часов/люстры в момент t (без рывков). */
     fun sway(t: Double, ampDeg: Float = 4f, period: Double = 3.0): Float =
-        (ampDeg * Math.sin(2.0 * Math.PI * t / period)).toFloat()
+        (-ampDeg * Math.sin(2.0 * Math.PI * t / period)).toFloat()
 
     /** Сила виньетки к краю кадра: 0 в центре, до max в углах. */
     fun vignetteAlpha(x: Float, y: Float, w: Int, h: Int, max: Int = 90): Int {
@@ -126,7 +124,7 @@ object ToonRichGeom {
     }
 
     /** Тёплый свет лампы: радиус пятна по мощности источника (0..1). */
-    fun lampRadius(w: Int, power: Float): Float = w * (0.45f + 0.25f * power.coerceIn(0f, 1f))
+    fun lampRadius(w: Int, power: Float): Float = w * (0.5f + 0.25f * power.coerceIn(0f, 1f))
 
     /** Рамка картины/постера на стене: [left, top, right, bottom]. */
     fun pictureFrame(w: Int, h: Int, cx: Float, cy: Float, scale: Float): FloatArray {

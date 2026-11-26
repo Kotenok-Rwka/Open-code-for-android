@@ -7,11 +7,19 @@ object TodayDigest {
     fun build(todoItems: List<Triple<String, Int, String>>, recentFiles: List<String>,
               lastCommit: String): List<Entry> {
         val out = mutableListOf<Entry>()
-        todoItems.take(5).forEach { (file, line, text) ->
-            out.add(Entry("TODO $file:$line", text))
+        todoItems.forEach { (file, line, text) ->
+            out.add(Entry("TODO ${file.substringAfterLast('/')}:$line", text))
         }
-        recentFiles.take(5).forEach { out.add(Entry("Файл", it)) }
-        if (lastCommit.isNotBlank()) out.add(Entry("Коммит", lastCommit))
+        recentFiles.forEach { out.add(Entry("Файл", it)) }
+        // подсказки: что можно продолжить прямо сейчас, до коммита, который идёт последним
+        todoItems.firstOrNull()?.let { (file, line, text) ->
+            out.add(Entry("Продолжить", "TODO ${file.substringAfterLast('/')}:$line — $text"))
+        }
+        recentFiles.firstOrNull()?.let { out.add(Entry("Открыть", it)) }
+        if (lastCommit.isNotBlank()) {
+            out.add(Entry("Что нового", lastCommit.substringAfter(' ', lastCommit)))
+            out.add(Entry("Коммит", lastCommit))
+        }
         return out
     }
 }
@@ -30,6 +38,7 @@ object GlobalSearch {
 
     fun names(files: List<String>, query: String): List<String> {
         val q = query.trim().lowercase()
+        if (q.isEmpty()) return emptyList()
         return files.filter { it.lowercase().contains(q) }
     }
 }
@@ -81,8 +90,12 @@ object ChatExport {
 
 /** История команд и сниппеты терминала. */
 object TermHistory {
+    /**
+     * Журнал хранится «новые сверху». Возвращает до [limit] последних записей
+     * в хронологическом порядке (старые → новые), как их набирали в терминале.
+     */
     fun last(items: List<Pair<String, String>>, limit: Int = 30): List<Pair<String, String>> =
-        items.takeLast(limit).reversed()
+        items.take(minOf(limit, items.size)).asReversed()
 
     fun render(snippet: String, params: Map<String, String> = emptyMap()): String =
         params.entries.fold(snippet) { acc, (k, v) -> acc.replace("{{" + k + "}}", v) }

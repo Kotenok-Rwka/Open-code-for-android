@@ -123,7 +123,7 @@ object ToonBody {
     fun handPoint(shoulderX: Float, shoulderY: Float, h: Float, sideSign: Float, shoulderDeg: Float, elbowDeg: Float): FloatArray {
         val upper = h * UPPER_ARM
         val fore = h * FOREARM
-        val a1 = Math.toRadians((180f + shoulderDeg * sideSign).toDouble())
+        val a1 = Math.toRadians((shoulderDeg * sideSign).toDouble()) // 0° = рука опущена вниз
         val ex = shoulderX + sin(a1).toFloat() * upper * sideSign
         val ey = shoulderY + cos(a1).toFloat() * upper
         val a2 = a1 + Math.toRadians((elbowDeg * sideSign).toDouble())
