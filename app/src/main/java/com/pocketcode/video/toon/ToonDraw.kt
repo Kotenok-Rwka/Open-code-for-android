@@ -93,7 +93,7 @@ class ToonDraw(val w: Int = 720, val h: Int = 1280) {
             // луч фонаря от героя справа к центру, с плывущей пылью
             val bm = ToonDark.beam(w * 0.82f, h * 0.42f, w * 0.38f, h * 0.62f)
             fill.shader = LinearGradient(bm[0], bm[1], bm[2], bm[3],
-                0x66FFF0A8, 0x00000000, Shader.TileMode.CLAMP)
+                0x66FFF0A8.toInt(), 0x00000000, Shader.TileMode.CLAMP)
             path.reset()
             path.moveTo(bm[0], bm[1])
             val ang = Math.toRadians(bm[4].toDouble())
@@ -169,7 +169,7 @@ class ToonDraw(val w: Int = 720, val h: Int = 1280) {
         // тёплый свет лампы сверху (в бункере вместо него — луч фонаря)
         if (p.lamp != 0 && s != ToonScene.BUNKER) {
             fill.shader = RadialGradient(w / 2f, 0f, ToonRichGeom.lampRadius(w, 0.8f),
-                (p.lamp and 0xFFFFFF) or 0x33000000, 0x00000000, Shader.TileMode.CLAMP)
+                (p.lamp and 0xFFFFFF), (p.lamp or 0x33000000.toInt()), 0x00000000, Shader.TileMode.CLAMP)
             c.drawRect(0f, 0f, w.toFloat(), h * 0.7f, fill)
             fill.shader = null
         }
@@ -199,6 +199,7 @@ class ToonDraw(val w: Int = 720, val h: Int = 1280) {
     private fun background(c: Canvas, s: ToonScene, t: Double) {
         val gy = h * 0.74f
         when (s) {
+            ToonScene.BUNKER -> { /* стена и луч рисуются до этого when (ToonDark) */ }
             ToonScene.NIGHT -> {
                 grad(c, 0xFF0B1330.toInt(), 0xFF2B3D73.toInt(), 0f, gy)
                 fill.color = 0xFFEAF1FF.toInt()

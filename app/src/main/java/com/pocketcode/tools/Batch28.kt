@@ -20,8 +20,10 @@ class WeatherTool : Tool {
         "Погода в городе прямо сейчас (температура, описание, ветер, влажность). Используй для вопросов «какая погода», «сколько градусов» — быстрее поиска. Только чтение."
     override val schema = objSchema(
         Prop("city", "string", "Город, например «Москва» или «Санкт-Петербург»"),
-    )    override fun needsApproval(input: JsonObject) = false
-    override fun describe(input: JsonObject) = "погода: ${input.str("city") ?: ""}"    override suspend fun run(input: JsonObject): String = withContext(Dispatchers.IO) {
+    )
+    override fun needsApproval(input: JsonObject) = false
+    override fun describe(input: JsonObject) = "погода: ${input.str("city") ?: ""}"
+    override suspend fun run(input: JsonObject): String = withContext(Dispatchers.IO) {
         val city = input.need("city").trim()
         check(city.isNotEmpty()) { "укажи город" }
         val enc = java.net.URLEncoder.encode(city, "UTF-8")

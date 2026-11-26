@@ -90,6 +90,7 @@ class SystemToonVoice(private val ctx: Context, private val engine: String, priv
 
 /** Облачный голос (нейросеть): POST /audio/speech, ответ WAV. */
 class CloudToonVoice(private val cfg: ToonVoiceConfig, proxy: String) : ToonVoice {
+    override var nextLang: String? = null
     private val client = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(120, TimeUnit.SECONDS)
