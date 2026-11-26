@@ -45,6 +45,6 @@ class Batch28Test {
         // без одобрения — быстрый бытовой инструмент
         assertFalse(tool.needsApproval(kotlinx.serialization.json.buildJsonObject {}))
         assertEquals("погода: Москва", tool.describe(
-            kotlinx.serialization.json.buildJsonObject { put("city", "Москва") }))
+            kotlinx.serialization.json.buildJsonObject { put("city", kotlinx.serialization.json.JsonPrimitive("Москва")) }))
     }
 }

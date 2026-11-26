@@ -5,12 +5,12 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class Batch21Test {
-    private fun look() = ToonLook(0, 0, 0, HairStyle.SHORT, false, false, 1f)
+    private fun look(v: Int = 0) = ToonLook(v, v, v, HairStyle.SHORT, false, false, 1f)
 
     // ToonCast
     @Test
     fun castResolveReusesLibraryAndAutofills() {
-        val lib = mapOf("кот" to ToonCharacter("Кот", look(), "муж", "en", true))
+        val lib = mapOf("кот" to ToonCharacter("Кот", look(), "муж", "en", custom = true))
         val cast = ToonCast.resolve(listOf("Кот", "Пёс"), lib) { ToonLook(1, 1, 1, HairStyle.CAP, true, false, 1f) }
         assertEquals("en", cast["Кот"]!!.lang)               // из библиотеки
         assertEquals(true, cast["Кот"]!!.custom)
