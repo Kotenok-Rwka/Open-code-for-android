@@ -123,7 +123,8 @@ class Agent(
     private val system: String,
     private val autoApprove: Boolean,
     /** Размер контекста модели в токенах: при заполнении ~70% старая часть истории сжимается. */
-    contextLimit: Int,
+    // Нужен и в теле execute(): параметр конструктора без val там недоступен — компилятор не находил его.
+    private val contextLimit: Int,
     /** Спрашивает пользователя: (имя инструмента, описание) -> разрешено ли. */
     private val approve: suspend (String, String) -> Boolean,
     /** История диалога для модели; общая с хранилищем сессий. */
