@@ -42,13 +42,13 @@ class Batch19Test {
     @Test
     fun remindersDueAndDone() {
         val items = listOf(
-            Reminders.Item("а", "2026-01-01", false),
-            Reminders.Item("б", "2026-03-01", false),
-            Reminders.Item("в", "2026-01-05", true),
+            RemindersLogic.Item("а", "2026-01-01", false),
+            RemindersLogic.Item("б", "2026-03-01", false),
+            RemindersLogic.Item("в", "2026-01-05", true),
         )
-        assertEquals(listOf("а"), Reminders.due(items, "2026-02-01").map { it.text })
-        val after = Reminders.markDone(items, 0)
-        assertEquals(emptyList<String>(), Reminders.due(after, "2026-02-01").map { it.text })
+        assertEquals(listOf("а"), RemindersLogic.due(items, "2026-02-01").map { it.text })
+        val after = RemindersLogic.markDone(items, 0)
+        assertEquals(emptyList<String>(), RemindersLogic.due(after, "2026-02-01").map { it.text })
     }
 
     // UsageMeter

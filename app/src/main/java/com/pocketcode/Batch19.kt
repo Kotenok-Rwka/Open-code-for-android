@@ -46,7 +46,7 @@ object PromptTpl {
 }
 
 /** Отложенные задачи. */
-object Reminders {
+object RemindersLogic {
     data class Item(val text: String, val whenStr: String, val done: Boolean)
 
     fun due(items: List<Item>, today: String): List<Item> =
