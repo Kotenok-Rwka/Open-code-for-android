@@ -26,19 +26,19 @@ data class ToonAppearance(
     val tall: Float? = null, // масштаб роста 0.7..1.2
 ) {
     companion object {
-        private val hairWords = mapOf<String, Long>(
-            "рыжие" to 0xFFB5382B, "рыжий" to 0xFFB5382B, "чёрные" to 0xFF1E1E24, "чёрный" to 0xFF1E1E24,
-            "русые" to 0xFFC9A66B, "блонд" to 0xFFE5C07B, "белокурые" to 0xFFE5C07B, "седые" to 0xFFC9C9CF,
-            "каштановые" to 0xFF6B4326, "серые" to 0xFF8A8A92,
+        private val hairWords = mapOf<String, Int>(
+            "рыжие" to 0xFFB5382B.toInt(), "рыжий" to 0xFFB5382B.toInt(), "чёрные" to 0xFF1E1E24.toInt(), "чёрный" to 0xFF1E1E24.toInt(),
+            "русые" to 0xFFC9A66B.toInt(), "блонд" to 0xFFE5C07B.toInt(), "белокурые" to 0xFFE5C07B.toInt(), "седые" to 0xFFC9C9CF.toInt(),
+            "каштановые" to 0xFF6B4326.toInt(), "серые" to 0xFF8A8A92.toInt(),
         )
-        private val shirtWords = mapOf<String, Long>(
-            "красная" to 0xFFE5533D, "красный" to 0xFFE5533D, "синяя" to 0xFF3D7BE5, "синий" to 0xFF3D7BE5,
-            "зелёная" to 0xFF3DB27A, "зеленая" to 0xFF3DB27A, "зелёный" to 0xFF3DB27A, "фиолетовая" to 0xFF9B59D0,
-            "жёлтая" to 0xFFEFB43A, "желтая" to 0xFFEFB43A, "белая" to 0xFFF2F0EA, "белый" to 0xFFF2F0EA,
-            "серая" to 0xFF5C6B7A, "серый" to 0xFF5C6B7A, "тельняшка" to 0xFF2B4A7A,
+        private val shirtWords = mapOf<String, Int>(
+            "красная" to 0xFFE5533D.toInt(), "красный" to 0xFFE5533D.toInt(), "синяя" to 0xFF3D7BE5.toInt(), "синий" to 0xFF3D7BE5.toInt(),
+            "зелёная" to 0xFF3DB27A.toInt(), "зеленая" to 0xFF3DB27A.toInt(), "зелёный" to 0xFF3DB27A.toInt(), "фиолетовая" to 0xFF9B59D0.toInt(),
+            "жёлтая" to 0xFFEFB43A.toInt(), "желтая" to 0xFFEFB43A.toInt(), "белая" to 0xFFF2F0EA.toInt(), "белый" to 0xFFF2F0EA.toInt(),
+            "серая" to 0xFF5C6B7A.toInt(), "серый" to 0xFF5C6B7A.toInt(), "тельняшка" to 0xFF2B4A7A.toInt(),
         )
-        private val skinWords = mapOf<String, Long>(
-            "светлая" to 0xFFFAD7B5, "тёмная" to 0xFF9B6B4A, "темная" to 0xFF9B6B4A, "смуглая" to 0xFFC68B63,
+        private val skinWords = mapOf<String, Int>(
+            "светлая" to 0xFFFAD7B5.toInt(), "тёмная" to 0xFF9B6B4A.toInt(), "темная" to 0xFF9B6B4A.toInt(), "смуглая" to 0xFFC68B63.toInt(),
         )
         private val styleWords = mapOf(
             "короткая" to HairStyle.SHORT, "короткие" to HairStyle.SHORT, "длинные" to HairStyle.LONG,
@@ -90,8 +90,8 @@ data class ToonAppearance(
         }
 
         /** Цвет: слово из словаря, иначе #RRGGBB. */
-        fun color(s: String, dict: Map<String, Long>): Int? {
-            dict[s]?.let { return it.toInt() }
+        fun color(s: String, dict: Map<String, Int>): Int? {
+            dict[s]?.let { return it }
             val t = s.replace("#", "").replace("0x", "")
             if (t.length == 6) return t.toLongOrNull(16)?.let { (0xFF000000L or it).toInt() }
             return null
