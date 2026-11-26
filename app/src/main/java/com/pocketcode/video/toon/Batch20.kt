@@ -3,7 +3,7 @@ package com.pocketcode.video.toon
 /** Пресет качества мультика: размер кадра, fps, битрейт. */
 enum class ToonQuality(val label: String, val w: Int, val h: Int, val fps: Int, val bitrate: Int) {
     FAST("Быстро", 540, 960, 24, 2_000_000),
-    TIKTOK("TikTok", 720, 1280, 30, 3_500_000),
+    TIKTOK("TikTok", 720, 1280, 30, 5_000_000),
     HD("Чётко", 1080, 1920, 30, 6_000_000);
 
     companion object {

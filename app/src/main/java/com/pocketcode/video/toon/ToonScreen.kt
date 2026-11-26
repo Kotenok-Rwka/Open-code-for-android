@@ -292,7 +292,7 @@ fun ToonScreen(
                 }
             }
             Text(
-                "Герои, фон и субтитры рисуются кодом прямо на телефоне, запись идёт встроенным кодеком, среда Linux не нужна. Ролик вертикальный 720×1280, 24 кадра в секунду.",
+                "Герои, фон и субтитры рисуются кодом прямо на телефоне, запись идёт встроенным кодеком, среда Linux не нужна. Ролик вертикальный 720×1280, 30 кадров в секунду.",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(bottom = 24.dp),
             )

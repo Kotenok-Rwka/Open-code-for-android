@@ -14,7 +14,13 @@ import java.nio.ByteBuffer
  * Собирает MP4 без ffmpeg: кадры рисуются в Bitmap, кодируются в H.264, звук в AAC, потом всё склеивается.
  * Видео и звук кодируются в отдельные временные файлы, чтобы не возиться с порядком кусков при записи.
  */
-class ToonEncoder(private val w: Int, private val h: Int, private val fps: Int) {
+class ToonEncoder(
+    private val w: Int,
+    private val h: Int,
+    private val fps: Int,
+    /** Битрейт видео: текст и плоские цвета на 720p требуют больше 3 Мбит/с, иначе кадр «мылит». */
+    private val bitrate: Int = 4_500_000,
+) {
     private class Sink(val codec: MediaCodec, val muxer: MediaMuxer) {
         var track = -1
         var started = false
@@ -83,7 +89,7 @@ class ToonEncoder(private val w: Int, private val h: Int, private val fps: Int) 
     fun encodeVideo(out: File, frames: Int, draw: (Int, Canvas) -> Unit, progress: (Float) -> Unit, cancelled: () -> Boolean) {
         val fmt = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, w, h).apply {
             setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420Flexible)
-            setInteger(MediaFormat.KEY_BIT_RATE, 3_500_000)
+            setInteger(MediaFormat.KEY_BIT_RATE, bitrate)
             setInteger(MediaFormat.KEY_FRAME_RATE, fps)
             setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1)
         }

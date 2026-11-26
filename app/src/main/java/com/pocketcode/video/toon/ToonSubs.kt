@@ -35,10 +35,23 @@ object ToonSubs {
         return out
     }
 
-    /** Раскладывает куски по времени пропорционально длине; после знака препинания добавляется «вес» паузы. */
+    private const val VOWELS = "аеёиоуыэюяaeiouy"
+
+    /**
+     * Сколько времени занимает кусок: буквы + гласные (они тянутся дольше согласных)
+     * + пауза после знака препинания. Так субтитры не отстают от речи на длинных словах.
+     */
+    private fun weight(chunk: String): Double {
+        val letters = chunk.count { it.isLetter() }
+        val vowels = chunk.count { it.lowercaseChar() in VOWELS }
+        val pause = if (endsPhrase(chunk)) 3.0 else 0.0
+        return (letters + vowels * 0.7 + pause).coerceAtLeast(1.0)
+    }
+
+    /** Раскладывает куски по времени пропорционально весу: речь, а не число символов. */
     fun timed(chunks: List<String>, start: Double, end: Double): List<SubChunk> {
         if (chunks.isEmpty() || end <= start) return emptyList()
-        val weights = chunks.map { it.length + if (endsPhrase(it)) 4 else 0 }
+        val weights = chunks.map { weight(it) }
         val total = weights.sum().toDouble()
         val out = ArrayList<SubChunk>()
         var t = start

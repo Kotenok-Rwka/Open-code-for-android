@@ -104,6 +104,37 @@ object Wav {
         return Pcm(p.rate, s.copyOfRange(from, to))
     }
 
+    /**
+     * Выравнивает громкость реплики: у разных героев и TTS-движков уровень сильно разный,
+     * без этого один орёт, а другой шепчет. Пик приводится к [target] от полной шкалы.
+     */
+    fun normalize(p: Pcm, target: Double = 0.89): Pcm {
+        if (p.samples.isEmpty()) return p
+        var peak = 0
+        for (s in p.samples) {
+            val v = if (s < 0) -s.toInt() else s.toInt()
+            if (v > peak) peak = v
+        }
+        if (peak < 200) return p // тишина или почти тишина — не усиливаем шум
+        val k = target * 32767.0 / peak
+        if (k in 0.97..1.03) return p
+        return Pcm(p.rate, ShortArray(p.samples.size) { (p.samples[it] * k).toInt().coerceIn(-32768, 32767).toShort() })
+    }
+
+    /** Короткие плавные вход и выход: без щелчков на стыках реплик. */
+    fun fade(p: Pcm, inMs: Int = 10, outMs: Int = 14): Pcm {
+        if (p.samples.isEmpty()) return p
+        val a = (p.rate.toLong() * inMs / 1000).toInt().coerceAtMost(p.samples.size / 2)
+        val b = (p.rate.toLong() * outMs / 1000).toInt().coerceAtMost(p.samples.size / 2)
+        val out = p.samples.copyOf()
+        for (i in 0 until a) out[i] = (out[i] * (i.toDouble() / a)).toInt().toShort()
+        for (i in 0 until b) {
+            val j = out.size - 1 - i
+            out[j] = (out[j] * (i.toDouble() / b)).toInt().toShort()
+        }
+        return Pcm(p.rate, out)
+    }
+
     fun concat(parts: List<Pcm>, gapSec: Double = 0.0): Pcm {
         if (parts.isEmpty()) return Pcm(24000, ShortArray(0))
         val rate = parts.first().rate

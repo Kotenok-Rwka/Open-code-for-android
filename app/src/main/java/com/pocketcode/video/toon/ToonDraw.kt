@@ -56,7 +56,20 @@ class ToonDraw(val w: Int = 720, val h: Int = 1280) {
     var sceneFx: ToonSceneFx = ToonSceneFx()
     private val propBitmaps = HashMap<String, android.graphics.Bitmap?>()
 
+    /** Смена сцены: короткая вспышка на склейке, чтобы ролик не выглядел набором картинок. */
+    private var lastScene: ToonScene? = null
+    private var sceneChangedAt = -1.0
+
     fun draw(c: Canvas, f: ToonFrame) {
+        if (lastScene == null) lastScene = f.scene
+        if (lastScene != f.scene) {
+            lastScene = f.scene
+            sceneChangedAt = f.t
+        }
+        // Медленный наезд камеры: картинка живёт, даже когда герои молчат.
+        val zoom = 1.035f + 0.018f * sin(f.t * 0.45).toFloat()
+        c.save()
+        c.scale(zoom, zoom, w / 2f, h * 0.45f)
         background(c, f.scene, f.t)
         if (detailed) richDetails(c, f.scene, f.t)
         drawProps(c)
@@ -65,15 +78,35 @@ class ToonDraw(val w: Int = 720, val h: Int = 1280) {
             val cx = w * (i + 1f) / (n + 1f)
             val talking = f.heroes[i] == f.speaker
             val look = f.looks.getOrNull(i) ?: ToonLooks.of(f.heroes[i], i)
-            val sc = (if (n >= 3) 0.8f else 1f) * look.scale
-            if (detailed) heroShadow(c, cx, sc)
-            hero(c, look, cx, h * 0.58f + (1f - look.scale) * 200f, sc, f.t + i * 0.7, talking, if (talking) f.mouthOpen else 0f, if (talking) f.mouthWidth else 0f, if (talking) f.mood else Mood.CALM, talking && holdsCup)
+            val sc = (if (n >= 3) 0.8f else 0.93f) * look.scale
+            // Герои выше середины, а тень — под ногами, иначе она висит в воздухе.
+            val baseY = h * 0.55f + (1f - look.scale) * 180f
+            if (detailed) heroShadow(c, cx, baseY + 316f * sc, sc)
+            hero(c, look, cx, baseY, sc, f.t + i * 0.7, talking, if (talking) f.mouthOpen else 0f, if (talking) f.mouthWidth else 0f, if (talking) f.mood else Mood.CALM, talking && holdsCup)
         }
         if (f.title.isNotEmpty() && f.t < 2.2) title(c, f.title, f.t)
+        c.restore()
+        // Подложка под субтитры: текст читается и поверх ног, и на пёстром фоне.
+        if (detailed) scrim(c)
         if (f.subtitle.isNotEmpty() && f.choiceAnim < 0f) subtitle(c, f.subtitle)
         if (f.choice != null && f.choiceAnim >= 0f) choice(c, f.choice, f.choiceAnim, f.cta)
         if (detailed) vignette(c)
         sceneWeather(c, f.t)
+        val flash = 1.0 - ((f.t - sceneChangedAt) / 0.22).coerceIn(0.0, 1.0)
+        if (sceneChangedAt >= 0 && flash > 0) {
+            fill.color = Color.argb((80 * flash).toInt(), 255, 255, 255)
+            c.drawRect(0f, 0f, w.toFloat(), h.toFloat(), fill)
+        }
+    }
+
+    /** Затемнение нижней части кадра под субтитры. */
+    private fun scrim(c: Canvas) {
+        fill.shader = LinearGradient(
+            0f, h * 0.7f, 0f, h.toFloat(),
+            0x00000000, 0xB4000000.toInt(), Shader.TileMode.CLAMP,
+        )
+        c.drawRect(0f, h * 0.7f, w.toFloat(), h.toFloat(), fill)
+        fill.shader = null
     }
 
     // ---------- Batch23: детали богатого фона ----------
@@ -175,8 +208,8 @@ class ToonDraw(val w: Int = 720, val h: Int = 1280) {
         }
     }
 
-    private fun heroShadow(c: Canvas, cx: Float, scale: Float) {
-        val sh = ToonRichGeom.heroShadow(cx, h * 0.92f, scale)
+    private fun heroShadow(c: Canvas, cx: Float, groundY: Float, scale: Float) {
+        val sh = ToonRichGeom.heroShadow(cx, groundY, scale)
         fill.color = 0x55000000.toInt()
         c.drawOval(RectF(sh[0] - sh[2], sh[1] - sh[3], sh[0] + sh[2], sh[1] + sh[3]), fill)
     }
@@ -649,16 +682,17 @@ class ToonDraw(val w: Int = 720, val h: Int = 1280) {
 
     private fun subtitle(c: Canvas, text: String) {
         val up = text.uppercase()
-        var size = 84f
+        var size = 76f
         textFill.textSize = size
-        var lines = wrap(up, textFill, w - 80f)
-        while (lines.size > 3 && size > 48f) {
-            size -= 6f
+        // Не больше двух строк: три строки закрывают героев и не читаются на ходу.
+        var lines = wrap(up, textFill, w - 90f)
+        while (lines.size > 2 && size > 48f) {
+            size -= 4f
             textFill.textSize = size
-            lines = wrap(up, textFill, w - 80f)
+            lines = wrap(up, textFill, w - 90f)
         }
-        val lh = size * 1.12f
-        var y = h * 0.8f - (lines.size - 1) * lh / 2
+        val lh = size * 1.1f
+        var y = h * 0.9f - (lines.size - 1) * lh / 2
         for (l in lines) {
             outlined(c, l, w / 2f, y, size)
             y += lh

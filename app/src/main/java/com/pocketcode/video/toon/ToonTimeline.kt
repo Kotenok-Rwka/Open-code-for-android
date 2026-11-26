@@ -20,11 +20,27 @@ object ToonTimeline {
     /** Общая частота звука в ролике. */
     const val RATE = 24000
 
+    private const val BASE_GAP = 0.3
+    private const val TAIL = 0.55
+
     fun estimate(text: String): Double = maxOf(1.2, text.length / 13.0)
+
+    /** Пауза после реплики: вопрос и восклицание держат кадр чуть дольше. */
+    fun gapAfter(text: String): Double {
+        val t = text.trimEnd()
+        return BASE_GAP + when {
+            t.endsWith("…") || t.endsWith("...") -> 0.2
+            t.endsWith("?") || t.endsWith("!") -> 0.15
+            else -> 0.0
+        }
+    }
+
+    /** Готовит реплику к миксу: одна громкость, без щелчков, тишина по краям срезана. */
+    private fun ready(p: Pcm?): Pcm? = p?.let { Wav.fade(Wav.normalize(Wav.trim(Wav.resample(it, RATE)))) }
 
     /**
      * Собирает ролик. [pcms] — озвучка каждой реплики (или null), [voiceTexts] — что произносилось.
-     * Между репликами пауза [gap]; перед первой репликой [lead] секунд на заголовок; в конце — выбор для зрителей.
+     * Перед первой репликой [lead] секунд на заголовок, в конце — хвост или выбор для зрителей.
      */
     fun build(
         script: ToonScript,
@@ -32,32 +48,40 @@ object ToonTimeline {
         voiceTexts: List<String>,
         choicePcm: Pcm?,
         choiceText: String,
-        gap: Double = 0.3,
+        gap: Double = BASE_GAP,
         lead: Double = 0.6,
         choiceHold: Double = 4.0,
         minTotal: Double = 0.0,
     ): ToonPlan {
         require(pcms.size == script.lines.size && voiceTexts.size == script.lines.size) { "Число озвучек не совпадает с числом реплик" }
-        val audios = pcms.map { p -> p?.let { Wav.trim(Wav.resample(it, RATE)) } }
+        val audios = pcms.map { ready(it) }
+        val durs = audios.mapIndexed { i, a -> a?.seconds?.takeIf { it > 0.05 } ?: estimate(voiceTexts[i]) }
+        // Пауза после каждой реплики: после «?» и «!» чуть длиннее — так появляется ритм.
+        val gaps = MutableList(script.lines.size) { gapAfter(script.lines[it].sub) + (gap - BASE_GAP) }
+        val hasChoice = script.choice != null
+        val choiceAudio = if (hasChoice) ready(choicePcm) else null
+        val choiceDur = choiceAudio?.seconds ?: estimate(choiceText)
+        val choiceBlock = if (hasChoice) 0.3 + choiceDur + choiceHold else 0.0
+        val tail = TAIL
+
+        // Серия короче заказанной: время уходит в паузы между репликами, а не в замороженный последний кадр.
+        val need = minTotal - (lead + durs.sum() + gaps.sum() + tail + choiceBlock)
+        if (need > 0 && gaps.isNotEmpty()) {
+            val per = minOf(need / gaps.size, 0.8)
+            for (i in gaps.indices) gaps[i] += per
+        }
+
         val clips = ArrayList<ToonClip>()
         var t = lead
         for ((i, line) in script.lines.withIndex()) {
-            val a = audios[i]
-            val dur = a?.seconds ?: estimate(voiceTexts[i])
-            clips += ToonClip(line, t, t + dur, a, voiceTexts[i])
-            t += dur + gap
+            clips += ToonClip(line, t, t + durs[i], audios[i], voiceTexts[i])
+            t += durs[i] + gaps[i]
         }
-        var choiceStart = t
-        var choiceAudio: Pcm? = null
-        var total = t + 0.4
-        if (script.choice != null) {
-            choiceAudio = choicePcm?.let { Wav.trim(Wav.resample(it, RATE)) }
-            val d = choiceAudio?.seconds ?: estimate(choiceText)
-            total = choiceStart + 0.3 + d + choiceHold
-        } else {
-            choiceStart = -1.0
-        }
-        // серия не может быть короче заказанного: последний кадр (или выбор) просто держится дольше
+        var total = t + tail
+        val choiceStart = if (hasChoice) {
+            total = t + choiceBlock
+            t
+        } else -1.0
         if (total < minTotal) total = minTotal
         val mix = ShortArray(ceil(total * RATE).toInt() + RATE / 10)
         for (c in clips) c.audio?.let { place(mix, it, c.start) }

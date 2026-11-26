@@ -161,4 +161,32 @@ class ToonLogicTest {
         assertEquals("замок", com.pocketcode.video.toon.stripStressMarks("з+амок"))
         assertEquals("замок", com.pocketcode.video.toon.stripStressMarks("за\u0301мок"))
     }
+
+    @Test fun normalizeEvendsVoiceVolume() {
+        // Тихая и громкая реплики должны звучать одинаково громко
+        val quiet = Wav.normalize(Pcm(24000, ShortArray(100) { 3000 }))
+        val loud = Wav.normalize(Pcm(24000, ShortArray(100) { -3000 }))
+        fun peak(p: Pcm) = p.samples.maxOf { if (it < 0) -it.toInt() else it.toInt() }
+        assertTrue(peak(quiet) in 25_000..30_000)
+        assertEquals(peak(quiet), peak(loud))
+        assertEquals(0, peak(Wav.normalize(Pcm(24000, ShortArray(100)))))
+    }
+
+    @Test fun fadeRemovesClicksAtEdges() {
+        val p = Pcm(24000, ShortArray(2400) { 10_000 })
+        val f = Wav.fade(p, 10, 10)
+        assertEquals(0, f.samples.first().toInt())
+        assertEquals(0, f.samples.last().toInt())
+        assertEquals(10_000, f.samples[1200].toInt())
+    }
+
+    @Test fun shortSeriesStretchesPausesInsteadOfFreezingLastFrame() {
+        // Десять коротких реплик вместо заказанных 20 секунд: время уходит в паузы, финал не замирает
+        val text = (1..10).joinToString("\n") { "Маша: Строка номер $it про кота и миску" }
+        val s = ToonScript.parse(text)
+        val plan = ToonTimeline.build(s, List(s.lines.size) { null }, s.lines.map { "x" }, null, "", minTotal = 20.0)
+        assertEquals(20.0, plan.total, 1e-9)
+        assertTrue(plan.clips[1].start - plan.clips[0].end > 0.3)
+        assertTrue(plan.clips.last().end > plan.total - 3.0)
+    }
 }

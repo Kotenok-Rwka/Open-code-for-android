@@ -327,7 +327,8 @@ class ToonMaker(
     private suspend fun make(scriptText: String): String {
         val sc = ToonScript.parse(scriptText)
         val dictList = Pronounce.parseDict(dict)
-        val heroes = sc.speakers.take(4)
+        // В кадре четыре места: берём тех, кто говорит больше всех, а не тех, кто поздоровался первым.
+        val heroes = sc.topSpeakers(4)
         // каст: известные персонажи из библиотеки, новые получают автолук (Batch21)
         // нейронка может создать героев прямо в сценарии: «КАСТ: Имя|lang|voice|0|…» (Batch26)
         val scriptCast = ToonSceneFx.castFromScript(scriptText)
@@ -339,7 +340,7 @@ class ToonMaker(
         }
         val cast = ToonCast.resolve(sc.speakers, castBase) { ToonLooks.of(it, abs(it.hashCode()) % 7) }
         val voice = voiceFor(cast)
-        val fps = 24
+        val fps = 30
         // реквизит сцены из строк «КОМНАТА: …» (Batch24); чашка в реквизите → говорящий держит её
         val sceneProps = ToonProps.fromScript(scriptText)
         try {
@@ -375,7 +376,8 @@ class ToonMaker(
             draw.holdsCup = ToonProps.hasCup(sceneProps)
             draw.sceneFx = ToonSceneFx.fromScript(scriptText)
             val scene = sc.scene ?: ToonScene.CITY
-            val looks = heroes.mapIndexed { i, n -> ToonLooks.of(n, i) }
+            // Внешность берём из каста: настраиваемые герои и библиотека персонажей должны реально попадать в кадр.
+            val looks = heroes.mapIndexed { i, n -> cast[n]?.look ?: ToonLooks.of(n, i) }
 
             stage = ToonStage.DRAW
             message = "Рисую кадры"
@@ -383,7 +385,7 @@ class ToonMaker(
             val vTmp = File(cache, "v.mp4")
             val aTmp = File(cache, "a.m4a")
             vTmp.delete(); aTmp.delete()
-            val enc = ToonEncoder(draw.w, draw.h, fps)
+            val enc = ToonEncoder(draw.w, draw.h, fps, ToonQuality.TIKTOK.bitrate)
             enc.encodeVideo(
                 vTmp, frames,
                 draw = { n, canvas ->

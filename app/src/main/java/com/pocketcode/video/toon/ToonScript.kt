@@ -37,6 +37,17 @@ data class ToonScript(
     val speakers: List<String>
         get() = lines.filter { !it.narrator }.map { it.speaker }.distinct()
 
+    /**
+     * Самые говорящие герои (не больше [limit]) в порядке первого появления.
+     * В кадре всего четыре места, поэтому в кадр должны попасть те, у кого больше реплик,
+     * а не те, кто просто поздоровался первым.
+     */
+    fun topSpeakers(limit: Int = 4): List<String> {
+        val order = speakers
+        val counts = lines.filter { !it.narrator }.groupingBy { it.speaker }.eachCount()
+        return order.sortedByDescending { counts[it] ?: 0 }.take(limit).sortedBy { order.indexOf(it) }
+    }
+
     companion object {
         const val MAX_LINES = 80
         const val DEFAULT_CTA = "Пиши свой выбор в комментариях"

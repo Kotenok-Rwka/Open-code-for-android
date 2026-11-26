@@ -123,4 +123,19 @@ class ToonStoryTest {
         assertEquals(45.0, plan.total, 1e-9)
         assertTrue(plan.mix.size >= 45 * ToonTimeline.RATE)
     }
+
+    @Test fun scriptPromptAsksForHookAndDialogue() {
+        val p = ToonPrompt.system(45, ToonFormat.CHOICE, null, null, 1)
+        assertTrue(p.contains("Крючок"))
+        assertTrue(p.contains("70%"))
+        assertTrue(p.contains("Выбор:"))
+    }
+
+    @Test fun topSpeakersKeepsMostTalkingHeroes() {
+        val s = ToonScript.parse(
+            "Аня: раз\nБоря: два\nАня: три\nАня: четыре\nВика: пять\nГриша: шесть\nБоря: семь",
+        )
+        assertEquals(listOf("Аня", "Боря", "Вика"), s.topSpeakers(3))
+        assertEquals(s.speakers, s.topSpeakers(10))
+    }
 }

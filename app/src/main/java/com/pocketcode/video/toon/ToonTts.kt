@@ -47,18 +47,20 @@ class SystemToonVoice(private val ctx: Context, private val engine: String, priv
             }, engine.ifEmpty { null })
             cont.invokeOnCancellation { runCatching { made?.shutdown() } }
         } ?: throw IOException("Системный синтезатор речи не запустился. Проверьте движок в настройках ассистента.")
-        runCatching {
-            val lang = nextLang ?: "ru"
-            val installed = runCatching { t.availableLanguages.orEmpty().map { it.toString() } }.getOrElse { emptyList() }
-            t.setLanguage(ToonVoiceLang.pickLocale(lang, installed))
-        }
         tts = t
         return t
     }
 
     override suspend fun speak(text: String, index: Int): Pcm {
         val t = ready()
-        val pitches = floatArrayOf(1.0f, 1.25f, 0.8f, 1.1f, 0.9f)
+        // Язык ставим перед каждой репликой: в одной серии герои могут говорить на разных языках.
+        runCatching {
+            val lang = nextLang ?: "ru"
+            val installed = runCatching { t.availableLanguages.orEmpty().map { it.toString() } }.getOrElse { emptyList() }
+            t.setLanguage(ToonVoiceLang.pickLocale(lang, installed))
+        }
+        // Мягкие сдвиги высоты: при 1.25 голос звучит как мультяшный бурундук и портит озвучку.
+        val pitches = floatArrayOf(1.0f, 1.12f, 0.87f, 1.06f, 0.94f)
         t.setPitch(pitches[index % pitches.size])
         val file = File(cache, "tts_${System.nanoTime()}_${counter++}.wav")
         val id = "toon" + counter
