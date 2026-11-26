@@ -169,7 +169,7 @@ class ToonDraw(val w: Int = 720, val h: Int = 1280) {
         // тёплый свет лампы сверху (в бункере вместо него — луч фонаря)
         if (p.lamp != 0 && s != ToonScene.BUNKER) {
             fill.shader = RadialGradient(w / 2f, 0f, ToonRichGeom.lampRadius(w, 0.8f),
-                (p.lamp and 0xFFFFFF), (p.lamp or 0x33000000.toInt()), 0x00000000, Shader.TileMode.CLAMP)
+                (p.lamp and 0xFFFFFF).toInt(), (p.lamp or 0x33000000.toInt()).toInt(), Shader.TileMode.CLAMP)
             c.drawRect(0f, 0f, w.toFloat(), h * 0.7f, fill)
             fill.shader = null
         }
@@ -184,6 +184,7 @@ class ToonDraw(val w: Int = 720, val h: Int = 1280) {
     private fun vignette(c: Canvas) {
         fill.shader = RadialGradient(w / 2f, h / 2f, w * 0.95f,
             0x00000000, (ToonRichGeom.vignetteAlpha(w * 0.08f, h * 0.08f, w, h) shl 24), Shader.TileMode.CLAMP)
+
         c.drawRect(0f, 0f, w.toFloat(), h.toFloat(), fill)
         fill.shader = null
     }
