@@ -1940,12 +1940,17 @@ class PackagingTest(unittest.TestCase):
                 if old_env is not None:
                     os.environ["PC_VERSION"] = old_env
 
-    @unittest.skipUnless(
-        sys.platform.startswith("linux") and shutil.which("bash") and shutil.which("dpkg-deb"),
-        "нужны bash и dpkg-deb (Debian/Ubuntu)",
-    )
     def test_deb_contains_every_module_and_imports(self):
         script = Path(__file__).resolve().parent / "build_linux_deb.sh"
+        text = script.read_text(encoding="utf-8")
+        # статическая проверка: скрипт обязан класть в пакет все локальные модули
+        for name in ("features.py", "pocketcode_app.py", "pocketcode_desktop.py",
+                     "ide_bridge.py", "version.py"):
+            self.assertIn(name, text)
+        self.assertIn("--root-owner-group", text)
+        if not (sys.platform.startswith("linux") and shutil.which("bash")
+                and shutil.which("dpkg-deb")):
+            return  # на Windows/macOS .deb не собрать — статической проверки достаточно
         with tempfile.TemporaryDirectory() as d:
             env = dict(os.environ, PC_OUT=d)
             env.pop("PC_VERSION", None)
