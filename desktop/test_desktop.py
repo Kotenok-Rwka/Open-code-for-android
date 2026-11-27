@@ -9,7 +9,9 @@ import http.client
 import importlib.util
 import json
 import os
+import shutil
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -1897,3 +1899,83 @@ class TestBatch14(unittest.TestCase):
             self.assertEqual(fx.dup_detect(p, top=1)["duplicates"][:1], r["duplicates"][:1])
             self.assertIn("error", fx.dup_detect(Path(d) / "нет"))
             self.assertIn("error", fx.dup_detect(p, top="нет"))
+
+
+class PackagingTest(unittest.TestCase):
+    """Сборка ПК-пакетов: версия внутри exe и содержимое .deb.
+
+    Раньше .deb собирался без features.py и падал после установки, а
+    замороженный exe показывал версию 4.5.6 — здесь это ловится.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.m = load_module()
+
+    def test_app_version_prefers_env(self):
+        old = os.environ.get("PC_VERSION")
+        os.environ["PC_VERSION"] = "v9.9.9"
+        try:
+            self.assertEqual(self.m.app_version(), "9.9.9")
+        finally:
+            if old is None:
+                os.environ.pop("PC_VERSION", None)
+            else:
+                os.environ["PC_VERSION"] = old
+
+    def test_app_version_reads_baked_version_file(self):
+        old_env = os.environ.pop("PC_VERSION", None)
+        had_mei = hasattr(sys, "_MEIPASS")
+        old_mei = getattr(sys, "_MEIPASS", None)
+        with tempfile.TemporaryDirectory() as d:
+            Path(d, "version.txt").write_text("8.8.8\n", encoding="utf-8")
+            sys._MEIPASS = d
+            try:
+                self.assertEqual(self.m.app_version(), "8.8.8")
+            finally:
+                if had_mei:
+                    sys._MEIPASS = old_mei
+                else:
+                    del sys._MEIPASS
+                if old_env is not None:
+                    os.environ["PC_VERSION"] = old_env
+
+    @unittest.skipUnless(
+        sys.platform.startswith("linux") and shutil.which("bash") and shutil.which("dpkg-deb"),
+        "нужны bash и dpkg-deb (Debian/Ubuntu)",
+    )
+    def test_deb_contains_every_module_and_imports(self):
+        script = Path(__file__).resolve().parent / "build_linux_deb.sh"
+        with tempfile.TemporaryDirectory() as d:
+            env = dict(os.environ, PC_OUT=d)
+            env.pop("PC_VERSION", None)
+            subprocess.run(["bash", str(script)], env=env, check=True,
+                           capture_output=True, text=True)
+            debs = sorted(Path(d).glob("pocketcode-desktop_*.deb"))
+            self.assertEqual(len(debs), 1, "должен собраться ровно один .deb")
+
+            listing = subprocess.run(["dpkg-deb", "-c", str(debs[0])], check=True,
+                                     capture_output=True, text=True).stdout
+            for name in ("features.py", "pocketcode_app.py", "pocketcode_desktop.py",
+                         "ide_bridge.py", "version.py"):
+                self.assertIn(f"/usr/lib/pocketcode-desktop/{name}", listing,
+                              f"{name} не попал в .deb")
+            self.assertIn("/usr/share/icons/hicolor/scalable/apps/pocketcode-desktop.svg", listing)
+            self.assertIn("/usr/share/applications/pocketcode-desktop.desktop", listing)
+            self.assertTrue(all(" root/root " in line for line in listing.splitlines()),
+                            "файлы .deb должны принадлежать root:root")
+
+            root = Path(d, "root")
+            subprocess.run(["dpkg-deb", "-x", str(debs[0]), str(root)],
+                           check=True, capture_output=True)
+            lib = root / "usr/lib/pocketcode-desktop"
+            # ровно эта поломка (нет features) не давала приложению запуститься
+            r = subprocess.run(
+                [sys.executable, "-c", "import features, pocketcode_desktop as c; print(c.app_version())"],
+                cwd=str(lib), capture_output=True, text=True,
+            )
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertRegex(r.stdout.strip(), r"^\d+\.\d+\.\d+$")
+
+            launcher = (root / "usr/bin/pocketcode-desktop").read_text(encoding="utf-8")
+            self.assertIn('PC_VERSION="', launcher)

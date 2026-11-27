@@ -184,17 +184,41 @@ DANGER = re.compile(
 
 
 def app_version():
-    for p in (Path(__file__).resolve().parent / "version.py", Path(__file__).resolve().parent.parent / "desktop" / "version.py"):
+    """Версия: PC_VERSION (лаунчер .deb) → version.txt рядом с exe или внутри
+    onefile-сборки → version.py проекта → «4.5.6».
+
+    В замороженной сборке version.py не видит ни version.properties, ни git,
+    поэтому версию туда кладут файлом version.txt при сборке.
+    """
+    env = os.environ.get("PC_VERSION", "").strip().lstrip("vV")
+    if env:
+        return env
+    here = Path(__file__).resolve().parent
+    places = []
+    if getattr(sys, "frozen", False):
+        places.append(Path(sys.executable).resolve().parent / "version.txt")
+    baked = getattr(sys, "_MEIPASS", "")
+    if baked:
+        places.append(Path(baked) / "version.txt")
+    places += [here / "version.txt", here.parent / "version.txt"]
+    for f in places:
+        try:
+            text = f.read_text(encoding="utf-8").strip().lstrip("vV")
+        except OSError:
+            continue
+        if text:
+            return text
+    for p in (here / "version.py", here.parent / "desktop" / "version.py"):
         try:
             if p.is_file():
-                spec = {}
+                spec = {"__file__": str(p), "__name__": "pocketcode_version"}
                 exec(p.read_text(encoding="utf-8"), spec)  # noqa: S102 — локальный файл проекта
                 fn = spec.get("version")
                 if callable(fn):
                     return str(fn())
         except Exception:
             continue
-    return os.environ.get("PC_VERSION", "4.5.6")
+    return "4.5.6"
 
 
 # ---------- безопасное хранилище ----------

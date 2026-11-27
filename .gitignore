@@ -11,3 +11,7 @@ captures/
 app/src/main/assets/linux/
 __pycache__/
 .kotlin/
+
+# Данные проектов PocketCode Desktop (заметки, правила) и версия, собранная локально
+.pocketcode/
+desktop/version.txt

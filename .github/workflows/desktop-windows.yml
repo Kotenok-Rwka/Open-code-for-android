@@ -19,16 +19,18 @@ jobs:
           $ver = (& python desktop/version.py).Trim()
           "PC_VERSION=$ver" >> $env:GITHUB_ENV
           Write-Host "::notice title=Версия ПК::$ver"
+          Set-Content -Path desktop/version.txt -Value $ver -NoNewline -Encoding utf8
       - name: Install PyInstaller
-        run: python -m pip install --upgrade pyinstaller
+        # qrcode и pillow нужны QR-сопряжению в самом exe, cryptography — шифрованию синхронизации.
+        run: python -m pip install --upgrade pyinstaller cryptography qrcode pillow
       - name: Build EXE
         working-directory: desktop
         run: |
-          python -m PyInstaller --noconfirm --onefile --windowed --name PocketCodeDesktop --add-data "pocketcode_desktop.py;." --add-data "version.py;." --add-data "ide_bridge.py;." pocketcode_app.py
+          python -m PyInstaller --noconfirm --onefile --windowed --name PocketCodeDesktop --add-data "version.txt;." --add-data "pocketcode_desktop.py;." --add-data "version.py;." --add-data "ide_bridge.py;." pocketcode_app.py
       - name: Zip
         working-directory: desktop
         run: |
-          Compress-Archive -Path dist\\PocketCodeDesktop.exe, INSTALL.md -DestinationPath "PocketCodeDesktop-$env:PC_VERSION-exe.zip" -Force
+          Compress-Archive -Path dist\\PocketCodeDesktop.exe, version.txt, INSTALL.md -DestinationPath "PocketCodeDesktop-$env:PC_VERSION-exe.zip" -Force
       - uses: actions/upload-artifact@v4
         with:
           name: PocketCodeDesktop-windows-${{ env.PC_VERSION }}-exe
