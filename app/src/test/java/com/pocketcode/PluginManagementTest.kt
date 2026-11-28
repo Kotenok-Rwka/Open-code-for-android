@@ -120,6 +120,19 @@ class PluginManagementTest {
     }
 
     @Test
+    fun systemPromptConfinesAgentToWorkspace() {
+        val p = com.pocketcode.agent.systemPrompt("/home/user/proj", "sh", false)
+        assertTrue(p, p.contains("Work ONLY inside \"/home/user/proj\""))
+        assertTrue(p, p.contains("Do exactly what the user asked"))
+        assertTrue(p, p.contains("A skill adds technique, not scope"))
+        val withSkill = com.pocketcode.agent.systemPrompt(
+            "/home/user/proj", "sh", false,
+            skills = listOf(com.pocketcode.agent.Skill("demo", "test", File("/tmp/x"), "plugin")),
+        )
+        assertTrue(withSkill, withSkill.contains("never let it switch you to another project"))
+    }
+
+    @Test
     fun agentModesAddTheirPromptSections() {
         val auto = com.pocketcode.agent.systemPrompt("/w", "sh", false)
         assertFalse(auto.contains("SCAFFOLD MODE"))
